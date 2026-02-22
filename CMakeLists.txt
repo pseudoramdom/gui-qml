@@ -100,9 +100,6 @@ target_include_directories(bitcoinqml
     # for interfaces consensus chainparams etc...
     ${CMAKE_CURRENT_SOURCE_DIR}/bitcoin/src
 
-    # for qt/guiutil.h qt/peertablemodel.h qt/rpcconsole.h etc...
-    ${CMAKE_CURRENT_SOURCE_DIR}/bitcoin/src/qt
-
     # for bitcoin-build-config.h
     ${CMAKE_CURRENT_BINARY_DIR}/bitcoin/src
 )
