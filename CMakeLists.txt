@@ -33,6 +33,8 @@ find_package(Qt 6.2 MODULE REQUIRED
 find_package(Libevent 2.1.8 MODULE REQUIRED)
 find_package(QRencode MODULE REQUIRED)
 
+option(ENABLE_TEST_AUTOMATION "Enable test automation bridge for QML UI testing" OFF)
+
 # Do not build any executable targets from bitcoin submodule
 set(BUILD_BENCH OFF)
 set(BUILD_BITCOIN_BIN OFF)
@@ -69,6 +71,9 @@ set_target_properties(bitcoin_wallet PROPERTIES AUTOUIC OFF)
 set(CMAKE_AUTOMOC_MOC_OPTIONS "-I${CMAKE_CURRENT_SOURCE_DIR}/qml")
 file(GLOB_RECURSE QML_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.h")
 list(FILTER QML_SOURCES EXCLUDE REGEX "androidnotifier\\.(cpp|h)$")
+if(NOT ENABLE_TEST_AUTOMATION)
+  list(FILTER QML_SOURCES EXCLUDE REGEX "qml/test/")
+endif()
 set(QML_QRC "${CMAKE_CURRENT_SOURCE_DIR}/qml/bitcoin_qml.qrc")
 qt6_add_resources(QML_QRC_CPP ${QML_QRC})
 list(APPEND QML_SOURCES ${QML_QRC_CPP})
@@ -82,6 +87,11 @@ target_compile_definitions(bitcoinqml
     QT_NO_KEYWORDS
     QT_USE_QSTRINGBUILDER
 )
+if(ENABLE_TEST_AUTOMATION)
+  find_package(Qt6 REQUIRED COMPONENTS Network)
+  target_compile_definitions(bitcoinqml PUBLIC ENABLE_TEST_AUTOMATION)
+  target_link_libraries(bitcoinqml PUBLIC Qt6::Network)
+endif()
 target_include_directories(bitcoinqml
   PRIVATE
     # to keep the convention of #include <qml/*.h>
