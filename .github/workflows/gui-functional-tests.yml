@@ -41,7 +41,8 @@ jobs:
         run: |
           cmake -B build \
             -DBUILD_APP_TESTS=OFF \
-            -DENABLE_TEST_AUTOMATION=ON
+            -DENABLE_TEST_AUTOMATION=ON \
+            -DBUILD_DAEMON=ON
 
       - name: Build
         run: |
@@ -54,3 +55,4 @@ jobs:
         run: |
           python3 test/functional/qml_test_bridge_sanity.py
           python3 test/functional/qml_test_onboarding.py
+          python3 test/functional/qml_test_peers.py
