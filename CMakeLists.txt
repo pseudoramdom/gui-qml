@@ -39,7 +39,7 @@ option(ENABLE_TEST_AUTOMATION "Enable test automation bridge for QML UI testing"
 set(BUILD_BENCH OFF)
 set(BUILD_BITCOIN_BIN OFF)
 set(BUILD_CLI OFF)
-set(BUILD_DAEMON OFF)
+option(BUILD_DAEMON "Build bitcoind daemon alongside the app (required for functional peer tests)" OFF)
 set(BUILD_FOR_FUZZING OFF)
 set(BUILD_FUZZ_BINARY OFF)
 set(BUILD_GUI_TESTS OFF)
