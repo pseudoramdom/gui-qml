@@ -40,6 +40,7 @@ jobs:
       - name: Configure
         run: |
           cmake -B build \
+            -DBUILD_APP_TESTS=OFF \
             -DENABLE_TEST_AUTOMATION=ON
 
       - name: Build
