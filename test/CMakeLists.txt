@@ -19,6 +19,7 @@ add_executable(bitcoinqml_unit_tests
   test_networkstyle.cpp
   test_qmlinitexecutor_api.cpp
   test_options_model.cpp
+  test_nodemodel_debug_log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../bitcoin/src/util/chaintype.cpp
 )
 
@@ -41,6 +42,7 @@ target_link_libraries(bitcoinqml_unit_tests
     bitcoin_wallet
     bitcoin_common
     bitcoin_util
+    bitcoin_node
     GTest::gmock
     Qt6::Core
     Qt6::Gui
