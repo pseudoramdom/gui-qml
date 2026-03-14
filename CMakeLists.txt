@@ -38,7 +38,7 @@ option(ENABLE_TEST_AUTOMATION "Enable test automation bridge for QML UI testing"
 # Do not build any executable targets from bitcoin submodule
 set(BUILD_BENCH OFF)
 set(BUILD_BITCOIN_BIN OFF)
-set(BUILD_CLI OFF)
+option(BUILD_CLI "Build bitcoin-cli alongside the app" OFF)
 option(BUILD_DAEMON "Build bitcoind daemon alongside the app (required for functional peer tests)" OFF)
 set(BUILD_FOR_FUZZING OFF)
 set(BUILD_FUZZ_BINARY OFF)
