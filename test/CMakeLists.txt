@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Tests for the QML/Qt6 app
 
-find_package(Qt 6.2 MODULE REQUIRED COMPONENTS Core Gui Network Test Qml Quick QuickTest)
+find_package(Qt 6.2 MODULE REQUIRED COMPONENTS Core Gui Network Test Qml Quick QuickTest Widgets)
 find_package(GTest REQUIRED)
 
 if(NOT TARGET GTest::gmock)
@@ -68,6 +68,7 @@ target_link_libraries(bitcoinqml_unit_tests
     Qt6::Quick
     Qt6::Network
     Qt6::Test
+    Qt6::Widgets
 )
 
 add_test(NAME bitcoinqml_unit_tests COMMAND bitcoinqml_unit_tests -platform offscreen)
