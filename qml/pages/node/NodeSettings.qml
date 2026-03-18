@@ -242,6 +242,23 @@ PageStack {
                         root.push(console_page)
                     }
                 }
+                Separator {
+                    Layout.fillWidth: true
+                    visible: AppMode.isDesktop
+                }
+                Setting {
+                    id: gotoWindowBehavior
+                    objectName: "settingsWindowBehavior"
+                    visible: AppMode.isDesktop
+                    Layout.fillWidth: true
+                    header: qsTr("Window Behavior")
+                    actionItem: CaretRightIcon {
+                        color: gotoWindowBehavior.stateColor
+                    }
+                    onClicked: {
+                        root.push(window_behavior_page)
+                    }
+                }
                 Separator { Layout.fillWidth: true }
                 Setting {
                     id: gotoAbout
@@ -355,6 +372,12 @@ PageStack {
     Component {
         id: console_page
         CommandConsole {
+            onBack: root.pop()
+        }
+    }
+    Component {
+        id: window_behavior_page
+        SettingsWindowBehavior {
             onBack: root.pop()
         }
     }
