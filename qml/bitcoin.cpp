@@ -40,6 +40,8 @@
 #include <qml/models/networktraffictower.h>
 #include <qml/models/networkstatusmodel.h>
 #include <qml/models/nodemodel.h>
+#include <qml/models/desktoptrayiconcontroller.h>
+#include <qml/models/desktopwindowbehaviormodel.h>
 #include <qml/models/options_model.h>
 #include <qml/models/paymentrequest.h>
 #include <qml/models/peerdetailsmodel.h>
@@ -65,9 +67,11 @@
 #include <memory>
 #include <tuple>
 
+#include <QApplication>
 #include <QDebug>
 #include <QFontDatabase>
-#include <QGuiApplication>
+#include <QIcon>
+#include <QPixmap>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -245,7 +249,7 @@ int QmlGuiMain(int argc, char* argv[])
     qRegisterMetaType<interfaces::BlockAndHeaderTipInfo>("interfaces::BlockAndHeaderTipInfo");
 
     QGuiApplication::styleHints()->setTabFocusBehavior(Qt::TabFocusAllControls);
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     std::unique_ptr<interfaces::Init> init = interfaces::MakeGuiInit(argc, argv);
@@ -391,13 +395,26 @@ int QmlGuiMain(int argc, char* argv[])
     ChainModel chain_model{*chain};
     chain_model.setCurrentNetworkName(QString::fromStdString(gArgs.GetChainTypeString()));
     setupChainQSettings(&app, chain_model.currentNetworkName());
+    // Settings reset must happen before model instantiation so the models
+    // read clean defaults from QSettings.
+    if (gArgs.IsArgSet("-resetguisettings")) {
+        QSettings settings;
+        settings.remove(QStringLiteral("fHideTrayIcon"));
+        settings.remove(QStringLiteral("fMinimizeToTray"));
+        settings.remove(QStringLiteral("fMinimizeOnClose"));
+    }
 
     QObject::connect(&node_model, &NodeModel::setTimeRatioList, &chain_model, &ChainModel::setTimeRatioList);
     QObject::connect(&node_model, &NodeModel::setTimeRatioListInitial, &chain_model, &ChainModel::setTimeRatioListInitial);
 
 
+    DesktopWindowBehaviorModel desktop_window_behavior_model;
+    DesktopTrayIconController desktop_tray_icon_controller;
+
     qGuiApp->setQuitOnLastWindowClosed(false);
     QObject::connect(qGuiApp, &QGuiApplication::lastWindowClosed, [&] {
+        // When the tray icon is visible the node keeps running in the background.
+        if (desktop_tray_icon_controller.visible()) return;
         node_model.requestShutdown();
     });
 
@@ -502,6 +519,21 @@ int QmlGuiMain(int argc, char* argv[])
     BuildInfo build_info;
     Clipboard clipboard;
     BitcoinUriModel bitcoin_uri_model;
+
+    // Desktop tray icon: set base pixmap and initial dark mode from persisted setting.
+    // The QML Binding in main.qml keeps isDark in sync with Theme.dark at runtime.
+    desktop_tray_icon_controller.setBasePixmap(QPixmap(":/icons/bitcoin-circle"));
+    desktop_tray_icon_controller.setIsDark(QSettings().value("dark", true).toBool());
+    desktop_tray_icon_controller.setVisible(
+        app_mode.isDesktop() && desktop_window_behavior_model.showTrayIcon());
+    // If the system tray is unavailable after all show() retries, reflect that
+    // in the model so the UI does not show the setting as enabled.
+    QObject::connect(&desktop_tray_icon_controller, &DesktopTrayIconController::supportedChanged,
+        [&desktop_window_behavior_model](bool supported) {
+            if (!supported) desktop_window_behavior_model.setShowTrayIcon(false);
+        });
+    engine.rootContext()->setContextProperty("desktopWindowBehaviorModel", &desktop_window_behavior_model);
+    engine.rootContext()->setContextProperty("desktopTrayIconController", &desktop_tray_icon_controller);
 
     qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
     qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
