@@ -161,6 +161,7 @@ class QmlTestHarness:
             "-debugexclude=libevent",
             "-debugexclude=leveldb",
             "-nolisten",
+            *self.extra_args,
         ]
         args.extend(self.extra_args)
 
