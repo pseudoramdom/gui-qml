@@ -520,14 +520,10 @@ int QmlGuiMain(int argc, char* argv[])
     Clipboard clipboard;
     BitcoinUriModel bitcoin_uri_model;
 
-    // Desktop tray icon: set base pixmap and initial dark mode from persisted setting.
-    // The QML Binding in main.qml keeps isDark in sync with Theme.dark at runtime.
     desktop_tray_icon_controller.setBasePixmap(QPixmap(":/icons/bitcoin-circle"));
     desktop_tray_icon_controller.setIsDark(QSettings().value("dark", true).toBool());
     desktop_tray_icon_controller.setVisible(
         app_mode.isDesktop() && desktop_window_behavior_model.showTrayIcon());
-    // If the system tray is unavailable after all show() retries, reflect that
-    // in the model so the UI does not show the setting as enabled.
     QObject::connect(&desktop_tray_icon_controller, &DesktopTrayIconController::supportedChanged,
         [&desktop_window_behavior_model](bool supported) {
             if (!supported) desktop_window_behavior_model.setShowTrayIcon(false);
