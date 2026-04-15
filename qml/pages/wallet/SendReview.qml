@@ -130,10 +130,46 @@ Page {
                 Layout.topMargin: 30
                 text: qsTr("Send")
                 onClicked: {
-                    root.wallet.sendTransaction()
-                    root.transactionSent()
+                    if (root.wallet.isEncrypted && root.wallet.isLocked) {
+                        sendPassphrasePopup.errorText = ""
+                        sendPassphrasePopup.open()
+                        return
+                    }
+                    if (root.wallet.sendTransaction()) {
+                        root.transactionSent()
+                    }
                 }
             }
+
+            CoreText {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: root.wallet.transactionError
+                color: Theme.color.red
+                font.pixelSize: 15
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    WalletPassphrasePopup {
+        id: sendPassphrasePopup
+        parent: Overlay.overlay
+        width: Math.min(420, root.width - 40)
+        titleText: qsTr("Enter wallet password")
+        descriptionText: qsTr("Enter your wallet password to sign and send this transaction.")
+        confirmText: qsTr("Sign and send")
+        busyConfirmText: qsTr("Signing...")
+        onSubmitted: (passphrase) => {
+            sendPassphrasePopup.busy = true
+            if (root.wallet.sendTransactionWithPassphrase(passphrase)) {
+                sendPassphrasePopup.busy = false
+                sendPassphrasePopup.close()
+                root.transactionSent()
+                return
+            }
+            sendPassphrasePopup.busy = false
+            sendPassphrasePopup.errorText = root.wallet.transactionError
         }
     }
 }

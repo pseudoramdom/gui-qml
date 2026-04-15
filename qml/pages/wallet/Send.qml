@@ -322,9 +322,21 @@ PageStack {
                     enabled: root.recipient.isValid
                     onClicked: {
                         if (root.wallet.prepareTransaction()) {
-                            root.transactionPrepared(settings.multipleRecipientsEnabled);
+                            root.transactionPrepared(settings.multipleRecipientsEnabled)
+                        } else if (root.wallet.transactionNeedsUnlock) {
+                            reviewPassphrasePopup.errorText = ""
+                            reviewPassphrasePopup.open()
                         }
                     }
+                }
+
+                CoreText {
+                    Layout.fillWidth: true
+                    visible: text.length > 0 && !root.wallet.transactionNeedsUnlock
+                    text: root.wallet.transactionError
+                    color: Theme.color.red
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
                 }
             }
         }
@@ -334,6 +346,27 @@ PageStack {
         id: coinSelectionPage
         CoinSelection {
             onDone: root.pop()
+        }
+    }
+
+    WalletPassphrasePopup {
+        id: reviewPassphrasePopup
+        parent: Overlay.overlay
+        width: Math.min(420, root.width - 40)
+        titleText: qsTr("Enter wallet password")
+        descriptionText: qsTr("This wallet needs to create a change address before the transaction review can be shown.")
+        confirmText: qsTr("Unlock and continue")
+        busyConfirmText: qsTr("Unlocking...")
+        onSubmitted: (passphrase) => {
+            reviewPassphrasePopup.busy = true
+            if (root.wallet.prepareTransactionWithPassphrase(passphrase)) {
+                reviewPassphrasePopup.busy = false
+                reviewPassphrasePopup.close()
+                root.transactionPrepared(settings.multipleRecipientsEnabled)
+                return
+            }
+            reviewPassphrasePopup.busy = false
+            reviewPassphrasePopup.errorText = root.wallet.transactionError
         }
     }
 }
