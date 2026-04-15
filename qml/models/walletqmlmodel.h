@@ -60,6 +60,7 @@ public:
     Q_INVOKABLE bool sendTransaction();
     Q_INVOKABLE bool sendTransactionWithPassphrase(const QString& passphrase);
     Q_INVOKABLE QString newAddress(QString label);
+    void removeWallet();
 
     std::set<interfaces::WalletTx> getWalletTxs() const;
     interfaces::WalletTx getWalletTx(const uint256& hash) const;
