@@ -187,9 +187,13 @@ void WalletQmlController::clearWalletLoadStatus()
     setWalletLoadWarnings(QString());
 }
 
-void WalletQmlController::migrateWallet(const QString& path)
+void WalletQmlController::migrateWallet(const QString& path, const QString& passphrase)
 {
-    startWalletMigration(path);
+    if (!m_initialized) {
+        setWalletMigrationError(tr("Wallets are still loading. Try again in a moment."));
+        return;
+    }
+    startWalletMigration(path, passphrase);
 }
 
 void WalletQmlController::clearWalletMigrationStatus()
@@ -591,7 +595,7 @@ void WalletQmlController::startWalletLoad(const QString& path)
     });
 }
 
-void WalletQmlController::startWalletMigration(const QString& path)
+void WalletQmlController::startWalletMigration(const QString& path, const QString& passphrase)
 {
     clearWalletLoadStatus();
     clearWalletMigrationStatus();
@@ -611,9 +615,9 @@ void WalletQmlController::startWalletMigration(const QString& path)
 
     setWalletMigrationInProgress(true);
 
-    QTimer::singleShot(0, m_worker, [this, wallet_reference]() {
-        const SecureString empty_passphrase;
-        auto result = m_node.walletLoader().migrateWallet(wallet_reference.toStdString(), empty_passphrase);
+    QTimer::singleShot(0, m_worker, [this, wallet_reference, passphrase]() {
+        const SecureString secure_passphrase{passphrase.toStdString()};
+        auto result = m_node.walletLoader().migrateWallet(wallet_reference.toStdString(), secure_passphrase);
 
         if (!result) {
             const QString error = QString::fromStdString(util::ErrorString(result).translated);

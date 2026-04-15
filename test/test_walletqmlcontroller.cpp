@@ -26,6 +26,7 @@ class FakeWalletLoader : public interfaces::WalletLoader
 {
 public:
     int create_wallet_calls{0};
+    int migrate_wallet_calls{0};
     int handle_load_wallet_calls{0};
     int get_wallets_calls{0};
     int list_wallet_dir_calls{0};
@@ -33,6 +34,10 @@ public:
     std::function<util::Result<std::unique_ptr<interfaces::Wallet>>(const std::string&, const SecureString&, uint64_t, std::vector<bilingual_str>&)>
         create_wallet_fn = [](const std::string&, const SecureString&, uint64_t, std::vector<bilingual_str>&) {
             return util::Error{Untranslated("Unexpected createWallet call")};
+        };
+    std::function<util::Result<interfaces::WalletMigrationResult>(const std::string&, const SecureString&)>
+        migrate_wallet_fn = [](const std::string&, const SecureString&) {
+            return util::Error{Untranslated("Unexpected migrateWallet call")};
         };
     std::function<std::vector<std::unique_ptr<interfaces::Wallet>>()> get_wallets_fn = [] {
         return std::vector<std::unique_ptr<interfaces::Wallet>>{};
@@ -64,9 +69,10 @@ public:
     {
         return util::Error{Untranslated("Unexpected restoreWallet call")};
     }
-    util::Result<interfaces::WalletMigrationResult> migrateWallet(const std::string&, const SecureString&) override
+    util::Result<interfaces::WalletMigrationResult> migrateWallet(const std::string& name, const SecureString& passphrase) override
     {
-        return util::Error{Untranslated("Unexpected migrateWallet call")};
+        ++migrate_wallet_calls;
+        return migrate_wallet_fn(name, passphrase);
     }
     bool isEncrypted(const std::string&) override { return false; }
     std::vector<std::pair<std::string, std::string>> listWalletDir() override
@@ -103,8 +109,10 @@ class WalletQmlControllerTests : public QObject
 private Q_SLOTS:
     void createWalletBeforeInitializationReturnsFalseAndSetsError();
     void importWalletBeforeInitializationSetsLoadError();
+    void migrateWalletBeforeInitializationSetsMigrationError();
     void selectWalletBeforeInitializationSetsLoadError();
     void initializedControllerPropagatesCreateErrors();
+    void initializedControllerForwardsMigrationPassphrase();
 };
 
 void WalletQmlControllerTests::createWalletBeforeInitializationReturnsFalseAndSetsError()
@@ -128,6 +136,17 @@ void WalletQmlControllerTests::importWalletBeforeInitializationSetsLoadError()
 
     controller.importWallet("/tmp/test_wallet.dat");
     QCOMPARE(controller.walletLoadError(), QString{NOT_INITIALIZED_ERROR});
+}
+
+void WalletQmlControllerTests::migrateWalletBeforeInitializationSetsMigrationError()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    WalletQmlController controller(node);
+
+    controller.migrateWallet("legacy_wallet", "secret");
+    QCOMPARE(controller.walletMigrationError(), QString{NOT_INITIALIZED_ERROR});
 }
 
 void WalletQmlControllerTests::selectWalletBeforeInitializationSetsLoadError()
@@ -174,6 +193,38 @@ void WalletQmlControllerTests::initializedControllerPropagatesCreateErrors()
     QCOMPARE(loader.create_wallet_calls, 1);
     QCOMPARE(controller.walletCreateError(), QString{"Wallet creation failed."});
     QVERIFY(!controller.isWalletLoaded());
+}
+
+void WalletQmlControllerTests::initializedControllerForwardsMigrationPassphrase()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    loader.wallet_dir_entries = {{"legacy_wallet", "bdb"}};
+    ExpectControllerInitialization(node, loader);
+
+    WalletQmlController controller(node);
+    controller.initialize();
+
+    QSignalSpy failed_spy(&controller, &WalletQmlController::walletMigrationFailed);
+
+    bool saw_expected_name{false};
+    bool saw_expected_passphrase{false};
+    loader.migrate_wallet_fn = [&](const std::string& name, const SecureString& passphrase) {
+        saw_expected_name = (name == "legacy_wallet");
+        saw_expected_passphrase = (passphrase == SecureString{"secret"});
+        return util::Result<interfaces::WalletMigrationResult>{
+            util::Error{Untranslated("Migration failed.")}};
+    };
+
+    controller.migrateWallet("legacy_wallet", "secret");
+    QVERIFY(failed_spy.wait(5000));
+    QVERIFY(saw_expected_name);
+    QVERIFY(saw_expected_passphrase);
+    QCOMPARE(loader.migrate_wallet_calls, 1);
+    QCOMPARE(controller.walletMigrationError(), QString{"Migration failed."});
+    QVERIFY(!controller.walletMigrationInProgress());
 }
 
 int RunWalletQmlControllerTests(int argc, char* argv[])
