@@ -16,6 +16,8 @@ ColumnLayout {
     property string errorText: ""
     property string labelText: qsTr("Send to")
     property bool enabled: true
+    property alias text: addressInput.text
+    property string inputObjectName: ""
 
     signal editingFinished()
 
@@ -40,6 +42,7 @@ ColumnLayout {
 
         TextArea {
             id: addressInput
+            objectName: root.inputObjectName
             anchors.left: label.right
             anchors.right: parent.right
             anchors.top: parent.top

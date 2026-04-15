@@ -76,6 +76,7 @@ PageStack {
 
                     CoreText {
                         id: title
+                        objectName: "walletSendTitle"
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("Send bitcoin")
@@ -170,10 +171,12 @@ PageStack {
                 }
 
                 BitcoinAddressInputField {
+                    objectName: "sendAddressInput"
                     Layout.fillWidth: true
                     enabled: walletController.initialized
                     address: root.recipient.address
                     errorText: root.recipient.addressError
+                    inputObjectName: "sendAddressField"
                 }
 
                 Separator {
@@ -198,6 +201,7 @@ PageStack {
 
                         TextField {
                             id: amountInput
+                            objectName: "sendAmountField"
                             anchors.left: amountLabel.right
                             anchors.verticalCenter: parent.verticalCenter
                             leftPadding: 0
@@ -210,6 +214,11 @@ PageStack {
                             placeholderText: "0.00000000"
                             selectByMouse: true
                             text: root.recipient.amount.display
+                            onTextChanged: {
+                                if (text !== root.recipient.amount.display) {
+                                    root.recipient.amount.display = text
+                                }
+                            }
                             onTextEdited: root.recipient.amount.display = text
                             onEditingFinished: root.recipient.amount.format()
                             onActiveFocusChanged: {
@@ -277,6 +286,7 @@ PageStack {
                 }
 
                 LabeledTextInput {
+                    objectName: "sendNoteInput"
                     id: label
                     Layout.fillWidth: true
                     labelText: qsTr("Note to self")
@@ -316,6 +326,7 @@ PageStack {
 
                 ContinueButton {
                     id: continueButton
+                    objectName: "sendReviewButton"
                     Layout.fillWidth: true
                     Layout.topMargin: 30
                     text: qsTr("Review")
@@ -331,6 +342,7 @@ PageStack {
                 }
 
                 CoreText {
+                    objectName: "sendReviewErrorText"
                     Layout.fillWidth: true
                     visible: text.length > 0 && !root.wallet.transactionNeedsUnlock
                     text: root.wallet.transactionError
@@ -353,6 +365,11 @@ PageStack {
         id: reviewPassphrasePopup
         parent: Overlay.overlay
         width: Math.min(420, root.width - 40)
+        popupObjectName: "reviewPassphrasePopup"
+        passphraseFieldObjectName: "reviewPassphraseField"
+        errorTextObjectName: "reviewPassphraseErrorText"
+        cancelButtonObjectName: "reviewPassphraseCancelButton"
+        confirmButtonObjectName: "reviewPassphraseConfirmButton"
         titleText: qsTr("Enter wallet password")
         descriptionText: qsTr("This wallet needs to create a change address before the transaction review can be shown.")
         confirmText: qsTr("Unlock and continue")

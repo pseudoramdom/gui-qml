@@ -78,6 +78,7 @@ Popup {
             delegate: WalletBadge {
                 required property string name;
 
+                objectName: "walletSelectItem_" + name.replace(/[^A-Za-z0-9_]/g, "_")
                 width: 220
                 height: 32
                 text: name

@@ -126,6 +126,7 @@ Page {
 
             ContinueButton {
                 id: confimationButton
+                objectName: "sendTransactionButton"
                 Layout.fillWidth: true
                 Layout.topMargin: 30
                 text: qsTr("Send")
@@ -142,6 +143,7 @@ Page {
             }
 
             CoreText {
+                objectName: "sendTransactionErrorText"
                 Layout.fillWidth: true
                 visible: text.length > 0
                 text: root.wallet.transactionError
@@ -156,6 +158,11 @@ Page {
         id: sendPassphrasePopup
         parent: Overlay.overlay
         width: Math.min(420, root.width - 40)
+        popupObjectName: "sendPassphrasePopup"
+        passphraseFieldObjectName: "sendPassphraseField"
+        errorTextObjectName: "sendPassphraseErrorText"
+        cancelButtonObjectName: "sendPassphraseCancelButton"
+        confirmButtonObjectName: "sendPassphraseConfirmButton"
         titleText: qsTr("Enter wallet password")
         descriptionText: qsTr("Enter your wallet password to sign and send this transaction.")
         confirmText: qsTr("Sign and send")

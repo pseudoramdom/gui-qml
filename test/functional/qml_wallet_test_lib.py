@@ -72,7 +72,7 @@ def rpc_call(port, method, params=None, wallet=None):
     if wallet:
         path = f"/wallet/{wallet}"
 
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
     credentials = base64.b64encode(f"{RPC_USER}:{RPC_PASS}".encode("utf-8")).decode("ascii")
     conn.request(
         "POST",
@@ -197,8 +197,7 @@ class WalletFlowHarness:
         self.gui_process = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.driver = QmlDriver(self.socket_path, timeout=GUI_STARTUP_TIMEOUT)
 
-    def stop(self):
-        self.stop_source_node()
+    def stop_gui(self):
         if self.gui_process and self.gui_process.poll() is None:
             self.gui_process.send_signal(signal.SIGTERM)
             try:
@@ -210,6 +209,10 @@ class WalletFlowHarness:
         if self.driver:
             self.driver.close()
             self.driver = None
+
+    def stop(self):
+        self.stop_source_node()
+        self.stop_gui()
         if os.getenv("KEEP_QML_TEST_TMPDIR") == "1":
             print(f"Preserving test directory: {self.tmpdir}")
         else:

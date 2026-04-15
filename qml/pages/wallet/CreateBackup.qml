@@ -62,6 +62,7 @@ Page {
         }
 
         ContinueButton {
+            objectName: "createWalletBackupViewFileButton"
             Layout.preferredWidth: Math.min(300, parent.width - 2 * Layout.leftMargin)
             Layout.topMargin: 30
             Layout.leftMargin: 20
@@ -78,6 +79,7 @@ Page {
         }
 
         ContinueButton {
+            objectName: "createWalletBackupDoneButton"
             Layout.preferredWidth: Math.min(300, parent.width - 2 * Layout.leftMargin)
             Layout.topMargin: 30
             Layout.leftMargin: 20

@@ -30,6 +30,7 @@ Page {
             }
         }
         rightItem: NavButton {
+            objectName: "createWalletPasswordSkipButton"
             text: qsTr("Skip")
             enabled: walletController.initialized
             onClicked: {
@@ -65,6 +66,7 @@ Page {
 
         CoreTextField {
             id: password
+            objectName: "createWalletPasswordField"
             Layout.fillWidth: true
             Layout.topMargin: 5
             Layout.leftMargin: 20
@@ -83,6 +85,7 @@ Page {
         }
         CoreTextField {
             id: passwordRepeat
+            objectName: "createWalletPasswordRepeatField"
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
@@ -92,6 +95,7 @@ Page {
 
         Setting {
             id: confirmToggle
+            objectName: "createWalletPasswordConfirmToggle"
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
@@ -105,6 +109,7 @@ Page {
         }
 
         ContinueButton {
+            objectName: "createWalletPasswordContinueButton"
             Layout.preferredWidth: Math.min(300, parent.width - 2 * Layout.leftMargin)
             Layout.topMargin: 40
             Layout.leftMargin: 20
@@ -120,6 +125,7 @@ Page {
         }
 
         CoreText {
+            objectName: "createWalletPasswordErrorText"
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
