@@ -70,6 +70,7 @@ ApplicationWindow {
             onFinished: {
                 optionsModel.onboard()
                 if (AppMode.walletEnabled && AppMode.isDesktop) {
+                    nodeModel.startNodeInitializionThread()
                     main.push([
                         desktopWallets, {},
                         createWalletWizard, { "launchContext": CreateWalletWizard.Context.Onboarding }
@@ -142,6 +143,12 @@ ApplicationWindow {
     Component {
         id: shutdown
         Shutdown {}
+    }
+
+    Component.onCompleted: {
+        if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
+            nodeModel.startNodeInitializionThread()
+        }
     }
 
     Component {

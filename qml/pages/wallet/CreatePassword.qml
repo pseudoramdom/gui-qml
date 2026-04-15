@@ -18,6 +18,8 @@ Page {
 
     required property string walletName;
 
+    Component.onCompleted: walletController.clearWalletCreateStatus()
+
     header: NavigationBar2 {
         id: navbar
         leftItem: NavButton {
@@ -29,9 +31,11 @@ Page {
         }
         rightItem: NavButton {
             text: qsTr("Skip")
+            enabled: walletController.initialized
             onClicked: {
-                walletController.createSingleSigWallet(walletName, "")
-                root.next()
+                if (walletController.createSingleSigWallet(walletName, "")) {
+                    root.next()
+                }
             }
         }
     }
@@ -107,11 +111,23 @@ Page {
             Layout.rightMargin: Layout.leftMargin
             Layout.alignment: Qt.AlignCenter
             text: qsTr("Continue")
-            enabled: password.text != "" && passwordRepeat.text != "" && password.text == passwordRepeat.text && confirmToggle.loadedItem.checked
+            enabled: walletController.initialized && password.text != "" && passwordRepeat.text != "" && password.text == passwordRepeat.text && confirmToggle.loadedItem.checked
             onClicked: {
-                walletController.createSingleSigWallet(walletName, password.text)
-                root.next()
+                if (walletController.createSingleSigWallet(walletName, password.text)) {
+                    root.next()
+                }
             }
+        }
+
+        CoreText {
+            Layout.fillWidth: true
+            Layout.leftMargin: 20
+            Layout.rightMargin: 20
+            visible: text.length > 0
+            text: walletController.walletCreateError
+            color: Theme.color.red
+            font.pixelSize: 15
+            wrapMode: Text.WordWrap
         }
     }
 }
