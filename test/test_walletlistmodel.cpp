@@ -71,6 +71,7 @@ class WalletListModelTests : public QObject
 
 private Q_SLOTS:
     void listWalletDirMapsNameAndLoadStateRoles();
+    void listWalletDirRemovesMissingEntries();
     void setOpenWalletNamesUpdatesLoadStateRole();
 };
 
@@ -99,6 +100,31 @@ void WalletListModelTests::listWalletDirMapsNameAndLoadStateRoles()
     QCOMPARE(model.data(second, WalletListModel::NameRole).toString(), QString{"beta_wallet"});
     QCOMPARE(model.data(first, WalletListModel::LoadStateRole).toInt(), static_cast<int>(WalletListModel::LoadState::Closed));
     QCOMPARE(model.data(second, WalletListModel::LoadStateRole).toInt(), static_cast<int>(WalletListModel::LoadState::Closed));
+}
+
+void WalletListModelTests::listWalletDirRemovesMissingEntries()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    loader.wallet_dir_entries = {
+        {"alpha_wallet", "sqlite"},
+        {"beta_wallet", "sqlite"},
+    };
+    ExpectWalletLoader(node, loader);
+
+    WalletListModel model{node, nullptr};
+    model.listWalletDir();
+    QCOMPARE(model.rowCount(), 2);
+
+    loader.wallet_dir_entries = {
+        {"beta_wallet", "sqlite"},
+    };
+    model.listWalletDir();
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0, 0), WalletListModel::NameRole).toString(), QString{"beta_wallet"});
 }
 
 void WalletListModelTests::setOpenWalletNamesUpdatesLoadStateRole()

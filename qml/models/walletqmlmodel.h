@@ -37,8 +37,12 @@ class WalletQmlModel : public QObject
     Q_PROPERTY(bool isWalletLoaded READ isWalletLoaded NOTIFY walletIsLoadedChanged)
     Q_PROPERTY(bool isEncrypted READ isEncrypted NOTIFY securityStateChanged)
     Q_PROPERTY(bool isLocked READ isLocked NOTIFY securityStateChanged)
+    Q_PROPERTY(QString keyScheme READ keyScheme CONSTANT)
+    Q_PROPERTY(QString privateKeysStatus READ privateKeysStatus CONSTANT)
+    Q_PROPERTY(QString externalSignerStatus READ externalSignerStatus CONSTANT)
     Q_PROPERTY(QString transactionError READ transactionError NOTIFY transactionErrorChanged)
     Q_PROPERTY(bool transactionNeedsUnlock READ transactionNeedsUnlock NOTIFY transactionNeedsUnlockChanged)
+    Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
 
 public:
     WalletQmlModel(std::unique_ptr<interfaces::Wallet> wallet, QObject* parent = nullptr);
@@ -60,6 +64,10 @@ public:
     Q_INVOKABLE bool sendTransaction();
     Q_INVOKABLE bool sendTransactionWithPassphrase(const QString& passphrase);
     Q_INVOKABLE QString newAddress(QString label);
+    Q_INVOKABLE bool encryptWallet(const QString& passphrase);
+    Q_INVOKABLE bool changeWalletPassphrase(const QString& old_passphrase, const QString& new_passphrase);
+    Q_INVOKABLE bool backupWallet(const QString& path);
+    Q_INVOKABLE void clearSettingsError();
     void removeWallet();
 
     std::set<interfaces::WalletTx> getWalletTxs() const;
@@ -89,8 +97,12 @@ public:
     void setWalletLoaded(bool loaded);
     bool isEncrypted() const { return m_is_encrypted; }
     bool isLocked() const { return m_is_locked; }
+    QString keyScheme() const;
+    QString privateKeysStatus() const;
+    QString externalSignerStatus() const;
     QString transactionError() const { return m_transaction_error; }
     bool transactionNeedsUnlock() const { return m_transaction_needs_unlock; }
+    QString settingsError() const { return m_settings_error; }
 
 Q_SIGNALS:
     void nameChanged();
@@ -101,6 +113,7 @@ Q_SIGNALS:
     void securityStateChanged();
     void transactionErrorChanged();
     void transactionNeedsUnlockChanged();
+    void settingsErrorChanged();
 
 private:
     unsigned int nextPaymentRequestId() const;
@@ -112,6 +125,7 @@ private:
     bool unlockForAction(const std::optional<QString>& passphrase, bool& relock);
     void clearTransactionStatus();
     void setTransactionStatus(const QString& error, bool needs_unlock = false);
+    void setSettingsError(const QString& error);
 
     std::unique_ptr<interfaces::Wallet> m_wallet;
     ActivityListModel* m_activity_list_model{nullptr};
@@ -125,6 +139,7 @@ private:
     bool m_is_locked{false};
     QString m_transaction_error;
     bool m_transaction_needs_unlock{false};
+    QString m_settings_error;
     std::unique_ptr<interfaces::Handler> m_handler_status_changed;
 };
 

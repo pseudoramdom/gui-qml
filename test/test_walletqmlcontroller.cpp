@@ -16,6 +16,11 @@
 
 #include <gmock/gmock.h>
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTemporaryDir>
+
 namespace {
 constexpr auto NOT_INITIALIZED_ERROR{"Wallets are still loading. Try again in a moment."};
 
@@ -32,6 +37,7 @@ public:
     int handle_load_wallet_calls{0};
     int get_wallets_calls{0};
     int list_wallet_dir_calls{0};
+    std::string wallet_dir;
 
     std::function<util::Result<std::unique_ptr<interfaces::Wallet>>(const std::string&, const SecureString&, uint64_t, std::vector<bilingual_str>&)>
         create_wallet_fn = [](const std::string&, const SecureString&, uint64_t, std::vector<bilingual_str>&) {
@@ -66,7 +72,7 @@ public:
     {
         return util::Error{Untranslated("Unexpected loadWallet call")};
     }
-    std::string getWalletDir() override { return {}; }
+    std::string getWalletDir() override { return wallet_dir; }
     util::Result<std::unique_ptr<interfaces::Wallet>> restoreWallet(const fs::path&, const std::string&, std::vector<bilingual_str>&) override
     {
         return util::Error{Untranslated("Unexpected restoreWallet call")};
@@ -80,7 +86,18 @@ public:
     std::vector<std::pair<std::string, std::string>> listWalletDir() override
     {
         ++list_wallet_dir_calls;
-        return wallet_dir_entries;
+        if (wallet_dir.empty()) {
+            return wallet_dir_entries;
+        }
+
+        std::vector<std::pair<std::string, std::string>> entries;
+        const QString root_dir = QString::fromStdString(wallet_dir);
+        for (const auto& [path, format] : wallet_dir_entries) {
+            if (QFileInfo::exists(QDir(root_dir).filePath(QString::fromStdString(path)))) {
+                entries.emplace_back(path, format);
+            }
+        }
+        return entries;
     }
     std::vector<std::unique_ptr<interfaces::Wallet>> getWallets() override
     {
@@ -103,6 +120,9 @@ public:
 
     explicit FakeWallet(std::string wallet_name, State* state)
         : m_wallet_name(std::move(wallet_name)), m_state(state) {}
+
+    bool private_keys_disabled{false};
+    bool external_signer{false};
 
     bool encryptWallet(const SecureString&) override { return true; }
     bool isCrypted() override { return false; }
@@ -176,9 +196,9 @@ public:
     unsigned int getConfirmTarget() override { return 6; }
     bool hdEnabled() override { return true; }
     bool canGetAddresses() override { return true; }
-    bool privateKeysDisabled() override { return false; }
+    bool privateKeysDisabled() override { return private_keys_disabled; }
     bool taprootEnabled() override { return true; }
-    bool hasExternalSigner() override { return false; }
+    bool hasExternalSigner() override { return external_signer; }
     OutputType getDefaultAddressType() override { return OutputType::BECH32; }
     CAmount getDefaultMaxTxFee() override { return COIN; }
     void remove() override
@@ -224,6 +244,7 @@ private Q_SLOTS:
     void initializedControllerClosesNonSelectedWalletWithoutChangingSelection();
     void initializedControllerEmitsOpenWalletsChanged();
     void initializedControllerUnloadWalletsClearsSelectionAndOpenWallets();
+    void initializedControllerDeleteWalletRemovesStorageAndClosesWallet();
 };
 
 void WalletQmlControllerTests::createWalletBeforeInitializationReturnsFalseAndSetsError()
@@ -470,6 +491,48 @@ void WalletQmlControllerTests::initializedControllerUnloadWalletsClearsSelection
     QVERIFY(!controller.isWalletOpen("beta_wallet"));
     QCOMPARE(alpha_state.remove_calls, 0);
     QCOMPARE(beta_state.remove_calls, 0);
+}
+
+void WalletQmlControllerTests::initializedControllerDeleteWalletRemovesStorageAndClosesWallet()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    FakeWallet::State alpha_state;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    loader.wallet_dir = temp_dir.path().toStdString();
+    loader.wallet_dir_entries = {{"alpha_wallet", "sqlite"}};
+    loader.get_wallets_fn = [&]() {
+        std::vector<std::unique_ptr<interfaces::Wallet>> wallets;
+        wallets.emplace_back(std::make_unique<FakeWallet>("alpha_wallet", &alpha_state));
+        return wallets;
+    };
+    ExpectControllerInitialization(node, loader);
+
+    const QString wallet_dir = QDir(temp_dir.path()).filePath("alpha_wallet");
+    QVERIFY(QDir().mkpath(wallet_dir));
+    QFile marker(QDir(wallet_dir).filePath("wallet.dat"));
+    QVERIFY(marker.open(QIODevice::WriteOnly));
+    marker.write("wallet");
+    marker.close();
+
+    WalletQmlController controller(node);
+    controller.initialize();
+
+    QSignalSpy selected_spy(&controller, &WalletQmlController::selectedWalletChanged);
+    QSignalSpy open_wallets_spy(&controller, &WalletQmlController::openWalletsChanged);
+
+    QVERIFY(controller.deleteWallet("alpha_wallet"));
+
+    QCOMPARE(alpha_state.remove_calls, 1);
+    QVERIFY(!QFileInfo::exists(wallet_dir));
+    QCOMPARE(selected_spy.count(), 1);
+    QCOMPARE(open_wallets_spy.count(), 1);
+    QCOMPARE(open_wallets_spy.at(0).at(0).toStringList(), QStringList{});
+    QVERIFY(!controller.isWalletLoaded());
+    QVERIFY(controller.noWalletsFound());
 }
 
 int RunWalletQmlControllerTests(int argc, char* argv[])

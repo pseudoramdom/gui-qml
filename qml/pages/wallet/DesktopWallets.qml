@@ -24,6 +24,30 @@ Page {
     signal addWallet()
     signal sendTransaction(bool multipleRecipientsEnabled)
 
+    function toggleWalletSelection() {
+        if (!walletController.initialized) {
+            return
+        }
+        walletListModel.listWalletDir()
+        if (walletController.noWalletsFound) {
+            root.addWallet()
+        } else {
+            walletSelect.opened ? walletSelect.close() : walletSelect.open()
+        }
+    }
+
+    function openWalletSelection() {
+        if (!walletController.initialized) {
+            return
+        }
+        walletListModel.listWalletDir()
+        if (walletController.noWalletsFound) {
+            root.addWallet()
+        } else {
+            walletSelect.open()
+        }
+    }
+
     Connections {
         target: walletController
         function onOpenWalletSettingsRequested() {
@@ -69,14 +93,7 @@ Page {
             noWalletsFound: walletController.noWalletsFound
 
             onClicked: {
-                if (walletController.initialized) {
-                    walletListModel.listWalletDir()
-                    if (walletController.noWalletsFound) {
-                        root.addWallet()
-                    } else {
-                        walletSelect.opened ? walletSelect.close() : walletSelect.open()
-                    }
-                }
+                root.toggleWalletSelection()
             }
 
             WalletSelect {
@@ -155,6 +172,7 @@ Page {
             }
             NavigationTab {
                 id: settingsTabButton
+                objectName: "walletSettingsTab"
                 iconSource: "image://images/gear-outline"
                 iconColor: Theme.color.neutral7
                 Layout.preferredWidth: 30
@@ -194,6 +212,7 @@ Page {
         }
         NodeSettings {
             showDoneButton: false
+            onSelectWalletRequested: root.openWalletSelection()
         }
     }
 

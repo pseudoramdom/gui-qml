@@ -16,19 +16,14 @@ WalletListModel::WalletListModel(interfaces::Node& node, QObject *parent)
 
 void WalletListModel::listWalletDir()
 {
-    QSet<QString> existing_names;
-    for (int i = 0; i < rowCount(); ++i) {
-        QModelIndex index = this->index(i, 0);
-        QString name = data(index, NameRole).toString();
-        existing_names.insert(name);
-    }
-
+    beginResetModel();
+    m_items.clear();
     for (const auto& [path, info] : m_node.walletLoader().listWalletDir()) {
+        Q_UNUSED(info);
         QString qname = QString::fromStdString(path);
-        if (!existing_names.contains(qname)) {
-            addItem({ qname });
-        }
+        m_items.append({ qname });
     }
+    endResetModel();
 }
 
 void WalletListModel::setOpenWalletNames(const QStringList& wallet_names)
