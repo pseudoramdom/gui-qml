@@ -19,6 +19,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSettings>
 #include <QTemporaryDir>
 
 namespace {
@@ -234,6 +235,7 @@ class WalletQmlControllerTests : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void init();
     void createWalletBeforeInitializationReturnsFalseAndSetsError();
     void importWalletBeforeInitializationSetsLoadError();
     void migrateWalletBeforeInitializationSetsMigrationError();
@@ -245,7 +247,15 @@ private Q_SLOTS:
     void initializedControllerEmitsOpenWalletsChanged();
     void initializedControllerUnloadWalletsClearsSelectionAndOpenWallets();
     void initializedControllerDeleteWalletRemovesStorageAndClosesWallet();
+    void initializedControllerUpdatesDisplayNameAlias();
 };
+
+void WalletQmlControllerTests::init()
+{
+    QSettings settings;
+    settings.remove("walletDisplayNames");
+    settings.sync();
+}
 
 void WalletQmlControllerTests::createWalletBeforeInitializationReturnsFalseAndSetsError()
 {
@@ -533,6 +543,31 @@ void WalletQmlControllerTests::initializedControllerDeleteWalletRemovesStorageAn
     QCOMPARE(open_wallets_spy.at(0).at(0).toStringList(), QStringList{});
     QVERIFY(!controller.isWalletLoaded());
     QVERIFY(controller.noWalletsFound());
+}
+
+void WalletQmlControllerTests::initializedControllerUpdatesDisplayNameAlias()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    FakeWallet::State alpha_state;
+    loader.get_wallets_fn = [&]() {
+        std::vector<std::unique_ptr<interfaces::Wallet>> wallets;
+        wallets.emplace_back(std::make_unique<FakeWallet>("alpha_wallet", &alpha_state));
+        return wallets;
+    };
+    ExpectControllerInitialization(node, loader);
+
+    WalletQmlController controller(node);
+    controller.initialize();
+
+    QSignalSpy display_name_spy(&controller, &WalletQmlController::walletDisplayNamesChanged);
+
+    QVERIFY(controller.setWalletDisplayName("alpha_wallet", "Personal"));
+    QCOMPARE(display_name_spy.count(), 1);
+    QCOMPARE(controller.walletDisplayName("alpha_wallet"), QString{"Personal"});
+    QCOMPARE(controller.selectedWallet()->displayName(), QString{"Personal"});
 }
 
 int RunWalletQmlControllerTests(int argc, char* argv[])

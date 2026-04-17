@@ -13,6 +13,8 @@
 
 #include <gmock/gmock.h>
 
+#include <QSettings>
+
 namespace {
 class FakeWalletLoader : public interfaces::WalletLoader
 {
@@ -70,10 +72,19 @@ class WalletListModelTests : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void init();
     void listWalletDirMapsNameAndLoadStateRoles();
     void listWalletDirRemovesMissingEntries();
+    void displayNameRoleUsesStoredAlias();
     void setOpenWalletNamesUpdatesLoadStateRole();
 };
+
+void WalletListModelTests::init()
+{
+    QSettings settings;
+    settings.remove("walletDisplayNames");
+    settings.sync();
+}
 
 void WalletListModelTests::listWalletDirMapsNameAndLoadStateRoles()
 {
@@ -125,6 +136,27 @@ void WalletListModelTests::listWalletDirRemovesMissingEntries()
 
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.data(model.index(0, 0), WalletListModel::NameRole).toString(), QString{"beta_wallet"});
+}
+
+void WalletListModelTests::displayNameRoleUsesStoredAlias()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    loader.wallet_dir_entries = {
+        {"alpha_wallet", "sqlite"},
+    };
+    ExpectWalletLoader(node, loader);
+
+    QSettings settings;
+    settings.setValue("walletDisplayNames/alpha_wallet", "Personal");
+    settings.sync();
+
+    WalletListModel model{node, nullptr};
+    model.listWalletDir();
+
+    QCOMPARE(model.data(model.index(0, 0), WalletListModel::DisplayNameRole).toString(), QString{"Personal"});
 }
 
 void WalletListModelTests::setOpenWalletNamesUpdatesLoadStateRole()

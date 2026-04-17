@@ -14,6 +14,8 @@
 #include <wallet/coincontrol.h>
 #include <wallet/types.h>
 
+#include <QSettings>
+
 namespace {
 constexpr auto REGTEST_ADDRESS{"bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj"};
 
@@ -223,6 +225,7 @@ class WalletQmlModelTests : public QObject
 
 private Q_SLOTS:
     void initTestCase();
+    void displayNameDefaultsToWalletName();
     void detailPropertiesReflectWalletCapabilities();
     void encryptWalletUpdatesSecurityState();
     void changeWalletPassphraseForwardsPasswords();
@@ -235,6 +238,16 @@ private Q_SLOTS:
 void WalletQmlModelTests::initTestCase()
 {
     SelectParams(ChainType::REGTEST);
+}
+
+void WalletQmlModelTests::displayNameDefaultsToWalletName()
+{
+    FakeWallet* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+
+    QCOMPARE(model->displayName(), QString("fake-wallet"));
+    model->setDisplayName("Personal");
+    QCOMPARE(model->displayName(), QString("Personal"));
 }
 
 void WalletQmlModelTests::detailPropertiesReflectWalletCapabilities()

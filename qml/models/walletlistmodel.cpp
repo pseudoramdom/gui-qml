@@ -7,6 +7,21 @@
 #include <interfaces/node.h>
 
 #include <QSet>
+#include <QSettings>
+
+namespace {
+QString WalletDisplayName(const QString& path)
+{
+    const QString trimmed_path = path.trimmed();
+    if (trimmed_path.isEmpty()) {
+        return {};
+    }
+
+    QSettings settings;
+    const QString display_name = settings.value(QStringLiteral("walletDisplayNames/%1").arg(trimmed_path)).toString().trimmed();
+    return display_name.isEmpty() ? trimmed_path : display_name;
+}
+} // namespace
 
 WalletListModel::WalletListModel(interfaces::Node& node, QObject *parent)
 : QAbstractListModel(parent)
@@ -51,6 +66,8 @@ QVariant WalletListModel::data(const QModelIndex &index, int role) const
     const auto &item = m_items[index.row()];
     switch (role) {
     case Qt::DisplayRole:
+    case DisplayNameRole:
+        return WalletDisplayName(item.name);
     case NameRole:
         return item.name;
     case LoadStateRole:
@@ -66,6 +83,7 @@ QHash<int, QByteArray> WalletListModel::roleNames() const
 {
     QHash<int, QByteArray> roles;
     roles[NameRole] = "name";
+    roles[DisplayNameRole] = "displayName";
     roles[LoadStateRole] = "loadState";
     return roles;
 }
@@ -86,4 +104,15 @@ void WalletListModel::updateLoadStateForAllRows()
     const QModelIndex first = index(0, 0);
     const QModelIndex last = index(rowCount() - 1, 0);
     Q_EMIT dataChanged(first, last, {LoadStateRole});
+}
+
+void WalletListModel::refreshDisplayNames()
+{
+    if (m_items.isEmpty()) {
+        return;
+    }
+
+    const QModelIndex first = index(0, 0);
+    const QModelIndex last = index(rowCount() - 1, 0);
+    Q_EMIT dataChanged(first, last, {Qt::DisplayRole, DisplayNameRole});
 }

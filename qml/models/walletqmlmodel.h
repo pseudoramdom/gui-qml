@@ -27,6 +27,7 @@ class WalletQmlModel : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString name READ name NOTIFY nameChanged)
+    Q_PROPERTY(QString displayName READ displayName NOTIFY displayNameChanged)
     Q_PROPERTY(QString balance READ balance NOTIFY balanceChanged)
     Q_PROPERTY(ActivityListModel* activityListModel READ activityListModel CONSTANT)
     Q_PROPERTY(CoinsListModel* coinsListModel READ coinsListModel CONSTANT)
@@ -50,6 +51,8 @@ public:
     ~WalletQmlModel();
 
     QString name() const;
+    QString displayName() const;
+    void setDisplayName(const QString& display_name);
     QString balance() const;
     CAmount balanceSatoshi() const;
     Q_INVOKABLE void commitPaymentRequest();
@@ -106,6 +109,7 @@ public:
 
 Q_SIGNALS:
     void nameChanged();
+    void displayNameChanged();
     void balanceChanged();
     void currentTransactionChanged();
     void feeTargetBlocksChanged();
@@ -140,6 +144,7 @@ private:
     QString m_transaction_error;
     bool m_transaction_needs_unlock{false};
     QString m_settings_error;
+    QString m_display_name;
     std::unique_ptr<interfaces::Handler> m_handler_status_changed;
 };
 

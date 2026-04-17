@@ -86,7 +86,7 @@ Page {
             objectName: "walletBadge"
             implicitWidth: 154
             implicitHeight: 46
-            text: walletController.selectedWallet.name
+            text: walletController.selectedWallet.displayName
             balance: walletController.selectedWallet.balance
             loading: !walletController.initialized
             noWalletLoaded: !walletController.isWalletLoaded
