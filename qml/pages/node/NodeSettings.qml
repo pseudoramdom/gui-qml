@@ -19,18 +19,6 @@ PageStack {
     id: root
     objectName: "nodeSettingsStack"
 
-    function isWalletSettingsSubpage(page_name) {
-        return page_name === "walletPasswordSettingsPage" ||
-               page_name === "walletDeletePage"
-    }
-
-    function closeWalletSettingsSubpage() {
-        const current_name = root.currentItem && root.currentItem.objectName ? root.currentItem.objectName : ""
-        if (root.depth > 1 && isWalletSettingsSubpage(current_name)) {
-            root.pop()
-        }
-    }
-
     function openWalletSettingsPage() {
         const current_name = root.currentItem && root.currentItem.objectName ? root.currentItem.objectName : ""
         if (current_name !== "walletSettingsPage") {
@@ -42,16 +30,6 @@ PageStack {
         target: walletController
         function onOpenWalletSettingsRequested() {
             root.openWalletSettingsPage()
-        }
-        function onSelectedWalletChanged() {
-            if (!walletController.selectedWallet || walletController.selectedWallet.name.length === 0) {
-                root.closeWalletSettingsSubpage()
-            }
-        }
-        function onIsWalletLoadedChanged() {
-            if (!walletController.isWalletLoaded) {
-                root.closeWalletSettingsSubpage()
-            }
         }
     }
 
