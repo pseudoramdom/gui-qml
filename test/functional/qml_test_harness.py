@@ -62,6 +62,7 @@ def setup_datadir(tmpdir):
         f.write("printtoconsole=0\n")
         f.write("connect=0\n")
         f.write("shrinkdebugfile=0\n")
+        f.write("fallbackfee=0.0001\n")
     return datadir
 
 
