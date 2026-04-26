@@ -11,6 +11,8 @@
 
 const TranslateFn G_TRANSLATION_FUN{nullptr};
 
+int RunTransactionTests(int argc, char* argv[]);
+
 int main(int argc, char* argv[])
 {
     testing::InitGoogleMock(&argc, argv);
@@ -22,6 +24,7 @@ int main(int argc, char* argv[])
     for (const auto& test : qttestregistry::SortedEntries()) {
         status |= test.run(argc, argv);
     }
+    status |= RunTransactionTests(argc, argv);
 
     return status;
 }
