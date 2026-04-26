@@ -20,6 +20,7 @@
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
 #include <policy/feerate.h>
+#include <psbt.h>
 #include <support/allocators/secure.h>
 #include <wallet/coincontrol.h>
 
@@ -31,13 +32,14 @@
 
 #include <QHash>
 #include <QObject>
+#include <QStringList>
 #include <QThread>
 #include <QTimer>
 #include <QVariantList>
 
 namespace interfaces {
 class Node;
-}
+} // namespace interfaces
 
 class WalletQmlModel : public QObject
 {
@@ -88,6 +90,16 @@ private:
     Q_PROPERTY(QString transactionError READ transactionError NOTIFY transactionErrorChanged)
     Q_PROPERTY(bool transactionNeedsUnlock READ transactionNeedsUnlock NOTIFY transactionNeedsUnlockChanged)
     Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
+    Q_PROPERTY(bool importedPsbtLoaded READ importedPsbtLoaded NOTIFY importedPsbtChanged)
+    Q_PROPERTY(QString importedPsbtMode READ importedPsbtMode NOTIFY importedPsbtChanged)
+    Q_PROPERTY(QString importedPsbtStatus READ importedPsbtStatus NOTIFY importedPsbtChanged)
+    Q_PROPERTY(QString importedPsbtError READ importedPsbtError NOTIFY importedPsbtChanged)
+    Q_PROPERTY(QStringList importedPsbtSummary READ importedPsbtSummary NOTIFY importedPsbtChanged)
+    Q_PROPERTY(bool importedPsbtCanSign READ importedPsbtCanSign NOTIFY importedPsbtChanged)
+    Q_PROPERTY(bool importedPsbtCanBroadcast READ importedPsbtCanBroadcast NOTIFY importedPsbtChanged)
+    Q_PROPERTY(bool importedPsbtComplete READ importedPsbtComplete NOTIFY importedPsbtChanged)
+    Q_PROPERTY(int importedPsbtUnsignedInputCount READ importedPsbtUnsignedInputCount NOTIFY importedPsbtChanged)
+    Q_PROPERTY(int importedPsbtCouldSignInputCount READ importedPsbtCouldSignInputCount NOTIFY importedPsbtChanged)
 
 public:
     WalletQmlModel(std::unique_ptr<interfaces::Wallet> wallet, interfaces::Node* node = nullptr, QObject* parent = nullptr);
@@ -143,6 +155,12 @@ public:
     Q_INVOKABLE void clearSettingsError();
     Q_INVOKABLE void setDefaultReceiveAddressType(const QString& address_type);
     Q_INVOKABLE QString receiveAddressTypeLabel(const QString& address_type) const;
+    Q_INVOKABLE QString importPsbtFromFile(const QString& path);
+    Q_INVOKABLE void clearImportedPsbt();
+    Q_INVOKABLE void signImportedPsbt();
+    Q_INVOKABLE void broadcastImportedPsbt();
+    Q_INVOKABLE void copyImportedPsbtToClipboard();
+    Q_INVOKABLE void saveImportedPsbtToFile(const QString& path);
     void removeWallet();
 
     std::set<interfaces::WalletTx> getWalletTxs() const;
@@ -198,6 +216,18 @@ public:
     QString transactionError() const { return m_transaction_error; }
     bool transactionNeedsUnlock() const { return m_transaction_needs_unlock; }
     QString settingsError() const { return m_settings_error; }
+    void setNode(interfaces::Node* node) { m_node = node; }
+
+    bool importedPsbtLoaded() const { return m_imported_psbt || m_imported_psbt_mode == QStringLiteral("draft"); }
+    QString importedPsbtMode() const { return m_imported_psbt_mode; }
+    QString importedPsbtStatus() const { return m_imported_psbt_status; }
+    QString importedPsbtError() const { return m_imported_psbt_error; }
+    QStringList importedPsbtSummary() const { return m_imported_psbt_summary; }
+    bool importedPsbtCanSign() const { return m_imported_psbt_can_sign; }
+    bool importedPsbtCanBroadcast() const { return m_imported_psbt_can_broadcast; }
+    bool importedPsbtComplete() const { return m_imported_psbt_complete; }
+    int importedPsbtUnsignedInputCount() const { return m_imported_psbt_unsigned_inputs; }
+    int importedPsbtCouldSignInputCount() const { return m_imported_psbt_could_sign_inputs; }
 
 Q_SIGNALS:
     void nameChanged();
@@ -222,6 +252,7 @@ Q_SIGNALS:
     void walletUnloaded();
     void settingsErrorChanged();
     void addressListChanged();
+    void importedPsbtChanged();
 
 private:
     void initializeFeeEstimator();
@@ -244,6 +275,11 @@ private:
     void setTransactionStatus(const QString& error, bool needs_unlock = false);
     void setSettingsError(const QString& error);
     QString persistedReceiveAddressTypeKey() const;
+    QString importPsbt(PartiallySignedTransaction psbt);
+    bool tryImportPsbtToReview(const PartiallySignedTransaction& psbt, QString& mode, QString& reason);
+    void refreshImportedPsbtState(const QString& status_override = QString());
+    void setImportedPsbtError(const QString& error);
+    QStringList buildPsbtSummary(const PartiallySignedTransaction& psbt) const;
 
     std::unique_ptr<interfaces::Wallet> m_wallet;
     interfaces::Node* m_node{nullptr};
@@ -280,6 +316,16 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_transaction_changed;
     std::unique_ptr<interfaces::Handler> m_handler_unload;
     int m_display_unit{0};
+    std::unique_ptr<PartiallySignedTransaction> m_imported_psbt;
+    QString m_imported_psbt_mode;
+    QString m_imported_psbt_status;
+    QString m_imported_psbt_error;
+    QStringList m_imported_psbt_summary;
+    bool m_imported_psbt_can_sign{false};
+    bool m_imported_psbt_can_broadcast{false};
+    bool m_imported_psbt_complete{false};
+    int m_imported_psbt_unsigned_inputs{0};
+    int m_imported_psbt_could_sign_inputs{0};
 };
 
 #endif // BITCOIN_QML_MODELS_WALLETQMLMODEL_H

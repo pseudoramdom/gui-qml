@@ -71,6 +71,7 @@ WalletQmlController::WalletQmlController(interfaces::Node& node, QObject *parent
         return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
     })
 {
+    m_empty_wallet->setNode(&m_node);
     m_worker->moveToThread(m_worker_thread);
     m_worker_thread->start();
     QTimer::singleShot(0, m_worker, []() {
