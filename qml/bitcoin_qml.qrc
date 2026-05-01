@@ -56,6 +56,7 @@
         <file>controls/ProgressIndicator.qml</file>
         <file>controls/QRImage.qml</file>
         <file>controls/qmldir</file>
+        <file>controls/ReceiveOptionsPopup.qml</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/Setting.qml</file>
         <file>controls/Skeleton.qml</file>

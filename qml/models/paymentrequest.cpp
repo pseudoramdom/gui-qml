@@ -52,6 +52,20 @@ void PaymentRequest::setMessage(const QString& message)
     Q_EMIT messageChanged();
 }
 
+QString PaymentRequest::addressType() const
+{
+    return m_address_type;
+}
+
+void PaymentRequest::setAddressType(const QString& address_type)
+{
+    if (m_address_type == address_type) {
+        return;
+    }
+    m_address_type = address_type;
+    Q_EMIT addressTypeChanged();
+}
+
 BitcoinAmount* PaymentRequest::amount() const
 {
     return m_amount;
@@ -102,12 +116,14 @@ void PaymentRequest::clear()
     m_destination = CNoDestination();
     m_label.clear();
     m_message.clear();
+    m_address_type.clear();
     m_amount->clear();
     m_amountError.clear();
     m_id.clear();
     Q_EMIT addressChanged();
     Q_EMIT labelChanged();
     Q_EMIT messageChanged();
+    Q_EMIT addressTypeChanged();
     Q_EMIT amountErrorChanged();
     Q_EMIT idChanged();
 }

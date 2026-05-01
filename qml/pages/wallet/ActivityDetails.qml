@@ -12,6 +12,7 @@ import "../../components"
 import "../settings"
 
 Page {
+    id: root
     property string message: ""
     property string amount: ""
     property string label: ""
@@ -24,28 +25,22 @@ Page {
 
     property color iconColor: {
         if (delegate.status == Transaction.Confirmed) {
-            if (delegate.type == Transaction.RecvWithAddress ||
-                delegate.type == Transaction.RecvFromOther ||
-                delegate.type == Transaction.Generated) {
-                Theme.color.green
+            if (delegate.type == Transaction.RecvWithAddress || delegate.type == Transaction.RecvFromOther || delegate.type == Transaction.Generated) {
+                Theme.color.green;
             } else {
-                Theme.color.orange
+                Theme.color.orange;
             }
         } else {
-            Theme.color.blue
+            Theme.color.blue;
         }
     }
     property color amountColor: {
-        if (delegate.type == Transaction.RecvWithAddress
-            || delegate.type == Transaction.RecvFromOther
-            || delegate.type == Transaction.Generated) {
-            Theme.color.green
+        if (delegate.type == Transaction.RecvWithAddress || delegate.type == Transaction.RecvFromOther || delegate.type == Transaction.Generated) {
+            Theme.color.green;
         } else {
-            Theme.color.neutral9
+            Theme.color.neutral9;
         }
     }
-
-    id: root
     background: null
 
     header: NavigationBar2 {
@@ -54,7 +49,7 @@ Page {
             iconSource: "image://images/caret-left"
             text: qsTr("Back")
             onClicked: {
-                root.StackView.view.pop()
+                root.StackView.view.pop();
             }
         }
         centerItem: Item {
@@ -135,7 +130,7 @@ Page {
                 id: labelTextInput
                 Layout.fillWidth: true
                 Layout.bottomMargin: 20
-                labelText: qsTr("Label")
+                labelText: qsTr("Note to self")
                 visible: root.label != ""
                 enabled: false
                 text: root.label
