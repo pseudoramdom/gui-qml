@@ -10,6 +10,7 @@
 #include <qml/models/paymentrequest.h>
 #include <qml/models/sendrecipient.h>
 #include <qml/models/sendrecipientslistmodel.h>
+#include <qml/models/signverifymessagemodel.h>
 #include <qml/models/walletqmlmodeltransaction.h>
 
 #include <consensus/amount.h>
@@ -28,6 +29,10 @@
 
 #include <QDateTime>
 #include <QMetaObject>
+#include <QSettings>
+#include <QVariantMap>
+
+#include <array>
 
 namespace {
 struct QmlReceiveRequestRecipient
@@ -75,6 +80,57 @@ bool NeedsUnlockForPreviewBuild(const QString& error)
            error.contains("Keypool ran out", Qt::CaseInsensitive) ||
            error.contains("generate it", Qt::CaseInsensitive);
 }
+
+QString OutputTypeId(OutputType type)
+{
+    switch (type) {
+    case OutputType::BECH32M:
+        return QStringLiteral("bech32m");
+    case OutputType::BECH32:
+        return QStringLiteral("bech32");
+    case OutputType::P2SH_SEGWIT:
+        return QStringLiteral("p2sh-segwit");
+    case OutputType::LEGACY:
+        return QStringLiteral("legacy");
+    case OutputType::UNKNOWN:
+        return {};
+    }
+    return {};
+}
+
+QString OutputTypeLabel(OutputType type)
+{
+    switch (type) {
+    case OutputType::BECH32M:
+        return QObject::tr("Bech32m (Taproot)");
+    case OutputType::BECH32:
+        return QObject::tr("Bech32 (SegWit)");
+    case OutputType::P2SH_SEGWIT:
+        return QObject::tr("Base58 (P2SH-SegWit)");
+    case OutputType::LEGACY:
+        return QObject::tr("Base58 (Legacy)");
+    case OutputType::UNKNOWN:
+        return {};
+    }
+    return {};
+}
+
+QString OutputTypeDescription(OutputType type)
+{
+    switch (type) {
+    case OutputType::BECH32M:
+        return QObject::tr("Lower fees · Better privacy");
+    case OutputType::BECH32:
+        return QObject::tr("Lower fees · Widely supported");
+    case OutputType::P2SH_SEGWIT:
+        return QObject::tr("Higher fees · Backward compatible");
+    case OutputType::LEGACY:
+        return QObject::tr("Higher fees · Not recommended");
+    case OutputType::UNKNOWN:
+        return {};
+    }
+    return {};
+}
 } // namespace
 
 WalletQmlModel::WalletQmlModel(std::unique_ptr<interfaces::Wallet> wallet, QObject *parent)
@@ -84,6 +140,8 @@ WalletQmlModel::WalletQmlModel(std::unique_ptr<interfaces::Wallet> wallet, QObje
     m_activity_list_model = new ActivityListModel(this);
     m_coins_list_model = new CoinsListModel(this);
     m_send_recipients = new SendRecipientsListModel(this);
+    m_sign_verify_message_model = new SignVerifyMessageModel(m_wallet.get(), this);
+    m_sign_verify_message_model->setSecurityStateChangedFn([this]() { refreshSecurityState(); });
     m_current_payment_request = new PaymentRequest(this);
     refreshSecurityState();
     subscribeToWalletSignals();
@@ -95,6 +153,8 @@ WalletQmlModel::WalletQmlModel(QObject* parent)
     m_activity_list_model = new ActivityListModel(this);
     m_coins_list_model = new CoinsListModel(this);
     m_send_recipients = new SendRecipientsListModel(this);
+    m_sign_verify_message_model = new SignVerifyMessageModel(nullptr, this);
+    m_sign_verify_message_model->setSecurityStateChangedFn([this]() { refreshSecurityState(); });
     m_current_payment_request = new PaymentRequest(this);
 }
 
@@ -104,6 +164,7 @@ WalletQmlModel::~WalletQmlModel()
     delete m_activity_list_model;
     delete m_coins_list_model;
     delete m_send_recipients;
+    delete m_sign_verify_message_model;
     delete m_current_payment_request;
     if (m_current_transaction) {
         delete m_current_transaction;
@@ -261,6 +322,78 @@ void WalletQmlModel::clearSettingsError()
     setSettingsError(QString());
 }
 
+QVariantList WalletQmlModel::availableReceiveAddressTypes() const
+{
+    QVariantList types;
+    const std::array ordered_types{
+        OutputType::BECH32M,
+        OutputType::BECH32,
+        OutputType::P2SH_SEGWIT,
+        OutputType::LEGACY,
+    };
+
+    for (const OutputType type : ordered_types) {
+        if (type == OutputType::BECH32M && (!m_wallet || !m_wallet->taprootEnabled())) {
+            continue;
+        }
+        QVariantMap item;
+        item.insert(QStringLiteral("id"), OutputTypeId(type));
+        item.insert(QStringLiteral("label"), OutputTypeLabel(type));
+        item.insert(QStringLiteral("description"), OutputTypeDescription(type));
+        types.append(item);
+    }
+    return types;
+}
+
+QString WalletQmlModel::defaultReceiveAddressType() const
+{
+    const QVariantList available_types = availableReceiveAddressTypes();
+    QSettings settings;
+    const QString saved_type{settings.value(persistedReceiveAddressTypeKey()).toString()};
+    for (const QVariant& item : available_types) {
+        const QVariantMap type{item.toMap()};
+        if (type.value(QStringLiteral("id")).toString() == saved_type) {
+            return saved_type;
+        }
+    }
+
+    const QString core_default{m_wallet ? OutputTypeId(m_wallet->getDefaultAddressType()) : QString()};
+    for (const QVariant& item : available_types) {
+        const QVariantMap type{item.toMap()};
+        if (type.value(QStringLiteral("id")).toString() == core_default) {
+            return core_default;
+        }
+    }
+
+    return available_types.empty()
+        ? QString{}
+        : available_types.front().toMap().value(QStringLiteral("id")).toString();
+}
+
+void WalletQmlModel::setDefaultReceiveAddressType(const QString& address_type)
+{
+    for (const QVariant& item : availableReceiveAddressTypes()) {
+        const QVariantMap type{item.toMap()};
+        if (type.value(QStringLiteral("id")).toString() == address_type) {
+            QSettings settings;
+            settings.setValue(persistedReceiveAddressTypeKey(), address_type);
+            settings.sync();
+            return;
+        }
+    }
+}
+
+QString WalletQmlModel::receiveAddressTypeLabel(const QString& address_type) const
+{
+    for (const QVariant& item : availableReceiveAddressTypes()) {
+        const QVariantMap type{item.toMap()};
+        if (type.value(QStringLiteral("id")).toString() == address_type) {
+            return type.value(QStringLiteral("label")).toString();
+        }
+    }
+    return {};
+}
+
 void WalletQmlModel::removeWallet()
 {
     if (!m_wallet) {
@@ -280,11 +413,16 @@ void WalletQmlModel::commitPaymentRequest()
     }
 
     if (m_current_payment_request->address().isEmpty()) {
-        const OutputType output_type = m_wallet->getDefaultAddressType();
+        const QString address_type_id = m_current_payment_request->addressType().isEmpty()
+            ? defaultReceiveAddressType()
+            : m_current_payment_request->addressType();
+        const auto parsed_type{ParseOutputType(address_type_id.toStdString())};
+        const OutputType output_type = parsed_type.value_or(m_wallet->getDefaultAddressType());
         const auto destination{m_wallet->getNewDestination(output_type, m_current_payment_request->label().toStdString())};
         if (!destination) {
             return;
         }
+        m_current_payment_request->setAddressType(OutputTypeId(output_type));
         m_current_payment_request->setDestination(destination.value());
     }
 
@@ -689,4 +827,9 @@ void WalletQmlModel::setSettingsError(const QString& error)
         m_settings_error = error;
         Q_EMIT settingsErrorChanged();
     }
+}
+
+QString WalletQmlModel::persistedReceiveAddressTypeKey() const
+{
+    return QStringLiteral("receiveAddressTypes/%1").arg(name());
 }

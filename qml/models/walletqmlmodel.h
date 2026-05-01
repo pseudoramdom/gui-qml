@@ -10,6 +10,7 @@
 #include <qml/models/paymentrequest.h>
 #include <qml/models/sendrecipient.h>
 #include <qml/models/sendrecipientslistmodel.h>
+#include <qml/models/signverifymessagemodel.h>
 #include <qml/models/walletqmlmodeltransaction.h>
 
 #include <consensus/amount.h>
@@ -22,6 +23,7 @@
 #include <vector>
 
 #include <QObject>
+#include <QVariantList>
 
 class WalletQmlModel : public QObject
 {
@@ -32,6 +34,7 @@ class WalletQmlModel : public QObject
     Q_PROPERTY(ActivityListModel* activityListModel READ activityListModel CONSTANT)
     Q_PROPERTY(CoinsListModel* coinsListModel READ coinsListModel CONSTANT)
     Q_PROPERTY(SendRecipientsListModel* recipients READ sendRecipientList CONSTANT)
+    Q_PROPERTY(SignVerifyMessageModel* signVerifyMessageModel READ signVerifyMessageModel CONSTANT)
     Q_PROPERTY(PaymentRequest* currentPaymentRequest READ currentPaymentRequest CONSTANT)
     Q_PROPERTY(WalletQmlModelTransaction* currentTransaction READ currentTransaction NOTIFY currentTransactionChanged)
     Q_PROPERTY(unsigned int targetBlocks READ feeTargetBlocks WRITE setFeeTargetBlocks NOTIFY feeTargetBlocksChanged)
@@ -60,6 +63,7 @@ public:
     ActivityListModel* activityListModel() const { return m_activity_list_model; }
     CoinsListModel* coinsListModel() const { return m_coins_list_model; }
     SendRecipientsListModel* sendRecipientList() const { return m_send_recipients; }
+    SignVerifyMessageModel* signVerifyMessageModel() const { return m_sign_verify_message_model; }
     PaymentRequest* currentPaymentRequest() const { return m_current_payment_request; }
     WalletQmlModelTransaction* currentTransaction() const { return m_current_transaction; }
     Q_INVOKABLE bool prepareTransaction();
@@ -71,6 +75,10 @@ public:
     Q_INVOKABLE bool changeWalletPassphrase(const QString& old_passphrase, const QString& new_passphrase);
     Q_INVOKABLE bool backupWallet(const QString& path);
     Q_INVOKABLE void clearSettingsError();
+    Q_INVOKABLE QVariantList availableReceiveAddressTypes() const;
+    Q_INVOKABLE QString defaultReceiveAddressType() const;
+    Q_INVOKABLE void setDefaultReceiveAddressType(const QString& address_type);
+    Q_INVOKABLE QString receiveAddressTypeLabel(const QString& address_type) const;
     void removeWallet();
 
     std::set<interfaces::WalletTx> getWalletTxs() const;
@@ -130,11 +138,13 @@ private:
     void clearTransactionStatus();
     void setTransactionStatus(const QString& error, bool needs_unlock = false);
     void setSettingsError(const QString& error);
+    QString persistedReceiveAddressTypeKey() const;
 
     std::unique_ptr<interfaces::Wallet> m_wallet;
     ActivityListModel* m_activity_list_model{nullptr};
     CoinsListModel* m_coins_list_model{nullptr};
     SendRecipientsListModel* m_send_recipients{nullptr};
+    SignVerifyMessageModel* m_sign_verify_message_model{nullptr};
     PaymentRequest* m_current_payment_request{nullptr};
     WalletQmlModelTransaction* m_current_transaction{nullptr};
     wallet::CCoinControl m_coin_control;

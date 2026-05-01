@@ -236,7 +236,14 @@ PageStack {
             onBack: root.pop()
             onSelectWalletRequested: root.selectWalletRequested()
             onPasswordRequested: root.push(wallet_password_page, { "updating": walletController.selectedWallet.isEncrypted })
+            onSignVerifyMessageRequested: root.push(sign_verify_message_page)
             onDeleteWalletRequested: root.push(wallet_delete_page)
+        }
+    }
+    Component {
+        id: sign_verify_message_page
+        SignVerifyMessage {
+            onBack: root.pop()
         }
     }
     Component {

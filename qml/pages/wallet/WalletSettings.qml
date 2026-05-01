@@ -23,6 +23,7 @@ Page {
     signal back()
     signal selectWalletRequested()
     signal passwordRequested()
+    signal signVerifyMessageRequested()
     signal deleteWalletRequested()
 
     readonly property bool walletLoaded: walletController.isWalletLoaded
@@ -294,6 +295,22 @@ Page {
                 color: backupSetting.stateColor
             }
             onClicked: root.startBackup()
+        }
+
+        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.color.neutral4 }
+
+        Setting {
+            id: signVerifyMessageSetting
+            objectName: "walletSettingsSignVerifyMessageRow"
+            Layout.fillWidth: true
+            header: qsTr("Sign/Verify Message")
+            filledStateColor: Theme.color.neutral7
+            hoverStateColor: Theme.color.orange
+            activeStateColor: Theme.color.orange
+            actionItem: CaretRightIcon {
+                color: signVerifyMessageSetting.stateColor
+            }
+            onClicked: root.signVerifyMessageRequested()
         }
 
         CoreText {

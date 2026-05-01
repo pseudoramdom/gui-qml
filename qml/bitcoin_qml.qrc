@@ -107,6 +107,7 @@
         <file>pages/wallet/Send.qml</file>
         <file>pages/wallet/SendResult.qml</file>
         <file>pages/wallet/SendReview.qml</file>
+        <file>pages/wallet/SignVerifyMessage.qml</file>
         <file>pages/wallet/WalletBadge.qml</file>
         <file>pages/wallet/WalletDelete.qml</file>
         <file>pages/wallet/WalletPasswordSettings.qml</file>
