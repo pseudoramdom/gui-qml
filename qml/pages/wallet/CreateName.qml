@@ -20,6 +20,7 @@ Page {
     property int walletType: CreateName.WalletType.SingleSig
     property string initialWalletName: ""
     readonly property bool externalSignerWallet: walletType === CreateName.WalletType.ExternalSigner
+    property string walletNameError: ""
     background: null
 
     Component.onCompleted: {
@@ -61,22 +62,24 @@ Page {
             placeholderText: root.externalSignerWallet
                 ? qsTr("Eg. Hardware wallet...")
                 : qsTr("Eg. My bitcoin wallet...")
-            validator: RegularExpressionValidator { regularExpression: /^[a-zA-Z0-9_]{1,20}$/ }
             onTextChanged: {
                 walletController.clearWalletLoadStatus()
                 root.walletName = walletNameInput.text
+                root.walletNameError = ""
                 continueButton.enabled = walletNameInput.text.length > 0
             }
         }
 
         CoreText {
-            visible: walletController.walletLoadError.length > 0
+            objectName: "walletNameError"
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
+            visible: root.walletNameError.length > 0 || walletController.walletLoadError.length > 0
+            text: root.walletNameError.length > 0 ? root.walletNameError : walletController.walletLoadError
             color: Theme.color.red
-            wrapMode: Text.WordWrap
-            text: walletController.walletLoadError
+            horizontalAlignment: Text.AlignLeft
+            font.pixelSize: 14
         }
 
         ContinueButton {
@@ -89,8 +92,12 @@ Page {
             enabled: walletNameInput.text.length > 0
             text: root.externalSignerWallet ? qsTr("Create wallet") : qsTr("Continue")
             onClicked: {
-                console.log("Creating wallet with name: " + walletNameInput.text)
-                root.walletName = walletNameInput.text
+                const availabilityError = walletController.walletNameAvailabilityError(walletNameInput.text)
+                if (availabilityError.length > 0) {
+                    root.walletNameError = availabilityError
+                    return
+                }
+                root.walletName = walletNameInput.text.trim()
                 root.next()
             }
         }

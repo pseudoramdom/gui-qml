@@ -15,6 +15,7 @@
 #include <wallet/walletutil.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
+#include <util/translation.h>
 #include <util/threadnames.h>
 
 #include <stdexcept>
@@ -142,12 +143,23 @@ void WalletQmlController::unloadWallets()
 
 bool WalletQmlController::createSingleSigWallet(const QString &name, const QString &passphrase)
 {
+    return createWallet(name, passphrase, wallet::WALLET_FLAG_DESCRIPTORS);
+}
+
+bool WalletQmlController::createWallet(const QString& name, const QString& passphrase, uint64_t wallet_creation_flags)
+{
     clearWalletLoadStatus();
     clearWalletMigrationStatus();
     m_warning_messages.clear();
+    const QString name_error = walletNameAvailabilityError(name);
+    if (!name_error.isEmpty()) {
+        m_error_message = Untranslated(name_error.toStdString());
+        setWalletLoadError(name_error);
+        return false;
+    }
     const SecureString secure_passphrase{passphrase.toStdString()};
-    const std::string wallet_name{name.toStdString()};
-    auto wallet{m_node.walletLoader().createWallet(wallet_name, secure_passphrase, wallet::WALLET_FLAG_DESCRIPTORS, m_warning_messages)};
+    const std::string wallet_name{trimmedWalletName(name).toStdString()};
+    auto wallet{m_node.walletLoader().createWallet(wallet_name, secure_passphrase, wallet_creation_flags, m_warning_messages)};
     setWalletLoadWarnings(JoinWarnings(m_warning_messages));
     QMutexLocker locker(&m_wallets_mutex);
     if (wallet) {
@@ -304,6 +316,55 @@ bool WalletQmlController::walletPathExists(const QString& path) const
 {
     const QString normalized = normalizeWalletPath(path);
     return !normalized.isEmpty() && QFileInfo::exists(normalized);
+}
+
+QString WalletQmlController::trimmedWalletName(const QString& name) const
+{
+    return name.trimmed();
+}
+
+bool WalletQmlController::walletNameExists(const QString& name) const
+{
+    const QString candidate = QDir::cleanPath(trimmedWalletName(name));
+    if (candidate.isEmpty()) {
+        return false;
+    }
+
+    for (const auto& [wallet_path, info] : m_node.walletLoader().listWalletDir()) {
+        Q_UNUSED(info);
+        if (QDir::cleanPath(QString::fromStdString(wallet_path)).compare(candidate, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+
+    QMutexLocker locker(&m_wallets_mutex);
+    for (WalletQmlModel* wallet : m_wallets) {
+        if (wallet->name().compare(candidate, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+QString WalletQmlController::walletNameAvailabilityError(const QString& name) const
+{
+    const QString candidate = trimmedWalletName(name);
+    static const QRegularExpression valid_name(QStringLiteral("^[A-Za-z0-9_]{1,20}$"));
+
+    if (candidate.isEmpty()) {
+        return tr("Enter a wallet name.");
+    }
+
+    if (!valid_name.match(candidate).hasMatch()) {
+        return tr("Wallet names can use 1-20 letters, numbers, and underscores.");
+    }
+
+    if (walletNameExists(candidate)) {
+        return tr("A wallet with this name already exists.");
+    }
+
+    return {};
 }
 
 QString WalletQmlController::walletImportErrorTitle() const
