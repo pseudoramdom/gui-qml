@@ -184,8 +184,9 @@ bool WalletQmlController::createExternalSignerWallet(const QString& name)
     m_warning_messages.clear();
 
     const QString wallet_name = name.trimmed();
-    if (wallet_name.isEmpty()) {
-        setWalletLoadError(tr("Choose a wallet name."));
+    const QString name_error = walletNameAvailabilityError(wallet_name);
+    if (!name_error.isEmpty()) {
+        setWalletLoadError(name_error);
         return false;
     }
 
@@ -214,7 +215,7 @@ bool WalletQmlController::createExternalSignerWallet(const QString& name)
     m_pending_wallet_load_action = WalletLoadAction::Load;
     setWalletLoadInProgress(true);
 
-    QTimer::singleShot(0, m_worker, [this, wallet_name, flags]() {
+    QTimer::singleShot(0, m_worker, [this, wallet_name]() {
         std::vector<bilingual_str> warning_messages;
         const SecureString empty_passphrase;
         auto wallet = m_node.walletLoader().createWallet(
