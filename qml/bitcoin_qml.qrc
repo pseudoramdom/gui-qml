@@ -93,8 +93,12 @@
         <file>controls/SegmentedPicker.qml</file>
         <file>controls/Setting.qml</file>
         <file>controls/SettingsHeader.qml</file>
+        <file>controls/SizeClass.qml</file>
         <file>controls/Skeleton.qml</file>
         <file>controls/SpinningIndicator.qml</file>
+        <file>controls/Tab.qml</file>
+        <file>controls/TabSection.qml</file>
+        <file>controls/TabView.qml</file>
         <file>controls/TextButton.qml</file>
         <file>controls/Theme.qml</file>
         <file>controls/ToggleButton.qml</file>
