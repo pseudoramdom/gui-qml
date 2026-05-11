@@ -13,6 +13,7 @@ class AppMode : public QObject
     Q_PROPERTY(bool isDesktop READ isDesktop NOTIFY modeChanged)
     Q_PROPERTY(bool isMobile READ isMobile NOTIFY modeChanged)
     Q_PROPERTY(bool walletEnabled READ walletEnabled NOTIFY walletEnabledChanged)
+    Q_PROPERTY(bool tabViewShellEnabled READ tabViewShellEnabled CONSTANT)
     Q_PROPERTY(QString state READ state NOTIFY modeChanged)
 
 public:
@@ -21,15 +22,17 @@ public:
         MOBILE
     };
 
-    explicit AppMode(Mode mode, bool wallet_enabled)
+    explicit AppMode(Mode mode, bool wallet_enabled, bool tabview_shell_enabled)
     : m_mode(mode)
     , m_wallet_enabled(wallet_enabled)
+    , m_tabview_shell_enabled(tabview_shell_enabled)
     {
     }
 
     bool isMobile() { return m_mode == MOBILE; }
     bool isDesktop() { return m_mode == DESKTOP; }
     bool walletEnabled() { return m_wallet_enabled; }
+    bool tabViewShellEnabled() { return m_tabview_shell_enabled; }
     void setWalletEnabled(bool wallet_enabled)
     {
         if (m_wallet_enabled == wallet_enabled) return;
@@ -56,6 +59,7 @@ Q_SIGNALS:
 private:
     const Mode m_mode;
     bool m_wallet_enabled;
+    const bool m_tabview_shell_enabled;
 };
 
 #endif // BITCOIN_QML_APPMODE_H

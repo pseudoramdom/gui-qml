@@ -25,7 +25,6 @@ Item {
     property real sidebarWidth: 220
     property real tabBarHeight: 64
     property real chromeMargin: 12
-    property real chromeRadius: 18
 
     readonly property var currentTab: _allTabs[currentIndex] || null
     readonly property int widthClass:
@@ -226,7 +225,7 @@ Item {
         clip: true
         currentIndex: root.currentIndex
         anchors.fill: parent
-        anchors.leftMargin: root.isCompact ? 0 : (root.sidebarWidth + root.chromeMargin * 2)
+        anchors.leftMargin: root.isCompact ? 0 : root.sidebarWidth
         anchors.bottomMargin: root.isCompact ? (root.tabBarHeight + root.chromeMargin * 2) : 0
 
         Repeater {
@@ -256,9 +255,6 @@ Item {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.leftMargin: root.chromeMargin
-        anchors.topMargin: root.chromeMargin
-        anchors.bottomMargin: root.chromeMargin
         width: root.sidebarWidth
         sourceComponent: regularShell
     }
@@ -281,10 +277,15 @@ Item {
         id: regularShell
         Rectangle {
             color: Theme.color.neutral1
-            radius: root.chromeRadius
-            layer.enabled: true
-            border.width: 1
-            border.color: Theme.color.neutral2
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                width: 1
+                color: Theme.color.neutral2
+                z: 1
+            }
 
             ColumnLayout {
                 id: sidebarColumn
@@ -379,8 +380,7 @@ Item {
                 visible: text !== ""
                 horizontalAlignment: Text.AlignLeft
                 color: Theme.color.neutral5
-                font.pixelSize: 10
-                bold: true
+                font: Theme.text.caption.font
             }
 
             Repeater {
@@ -421,6 +421,9 @@ Item {
             bottomPadding: 0
             hoverEnabled: AppMode.isDesktop
             focusPolicy: Qt.StrongFocus
+            opacity: tabRef && tabRef.dimmed ? 0.45 : 1
+
+            Behavior on opacity { NumberAnimation { duration: 120 } }
 
             onClicked: {
                 if (!tabRef)
@@ -478,9 +481,13 @@ Item {
                     text: tabRef ? tabRef.title : ""
                     color: sidebarButton.isActive ? Theme.color.orange : Theme.color.neutral8
                     horizontalAlignment: Text.AlignLeft
-                    font.pixelSize: 13
-                    bold: true
+                    font: Qt.font({
+                        family: Theme.text.caption.font.family,
+                        pixelSize: Theme.text.caption.font.pixelSize,
+                        styleName: "Semi Bold"
+                    })
                     wrap: false
+                    elide: Text.ElideRight
                 }
             }
         }
@@ -561,8 +568,11 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     text: tabRef ? tabRef.title : ""
                     color: tabButton.isActive ? Theme.color.orange : Theme.color.neutral6
-                    font.pixelSize: 12
-                    bold: true
+                    font: Qt.font({
+                        family: Theme.text.caption.font.family,
+                        pixelSize: Theme.text.caption.font.pixelSize,
+                        styleName: "Semi Bold"
+                    })
                     wrap: false
                 }
             }

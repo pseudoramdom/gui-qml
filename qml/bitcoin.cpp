@@ -153,7 +153,13 @@ AppMode SetupAppMode()
         mode = AppMode::DESKTOP;
     #endif // __ANDROID__
 
-    return AppMode(mode, WalletEnabledFromArgs());
+    #ifdef ENABLE_TABVIEW_SHELL
+        constexpr bool tabview_shell_enabled = true;
+    #else
+        constexpr bool tabview_shell_enabled = false;
+    #endif // ENABLE_TABVIEW_SHELL
+
+    return AppMode(mode, WalletEnabledFromArgs(), tabview_shell_enabled);
 }
 
 void RegisterQmlTypes(AppMode& app_mode, BuildInfo& build_info, Clipboard& clipboard, BitcoinUriModel& bitcoin_uri_model);

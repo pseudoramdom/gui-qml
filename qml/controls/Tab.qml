@@ -14,6 +14,7 @@ QtObject {
     property bool enabled: true
     property int displayModes: TabView.Sidebar | TabView.TabBar
     property bool pinToBottom: false
+    property bool dimmed: false
 
     // Action-only tabs do not switch the active content when clicked;
     // instead they fire `triggered()` for the host to handle (e.g. open a popup).

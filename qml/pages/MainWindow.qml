@@ -15,7 +15,7 @@ ApplicationWindow {
     id: appWindow
     objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
-    minimumWidth: 800
+    minimumWidth: AppMode.tabViewShellEnabled ? 550 : 800
     minimumHeight: 665
     color: Theme.color.background
 
@@ -46,7 +46,7 @@ ApplicationWindow {
             return
         }
         appWindow.postOnboardingWalletRouteResolved = true
-        main.replace(desktopWallets, {}, StackView.Immediate)
+        main.replace(AppMode.tabViewShellEnabled ? mainShell : desktopWallets, {}, StackView.Immediate)
         if (walletController.noWalletsFound) {
             main.push(createWalletWizard, {
                 "launchContext": CreateWalletWizard.Context.Onboarding
@@ -144,7 +144,9 @@ ApplicationWindow {
         objectName: "mainPageStack"
         initialItem: appWindow.waitForPostOnboardingWalletRoute
             ? postOnboardingStartup
-            : (appWindow.desktopWalletMode ? desktopWallets : node)
+            : (AppMode.tabViewShellEnabled
+                ? mainShell
+                : (appWindow.desktopWalletMode ? desktopWallets : node))
         anchors.fill: parent
         focus: true
         Keys.onReleased: (event) => {
@@ -213,6 +215,15 @@ ApplicationWindow {
             }
             onSendTransaction: {
                 main.push(sendReviewPage)
+            }
+        }
+    }
+
+    Component {
+        id: mainShell
+        MainShell {
+            onAddWallet: {
+                main.push(createWalletWizard, { "launchContext": CreateWalletWizard.Context.Main })
             }
         }
     }
