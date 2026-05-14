@@ -158,7 +158,7 @@ bool WalletQmlController::createWallet(const QString& name, const QString& passp
         return false;
     }
     const SecureString secure_passphrase{passphrase.toStdString()};
-    const std::string wallet_name{trimmedWalletName(name).toStdString()};
+    const std::string wallet_name{name.toStdString()};
     auto wallet{m_node.walletLoader().createWallet(wallet_name, secure_passphrase, wallet_creation_flags, m_warning_messages)};
     setWalletLoadWarnings(JoinWarnings(m_warning_messages));
     QMutexLocker locker(&m_wallets_mutex);
@@ -183,7 +183,7 @@ bool WalletQmlController::createExternalSignerWallet(const QString& name)
     clearWalletMigrationStatus();
     m_warning_messages.clear();
 
-    const QString wallet_name = name.trimmed();
+    const QString wallet_name = name;
     const QString name_error = walletNameAvailabilityError(wallet_name);
     if (!name_error.isEmpty()) {
         setWalletLoadError(name_error);
@@ -319,14 +319,9 @@ bool WalletQmlController::walletPathExists(const QString& path) const
     return !normalized.isEmpty() && QFileInfo::exists(normalized);
 }
 
-QString WalletQmlController::trimmedWalletName(const QString& name) const
-{
-    return name.trimmed();
-}
-
 bool WalletQmlController::walletNameExists(const QString& name) const
 {
-    const QString candidate = QDir::cleanPath(trimmedWalletName(name));
+    const QString candidate = QDir::cleanPath(name);
     if (candidate.isEmpty()) {
         return false;
     }
@@ -350,18 +345,11 @@ bool WalletQmlController::walletNameExists(const QString& name) const
 
 QString WalletQmlController::walletNameAvailabilityError(const QString& name) const
 {
-    const QString candidate = trimmedWalletName(name);
-    static const QRegularExpression valid_name(QStringLiteral("^[A-Za-z0-9_]{1,20}$"));
-
-    if (candidate.isEmpty()) {
+    if (name.isEmpty()) {
         return tr("Enter a wallet name.");
     }
 
-    if (!valid_name.match(candidate).hasMatch()) {
-        return tr("Wallet names can use 1-20 letters, numbers, and underscores.");
-    }
-
-    if (walletNameExists(candidate)) {
+    if (walletNameExists(name)) {
         return tr("A wallet with this name already exists.");
     }
 

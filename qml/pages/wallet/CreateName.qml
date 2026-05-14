@@ -79,7 +79,7 @@ Page {
             text: root.walletNameError.length > 0 ? root.walletNameError : walletController.walletLoadError
             color: Theme.color.red
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 14
+            font: Theme.text.caption.font
         }
 
         ContinueButton {
@@ -97,7 +97,7 @@ Page {
                     root.walletNameError = availabilityError
                     return
                 }
-                root.walletName = walletNameInput.text.trim()
+                root.walletName = walletNameInput.text
                 root.next()
             }
         }

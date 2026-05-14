@@ -114,7 +114,6 @@ private:
     QString resolveManagedWalletReference(const QString& path) const;
     QString inferWalletLoadTarget(const QString& normalized_path) const;
     QString inferRestoreWalletName(const QString& normalized_path) const;
-    QString trimmedWalletName(const QString& name) const;
     bool walletNameExists(const QString& name) const;
     bool createWallet(const QString& name, const QString& passphrase, uint64_t wallet_creation_flags);
     QString describeImportedWalletKeyScheme(interfaces::Wallet& wallet) const;

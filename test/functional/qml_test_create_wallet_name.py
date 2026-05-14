@@ -103,7 +103,7 @@ def run_case(case_name, case_body):
 def case_name_availability(harness):
     closed_wallet = "duplicate_closed"
     loaded_wallet = "duplicate_loaded"
-    available_wallet = "available_name"
+    available_wallet = "My new wallet"
 
     # Pre-create one wallet before GUI launch so startup skips onboarding and
     # exposes the main wallet entry point used by this flow.
@@ -122,10 +122,6 @@ def case_name_availability(harness):
     submit_name(gui, loaded_wallet)
     gui.wait_for_page("createWalletNamePage", timeout_ms=10000)
     wait_for_text_contains(gui, "walletNameError", "already exists")
-
-    submit_name(gui, "invalid-name")
-    gui.wait_for_page("createWalletNamePage", timeout_ms=10000)
-    wait_for_text_contains(gui, "walletNameError", "letters, numbers, and underscores")
 
     submit_name(gui, available_wallet)
     gui.wait_for_page("createWalletPasswordPage", timeout_ms=10000)
