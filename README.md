@@ -100,7 +100,7 @@ sudo apt install qt6-wayland
 #### macOS:
 
 ```
-brew install qt@6 qrencode
+brew install qt@6 qrencode qtdeclarative
 # Help CMake find Qt6 on macOS (adjust if needed)
 export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)/lib/cmake"
 ```
