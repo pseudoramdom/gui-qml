@@ -115,6 +115,8 @@ Q_IMPORT_PLUGIN(QmlFolderListModelPlugin)
 Q_IMPORT_PLUGIN(QmlSettingsPlugin)
 Q_IMPORT_PLUGIN(QtQuickLayoutsPlugin)
 Q_IMPORT_PLUGIN(QtQuickControls2Plugin)
+Q_IMPORT_PLUGIN(QtQuickControls2BasicStylePlugin)
+Q_IMPORT_PLUGIN(QtQuickControls2BasicStyleImplPlugin)
 Q_IMPORT_PLUGIN(QtQuickTemplates2Plugin)
 #endif
 
