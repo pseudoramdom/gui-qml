@@ -22,6 +22,8 @@
 #include <qml/bitcoinamount.h>
 #include <qml/buildinfo.h>
 #include <qml/clipboard.h>
+#include <qml/datadir.h>
+#include <qml/guiargs.h>
 #ifdef __ANDROID__
 #include <qml/androidnotifier.h>
 #endif
@@ -44,6 +46,7 @@
 #include <qml/models/nodemodel.h>
 #include <qml/models/desktoptrayiconcontroller.h>
 #include <qml/models/desktopwindowbehaviormodel.h>
+#include <qml/models/onboardingoptionsmodel.h>
 #include <qml/models/options_model.h>
 #include <qml/models/paymentrequest.h>
 #include <qml/models/peerdetailsmodel.h>
@@ -62,21 +65,26 @@
 #ifdef ENABLE_TEST_AUTOMATION
 #include <qml/test/testbridge.h>
 #endif
-#include <util/threadnames.h>
-#include <util/translation.h>
 #include <util/fs.h>
 #include <util/fs_helpers.h>
+#include <util/threadnames.h>
+#include <util/translation.h>
 
 #include <boost/signals2/connection.hpp>
 #include <cassert>
 #include <memory>
 #include <tuple>
+#include <vector>
 
 #include <QApplication>
 #include <QDebug>
+#include <QEventLoop>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QIcon>
 #include <QPixmap>
+#include <QGuiApplication>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -86,6 +94,7 @@
 #include <QStyleHints>
 #include <QTranslator>
 #include <QUrl>
+#include <QVariant>
 
 QT_BEGIN_NAMESPACE
 class QMessageLogContext;
@@ -118,17 +127,6 @@ bool IsBenignQtFontWarning(const QString& msg)
 }
 
 namespace {
-void SetupUIArgs(ArgsManager& argsman)
-{
-    argsman.AddArg("-lang=<lang>", "Set language, for example \"de_DE\" (default: system locale)", ArgsManager::ALLOW_ANY, OptionsCategory::GUI);
-    argsman.AddArg("-min", "Start minimized", ArgsManager::ALLOW_ANY, OptionsCategory::GUI);
-    argsman.AddArg("-resetguisettings", "Reset all settings changed in the GUI", ArgsManager::ALLOW_ANY, OptionsCategory::GUI);
-#ifdef ENABLE_TEST_AUTOMATION
-    argsman.AddArg("-test-automation=<path>", "Enable test automation bridge on the given Unix socket path", ArgsManager::ALLOW_ANY, OptionsCategory::GUI);
-    argsman.AddArg("-test-settings-dir=<dir>", "Store QSettings in this directory while test automation is enabled", ArgsManager::ALLOW_ANY, OptionsCategory::GUI);
-#endif
-}
-
 AppMode SetupAppMode()
 {
     bool wallet_enabled;
@@ -148,18 +146,21 @@ AppMode SetupAppMode()
     return AppMode(mode, wallet_enabled);
 }
 
+void RegisterQmlTypes(AppMode& app_mode, BuildInfo& build_info, Clipboard& clipboard, BitcoinUriModel& bitcoin_uri_model);
+
 bool InitErrorMessageBox(
     const bilingual_str& message,
     [[maybe_unused]] const std::string& caption,
     [[maybe_unused]] unsigned int style)
 {
+    static AppMode error_app_mode = SetupAppMode();
+    static BuildInfo error_build_info;
+    static Clipboard error_clipboard;
+    static BitcoinUriModel error_bitcoin_uri_model;
+    RegisterQmlTypes(error_app_mode, error_build_info, error_clipboard, error_bitcoin_uri_model);
+
     QQmlApplicationEngine engine;
 
-    AppMode app_mode = SetupAppMode();
-    BuildInfo build_info;
-
-    qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
-    qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
     engine.rootContext()->setContextProperty("message", QString::fromStdString(message.translated));
     engine.load(QUrl(QStringLiteral("qrc:///qml/pages/initerrormessage.qml")));
     if (engine.rootObjects().isEmpty()) {
@@ -243,26 +244,144 @@ void ApplyTestSettingsDir()
 }
 #endif
 
-void ApplyGuiDataDirSetting(QGuiApplication* app)
+void RegisterQmlTypes(AppMode& app_mode, BuildInfo& build_info, Clipboard& clipboard, BitcoinUriModel& bitcoin_uri_model)
 {
-    if (gArgs.IsArgSet("-datadir") && !gArgs.GetPathArg("-datadir").empty()) return;
+    static bool registered{false};
+    if (registered) return;
 
-    setupChainQSettings(app, QString::fromStdString(gArgs.GetChainTypeString()).toUpper());
-    QSettings settings;
-    const QString default_dir = QString::fromStdString(GetDefaultDataDir().utf8string());
-    const QString data_dir = settings.value(SettingsKeys::DATA_DIR, default_dir).toString();
-    if (!data_dir.isEmpty() && data_dir != default_dir) {
-        const fs::path data_dir_path = fs::u8path(data_dir.toStdString());
-        try {
-            TryCreateDirectories(data_dir_path);
-            TryCreateDirectories(data_dir_path / "wallets");
-        } catch (const fs::filesystem_error&) {
-            // Defer the user-visible error to InitConfig(), matching other
-            // startup datadir validation failures.
+    qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
+    qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
+    qmlRegisterSingletonInstance<Clipboard>("org.bitcoincore.qt", 1, 0, "Clipboard", &clipboard);
+    qmlRegisterSingletonInstance<BitcoinUriModel>("org.bitcoincore.qt", 1, 0, "BitcoinUri", &bitcoin_uri_model);
+    qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
+    qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
+    qmlRegisterUncreatableType<PeerDetailsModel>("org.bitcoincore.qt", 1, 0, "PeerDetailsModel", "");
+    qmlRegisterUncreatableType<DebugLogModel>("org.bitcoincore.qt", 1, 0, "DebugLogModel", "");
+    qmlRegisterUncreatableType<RpcConsoleModel>("org.bitcoincore.qt", 1, 0, "RpcConsoleModel", "");
+    qmlRegisterType<BitcoinAmount>("org.bitcoincore.qt", 1, 0, "BitcoinAmount");
+    qmlRegisterType<BitcoinAddress>("org.bitcoincore.qt", 1, 0, "BitcoinAddress");
+    qmlRegisterType<ActivityFilterProxyModel>("org.bitcoincore.qt", 1, 0, "ActivityFilterProxyModel");
+    qmlRegisterUncreatableType<AddressListModel>("org.bitcoincore.qt", 1, 0, "AddressListModel", "");
+    qmlRegisterType<PaymentRequest>("org.bitcoincore.qt", 1, 0, "PaymentRequest");
+    qmlRegisterUncreatableType<Transaction>("org.bitcoincore.qt", 1, 0, "Transaction", "");
+    qmlRegisterUncreatableType<SendRecipient>("org.bitcoincore.qt", 1, 0, "SendRecipient", "");
+
+#ifdef ENABLE_WALLET
+    qmlRegisterUncreatableType<BumpTransactionModel>("org.bitcoincore.qt", 1, 0, "BumpTransactionModel",
+                                                      "BumpTransactionModel cannot be instantiated from QML");
+    qmlRegisterUncreatableType<WalletQmlModel>("org.bitcoincore.qt", 1, 0, "WalletQmlModel",
+                                               "WalletQmlModel cannot be instantiated from QML");
+    qmlRegisterUncreatableType<WalletQmlModelTransaction>("org.bitcoincore.qt", 1, 0, "WalletQmlModelTransaction",
+                                                          "WalletQmlModelTransaction cannot be instantiated from QML");
+    qmlRegisterUncreatableType<WalletListModel>("org.bitcoincore.qt", 1, 0, "WalletListModel",
+                                                "WalletListModel cannot be instantiated from QML");
+#endif
+
+    registered = true;
+}
+
+enum class PreInitOnboardingStatus {
+    NOT_SHOWN,
+    COMPLETED,
+    CANCELED,
+    FAILED,
+};
+
+struct PreInitOnboardingContext {
+    std::unique_ptr<OnboardingOptionsModel> onboarding_options_model;
+    QScopedPointer<const NetworkStyle> network_style;
+    std::unique_ptr<QQmlApplicationEngine> engine;
+    QPointer<QQuickWindow> window;
+
+    void close()
+    {
+        if (window) {
+            window->close();
         }
-        gArgs.SoftSetArg("-datadir", fs::PathToString(data_dir_path));
-        gArgs.ClearPathCache();
+        engine.reset();
+        network_style.reset();
+        onboarding_options_model.reset();
     }
+};
+
+bool ShouldShowPreInitOnboarding(const std::vector<std::string>& argv, bool can_listen_ipc)
+{
+    if (QmlDataDir::HasExplicitDataDirArg(gArgs)) return false;
+    if (QmlDataDir::ShouldShowDataDirChooser(gArgs)) return true;
+
+    ArgsManager preview_args;
+    SetupServerArgs(preview_args, can_listen_ipc);
+    SetupQmlGuiArgs(preview_args);
+    std::vector<const char*> raw_argv;
+    raw_argv.reserve(argv.size());
+    for (const std::string& arg : argv) raw_argv.push_back(arg.c_str());
+    std::string error;
+    if (!preview_args.ParseParameters(static_cast<int>(raw_argv.size()), raw_argv.data(), error)) {
+        return true;
+    }
+
+    try {
+        SelectParams(preview_args.GetChainType());
+    } catch (const std::exception&) {
+        return true;
+    }
+    const QString gui_data_dir = QmlDataDir::ReadGuiDataDir();
+    if (!QmlDataDir::IsDefaultDataDir(gui_data_dir) && QFileInfo::exists(gui_data_dir)) {
+        QmlDataDir::ApplyDataDirArg(preview_args, gui_data_dir);
+    }
+    return !ConfigurationFileExists(preview_args);
+}
+
+PreInitOnboardingStatus RunPreInitOnboarding(PreInitOnboardingContext& context, const std::vector<std::string>& argv, bool can_listen_ipc)
+{
+    if (!ShouldShowPreInitOnboarding(argv, can_listen_ipc)) {
+        QmlDataDir::ApplyGuiDataDirSetting(gArgs);
+        return PreInitOnboardingStatus::NOT_SHOWN;
+    }
+
+    try {
+        SelectParams(gArgs.GetChainType());
+    } catch (const std::exception& e) {
+        InitError(Untranslated(e.what()));
+        return PreInitOnboardingStatus::FAILED;
+    }
+
+    context.onboarding_options_model = std::make_unique<OnboardingOptionsModel>(argv, can_listen_ipc);
+
+    context.network_style.reset(NetworkStyle::instantiate(Params().GetChainType()));
+    assert(!context.network_style.isNull());
+
+    context.engine = std::make_unique<QQmlApplicationEngine>();
+    context.engine->addImageProvider(QStringLiteral("images"), new ImageProvider{context.network_style.data()});
+    context.engine->rootContext()->setContextProperty("optionsModel", context.onboarding_options_model.get());
+    context.engine->load(QUrl(QStringLiteral("qrc:///qml/pages/preinit.qml")));
+    if (context.engine->rootObjects().isEmpty()) {
+        return PreInitOnboardingStatus::FAILED;
+    }
+
+    context.window = qobject_cast<QQuickWindow*>(context.engine->rootObjects().first());
+    if (!context.window) {
+        return PreInitOnboardingStatus::FAILED;
+    }
+
+    QEventLoop loop;
+    QObject::connect(context.engine->rootObjects().first(), SIGNAL(finished()), &loop, SLOT(quit()));
+    QObject::connect(context.window, SIGNAL(closing(QQuickCloseEvent*)), &loop, SLOT(quit()));
+    loop.exec();
+
+    const bool completed = context.engine->rootObjects().first()->property("completed").toBool();
+    if (!completed) {
+        context.close();
+        return PreInitOnboardingStatus::CANCELED;
+    }
+
+    QString error;
+    if (!context.onboarding_options_model->applyToArgs(gArgs, &error)) {
+        InitError(Untranslated(error.toStdString()));
+        context.close();
+        return PreInitOnboardingStatus::FAILED;
+    }
+    return PreInitOnboardingStatus::COMPLETED;
 }
 } // namespace
 
@@ -329,7 +448,7 @@ int QmlGuiMain(int argc, char* argv[])
     // Parse command-line options. We do this after qt in order to show an error if there are problems parsing these.
     SetupServerArgs(gArgs, init->canListenIpc());
 
-    SetupUIArgs(gArgs);
+    SetupQmlGuiArgs(gArgs);
     std::string error;
     if (!gArgs.ParseParameters(argc, argv, error)) {
         InitError(Untranslated(strprintf("Cannot parse command line arguments: %s\n", error)));
@@ -339,7 +458,28 @@ int QmlGuiMain(int argc, char* argv[])
     ApplyTestSettingsDir();
 #endif
 
-    ApplyGuiDataDirSetting(&app);
+    app.setQuitOnLastWindowClosed(false);
+    setupChainQSettings(&app, QString::fromStdString(gArgs.GetChainTypeString()).toUpper());
+
+    LoadFontResource(":/fonts/bitcoincoresans/regular");
+    LoadFontResource(":/fonts/bitcoincoresans/semibold");
+    LoadFontResource(":/fonts/robotomono/regular");
+
+    AppMode app_mode = SetupAppMode();
+    BuildInfo build_info;
+    Clipboard clipboard;
+    BitcoinUriModel bitcoin_uri_model;
+    RegisterQmlTypes(app_mode, build_info, clipboard, bitcoin_uri_model);
+
+    const QString cli_lang = QString::fromStdString(gArgs.GetArg("-lang", ""));
+    const QString startup_language = cli_lang.isEmpty()
+        ? QSettings().value(SettingsKeys::LANGUAGE, "").toString()
+        : cli_lang;
+    install_language(startup_language);
+
+    PreInitOnboardingContext pre_init_onboarding_context;
+    const PreInitOnboardingStatus pre_init_onboarding_status{PreInitOnboardingStatus::NOT_SHOWN};
+    QmlDataDir::ApplyGuiDataDirSetting(gArgs);
 
     if (auto error = common::InitConfig(
             gArgs,
@@ -379,7 +519,6 @@ int QmlGuiMain(int argc, char* argv[])
 
     handler_message_box.disconnect();
 
-    AppMode app_mode = SetupAppMode();
 #ifdef ENABLE_WALLET
     const bool wallet_enabled = app_mode.walletEnabled();
 #endif
@@ -459,10 +598,6 @@ int QmlGuiMain(int argc, char* argv[])
     QObject::connect(&node_model, &NodeModel::nodeInitialized,
                      &ban_list_model, &BanListModel::refresh);
 
-    LoadFontResource(":/fonts/bitcoincoresans/regular");
-    LoadFontResource(":/fonts/bitcoincoresans/semibold");
-    LoadFontResource(":/fonts/robotomono/regular");
-
     QQmlApplicationEngine engine;
 
     QScopedPointer<const NetworkStyle> network_style{NetworkStyle::instantiate(Params().GetChainType())};
@@ -526,17 +661,6 @@ int QmlGuiMain(int argc, char* argv[])
     engine.rootContext()->setContextProperty("testAutomationEnabled", false);
 #endif
 
-    // -lang CLI flag overrides the persisted setting (bitcoin-qt compatibility).
-    // Must be after gArgs.ParseParameters() and after setupChainQSettings() so
-    // QSettings targets the correct chain-specific file.
-    // Unlike bitcoin-qt which treats -lang as session-only, this persists the
-    // selection so subsequent launches continue using the CLI-specified language.
-    // To reset to system default, use the Settings UI or pass -lang= (empty).
-    const QString cli_lang = QString::fromStdString(gArgs.GetArg("-lang", ""));
-    if (!cli_lang.isEmpty()) {
-        options_model.setLanguage(cli_lang);
-    }
-
     // Install language before QML engine loads so that all qsTr() calls in QML
     // pick up the correct locale from the start.
     install_language(options_model.language());
@@ -546,10 +670,6 @@ int QmlGuiMain(int argc, char* argv[])
         install_language(options_model.language());
         engine.retranslate();
     });
-
-    BuildInfo build_info;
-    Clipboard clipboard;
-    BitcoinUriModel bitcoin_uri_model;
 
     desktop_tray_icon_controller.setBasePixmap(
         network_style->getTrayAndWindowIcon().pixmap(QSize(256, 256)));
@@ -564,34 +684,6 @@ int QmlGuiMain(int argc, char* argv[])
     engine.rootContext()->setContextProperty("desktopWindowBehaviorModel", &desktop_window_behavior_model);
     engine.rootContext()->setContextProperty("desktopTrayIconController", &desktop_tray_icon_controller);
 
-    qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
-    qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
-    qmlRegisterSingletonInstance<Clipboard>("org.bitcoincore.qt", 1, 0, "Clipboard", &clipboard);
-    qmlRegisterSingletonInstance<BitcoinUriModel>("org.bitcoincore.qt", 1, 0, "BitcoinUri", &bitcoin_uri_model);
-    qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
-    qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
-    qmlRegisterUncreatableType<PeerDetailsModel>("org.bitcoincore.qt", 1, 0, "PeerDetailsModel", "");
-    qmlRegisterUncreatableType<DebugLogModel>("org.bitcoincore.qt", 1, 0, "DebugLogModel", "");
-    qmlRegisterUncreatableType<RpcConsoleModel>("org.bitcoincore.qt", 1, 0, "RpcConsoleModel", "");
-    qmlRegisterType<BitcoinAmount>("org.bitcoincore.qt", 1, 0, "BitcoinAmount");
-    qmlRegisterType<BitcoinAddress>("org.bitcoincore.qt", 1, 0, "BitcoinAddress");
-    qmlRegisterType<ActivityFilterProxyModel>("org.bitcoincore.qt", 1, 0, "ActivityFilterProxyModel");
-    qmlRegisterUncreatableType<AddressListModel>("org.bitcoincore.qt", 1, 0, "AddressListModel", "");
-    qmlRegisterType<PaymentRequest>("org.bitcoincore.qt", 1, 0, "PaymentRequest");
-    qmlRegisterUncreatableType<Transaction>("org.bitcoincore.qt", 1, 0, "Transaction", "");
-    qmlRegisterUncreatableType<SendRecipient>("org.bitcoincore.qt", 1, 0, "SendRecipient", "");
-
-#ifdef ENABLE_WALLET
-    qmlRegisterUncreatableType<BumpTransactionModel>("org.bitcoincore.qt", 1, 0, "BumpTransactionModel",
-                                                      "BumpTransactionModel cannot be instantiated from QML");
-    qmlRegisterUncreatableType<WalletQmlModel>("org.bitcoincore.qt", 1, 0, "WalletQmlModel",
-                                               "WalletQmlModel cannot be instantiated from QML");
-    qmlRegisterUncreatableType<WalletQmlModelTransaction>("org.bitcoincore.qt", 1, 0, "WalletQmlModelTransaction",
-                                                          "WalletQmlModelTransaction cannot be instantiated from QML");
-    qmlRegisterUncreatableType<WalletListModel>("org.bitcoincore.qt", 1, 0, "WalletListModel",
-                                                "WalletListModel cannot be instantiated from QML");
-#endif
-
     engine.load(QUrl(QStringLiteral("qrc:///qml/pages/main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return EXIT_FAILURE;
@@ -602,6 +694,10 @@ int QmlGuiMain(int argc, char* argv[])
         return EXIT_FAILURE;
     }
     desktop_tray_icon_controller.setMainWindow(window);
+    if (pre_init_onboarding_context.window) {
+        window->setGeometry(pre_init_onboarding_context.window->geometry());
+    }
+    pre_init_onboarding_context.close();
 
 #ifdef ENABLE_TEST_AUTOMATION
     std::unique_ptr<TestBridge> test_bridge;
