@@ -11,20 +11,19 @@ ColumnLayout {
     id: root
     property bool customStorage: false
     property int customStorageAmount
+    property bool showRestartNotice: false
     spacing: 4
+    SettingsRestartNotice {
+        visible: root.showRestartNotice
+        Layout.fillWidth: true
+        Layout.bottomMargin: visible ? 12 : 0
+    }
     Setting {
         Layout.fillWidth: true
         header: qsTr("Store recent blocks only")
         actionItem: OptionSwitch {
             checked: optionsModel.prune
             onToggled: optionsModel.prune = checked
-            onCheckedChanged: {
-                if (checked == false) {
-                    pruneTargetSetting.state = "DISABLED"
-                } else {
-                    pruneTargetSetting.state = "FILLED"
-                }
-            }
         }
         onClicked: {
           loadedItem.toggle()
@@ -37,17 +36,19 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("Block Storage limit (GB)")
         errorText: qsTr("This is not a valid prune target. Please choose a value that is equal to or larger than 1GB")
+        state: optionsModel.prune ? "FILLED" : "DISABLED"
         showErrorText: false
         actionItem: ValueInput {
             parentState: pruneTargetSetting.state
             description: optionsModel.pruneSizeGB
             onEditingFinished: {
-                if (parseInt(text) < 1) {
+                const parsed = parseInt(text)
+                if (isNaN(parsed) || parsed < 1) {
                     pruneTargetSetting.showErrorText = true
                 } else {
                     root.customStorage = true
-                    root.customStorageAmount = parseInt(text)
-                    optionsModel.pruneSizeGB = parseInt(text)
+                    root.customStorageAmount = parsed
+                    optionsModel.pruneSizeGB = parsed
                     pruneTargetSetting.forceActiveFocus()
                     pruneTargetSetting.showErrorText = false
                 }

@@ -44,6 +44,7 @@ Page {
                     }
                 }
                 detailItem: ConnectionSettings {
+                    showRestartNotice: !root.onboarding && optionsModel.connectionSettingsDirty
                     onNext: stack.push(proxySettings)
                 }
             }

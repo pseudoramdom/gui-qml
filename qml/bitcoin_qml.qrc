@@ -31,6 +31,7 @@
         <file>components/OptionPopup.qml</file>
         <file>components/PeersIndicator.qml</file>
         <file>components/ProxySettings.qml</file>
+        <file>components/SettingsRestartNotice.qml</file>
         <file>components/StorageLocations.qml</file>
         <file>components/Separator.qml</file>
         <file>components/StorageOptions.qml</file>

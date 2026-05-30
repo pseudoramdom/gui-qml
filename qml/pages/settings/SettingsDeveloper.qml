@@ -25,5 +25,7 @@ InformationPage {
     headerText: qsTr("Developer options")
     headerMargin: 0
     detailActive: true
-    detailItem: DeveloperOptions {}
+    detailItem: DeveloperOptions {
+        showRestartNotice: !root.onboarding && optionsModel.developerSettingsDirty
+    }
 }

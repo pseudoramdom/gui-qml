@@ -22,6 +22,7 @@ InformationPage {
     detailActive: true
     detailItem: StorageSettings {
         id: storageSettings
+        showRestartNotice: !root.onboarding && optionsModel.storageSettingsDirty
         onCustomStorageChanged: {
             root.customStorage = storageSettings.customStorage
         }

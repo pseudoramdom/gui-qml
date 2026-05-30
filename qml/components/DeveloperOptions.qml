@@ -9,7 +9,13 @@ import "../controls"
 
 ColumnLayout {
     id: root
+    property bool showRestartNotice: false
     spacing: 4
+    SettingsRestartNotice {
+        visible: root.showRestartNotice
+        Layout.fillWidth: true
+        Layout.bottomMargin: visible ? 12 : 0
+    }
     Setting {
         id: dbcacheSetting
         Layout.fillWidth: true
