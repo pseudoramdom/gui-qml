@@ -40,6 +40,31 @@ Page {
         return !root.request || root.request.isEditing === undefined ? true : root.request.isEditing
     }
 
+    function amountInputPattern(unit) {
+        if (unit === BitcoinAmount.SAT) return /^(0|[1-9]\d{0,15})$/
+        if (unit === BitcoinAmount.uBTC) return /^(0|[1-9]\d{0,13})(\.\d{0,2})?$/
+        if (unit === BitcoinAmount.mBTC) return /^(0|[1-9]\d{0,10})(\.\d{0,5})?$/
+        return /^(0|[1-9]\d{0,7})(\.\d{0,8})?$/
+    }
+
+    function amountInputPlaceholder(unit) {
+        if (unit === BitcoinAmount.SAT) return "0"
+        if (unit === BitcoinAmount.uBTC) return "0.00"
+        if (unit === BitcoinAmount.mBTC) return "0.00000"
+        return "0.00000000"
+    }
+
+    function amountInputMaximumLength(unit) {
+        if (unit === BitcoinAmount.SAT) return 16
+        if (unit === BitcoinAmount.uBTC) return 17
+        if (unit === BitcoinAmount.mBTC) return 17
+        return 17
+    }
+
+    function flippedDisplayUnit(unit) {
+        return unit === BitcoinAmount.SAT ? BitcoinAmount.BTC : BitcoinAmount.SAT
+    }
+
     function resetSelectedReceiveAddressType() {
         if (root.request && !root.hasAddress && root.request.addressType !== undefined && root.request.addressType !== "") {
             root.selectedReceiveAddressType = root.request.addressType

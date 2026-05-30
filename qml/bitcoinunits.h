@@ -27,6 +27,9 @@ public:
 
     static QString format(Unit unit, CAmount amount, bool plussign = false,
                           SeparatorStyle separators = SeparatorStyle::STANDARD);
+    static Unit fromDisplayUnit(int display_unit);
+    static QString label(Unit unit);
+    static QString displayLabel(Unit unit, CAmount amount);
 
 private:
     static qint64 factor(Unit unit);

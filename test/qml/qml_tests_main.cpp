@@ -6,6 +6,7 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QFont>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -140,6 +141,8 @@ class MockBitcoinAmount : public QObject
 public:
     enum Unit {
         BTC,
+        mBTC,
+        uBTC,
         SAT
     };
     Q_ENUM(Unit)
@@ -168,7 +171,16 @@ public:
         }
 
         const double value = amount_text.toDouble(&ok);
-        return ok ? static_cast<qint64>(value * 100000000.0 + 0.5) : 0;
+        const double factor = m_unit == mBTC ? 100000.0 : (m_unit == uBTC ? 100.0 : 100000000.0);
+        return ok ? static_cast<qint64>(value * factor + 0.5) : 0;
+    }
+    QString unitLabel() const
+    {
+        if (m_unit == BTC) return QStringLiteral("BTC");
+        if (m_unit == mBTC) return QStringLiteral("mBTC");
+        if (m_unit == uBTC) return QStringLiteral("bits");
+        const qint64 sats = satoshi();
+        return sats == 1 || sats == -1 ? QStringLiteral("sat") : QStringLiteral("sats");
     }
     void setSatoshi(qint64 sats)
     {
@@ -185,12 +197,6 @@ public:
         m_display = normalized;
         Q_EMIT displayChanged();
         Q_EMIT amountChanged();
-    }
-    QString unitLabel() const
-    {
-        if (m_unit == BTC) return QStringLiteral("BTC");
-        const qint64 sats = satoshi();
-        return sats == 1 || sats == -1 ? QStringLiteral("sat") : QStringLiteral("sats");
     }
     QString displayWithUnit() const { return m_display.isEmpty() ? QString{} : m_display + QStringLiteral(" ") + unitLabel(); }
     Q_INVOKABLE void format()
@@ -1455,6 +1461,8 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(QString languageSummary READ languageSummary NOTIFY languageChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QStringList availableLanguages READ availableLanguages CONSTANT)
+    Q_PROPERTY(QString moneyFontChoice MEMBER m_money_font_choice NOTIFY moneyFontChoiceChanged)
+    Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
 public:
     bool m_listen{true};
@@ -1467,6 +1475,7 @@ public:
     int m_prune_size_gb{2};
     QString m_data_dir{QStringLiteral("/tmp/bitcoin-default")};
     QString m_custom_data_dir{QStringLiteral("/tmp/bitcoin-custom")};
+    QString m_money_font_choice{QStringLiteral("embedded")};
 
     int maxMempoolSizeMB() const { return m_max_mempool_size_mb; }
     void setMaxMempoolSizeMB(int value)
@@ -1488,9 +1497,17 @@ public:
     void setDisplayUnit(int u) {
         if (u != m_displayUnit) { m_displayUnit = u; Q_EMIT displayUnitChanged(u); }
     }
-    QString displayUnitLabel() const { return m_displayUnit == 1 ? "sat" : "BTC"; }
+    QString displayUnitLabel() const
+    {
+        if (m_displayUnit == 1) return QStringLiteral("mBTC");
+        if (m_displayUnit == 2) return QStringLiteral("bits");
+        if (m_displayUnit == 3) return QStringLiteral("sat");
+        return QStringLiteral("BTC");
+    }
     Q_INVOKABLE QString displayUnitLabelForAmount(qint64 satoshi) const {
-        if (m_displayUnit != 1) return QString("₿");
+        if (m_displayUnit == 1) return QString("mBTC");
+        if (m_displayUnit == 2) return QString("bits");
+        if (m_displayUnit != 3) return QString("₿");
         return (qAbs(satoshi) == 1) ? QString("sat") : QString("sats");
     }
     QString language() const { return m_language; }
@@ -1499,6 +1516,7 @@ public:
     }
     QString languageSummary() const { return m_language.isEmpty() ? "System default" : m_language; }
     QStringList availableLanguages() const { return {"", "de", "es", "fr"}; }
+    QFont moneyFont() const { return QFont(QStringLiteral("Roboto Mono")); }
     Q_INVOKABLE QString languageLabel(const QString& tag) const {
         if (tag.isEmpty()) return "System default";
         if (tag == "de") return "Deutsch — German";
@@ -1517,6 +1535,8 @@ Q_SIGNALS:
     void dataDirChanged();
     void displayUnitChanged(int unit);
     void languageChanged();
+    void moneyFontChoiceChanged();
+    void moneyFontChanged();
 
 private:
     int m_displayUnit{0};

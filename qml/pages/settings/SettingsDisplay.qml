@@ -89,6 +89,30 @@ Item {
                         displaySettingsView.push(language_page)
                     }
                 }
+                Separator { Layout.fillWidth: true }
+                Setting {
+                    id: gotoThirdPartyUrls
+                    objectName: "gotoThirdPartyTransactionUrls"
+                    Layout.fillWidth: true
+                    header: qsTr("Third-party transaction URLs")
+                    description: optionsModel.thirdPartyTransactionUrls.length > 0 ? optionsModel.thirdPartyTransactionUrls : qsTr("None")
+                    actionItem: CaretRightIcon {
+                        color: gotoThirdPartyUrls.stateColor
+                    }
+                    onClicked: displaySettingsView.push(third_party_urls_page)
+                }
+                Separator { Layout.fillWidth: true }
+                Setting {
+                    id: gotoMoneyFont
+                    objectName: "gotoMoneyFont"
+                    Layout.fillWidth: true
+                    header: qsTr("Money font")
+                    description: optionsModel.moneyFontChoice === "best_system" ? qsTr("System fixed-width font") : qsTr("Embedded fixed-width font")
+                    actionItem: CaretRightIcon {
+                        color: gotoMoneyFont.stateColor
+                    }
+                    onClicked: displaySettingsView.push(money_font_page)
+                }
             }
         }
     }
@@ -132,6 +156,110 @@ Item {
         SettingsLanguage {
             onBack: {
                 displaySettingsView.pop()
+            }
+        }
+    }
+    Component {
+        id: third_party_urls_page
+        Page {
+            background: null
+            implicitWidth: 450
+            leftPadding: 20
+            rightPadding: 20
+            topPadding: 30
+
+            header: NavigationBar2 {
+                leftItem: NavButton {
+                    iconSource: "image://images/caret-left"
+                    text: qsTr("Back")
+                    onClicked: displaySettingsView.pop()
+                }
+                centerItem: Header {
+                    headerBold: true
+                    headerSize: 18
+                    header: qsTr("Transaction URLs")
+                }
+            }
+
+            ColumnLayout {
+                spacing: 15
+                width: Math.min(parent.width, 450)
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Header {
+                    Layout.fillWidth: true
+                    center: false
+                    header: qsTr("Third-party transaction URLs")
+                    headerSize: 18
+                    description: qsTr("Use %s for the transaction hash. Separate multiple URLs with |.")
+                    descriptionSize: 15
+                }
+
+                CoreTextField {
+                    objectName: "thirdPartyTransactionUrlsInput"
+                    Layout.fillWidth: true
+                    text: optionsModel.thirdPartyTransactionUrls
+                    placeholderText: "https://example.com/tx/%s"
+                    onEditingFinished: optionsModel.thirdPartyTransactionUrls = text
+                }
+            }
+        }
+    }
+    Component {
+        id: money_font_page
+        Page {
+            background: null
+            implicitWidth: 450
+            leftPadding: 20
+            rightPadding: 20
+            topPadding: 30
+
+            header: NavigationBar2 {
+                leftItem: NavButton {
+                    iconSource: "image://images/caret-left"
+                    text: qsTr("Back")
+                    onClicked: displaySettingsView.pop()
+                }
+                centerItem: Header {
+                    headerBold: true
+                    headerSize: 18
+                    header: qsTr("Money font")
+                }
+            }
+
+            ColumnLayout {
+                spacing: 15
+                width: Math.min(parent.width, 450)
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                OptionButton {
+                    objectName: "moneyFontEmbedded"
+                    Layout.fillWidth: true
+                    text: qsTr("Embedded fixed-width font")
+                    description: "111.11111111 BTC"
+                    checked: optionsModel.moneyFontChoice === "embedded"
+                    onClicked: optionsModel.moneyFontChoice = "embedded"
+                }
+
+                OptionButton {
+                    objectName: "moneyFontSystem"
+                    Layout.fillWidth: true
+                    text: qsTr("System fixed-width font")
+                    description: "111.11111111 BTC"
+                    checked: optionsModel.moneyFontChoice === "best_system"
+                    onClicked: optionsModel.moneyFontChoice = "best_system"
+                }
+
+                CoreText {
+                    objectName: "moneyFontPreview"
+                    Layout.fillWidth: true
+                    text: "111.11111111 BTC"
+                    color: Theme.color.neutral9
+                    horizontalAlignment: Text.AlignHCenter
+                    font.family: optionsModel.moneyFont.family
+                    font.weight: optionsModel.moneyFont.weight
+                    font.pixelSize: 20
+                }
             }
         }
     }

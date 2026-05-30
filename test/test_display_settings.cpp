@@ -51,6 +51,7 @@ void DisplaySettingsTests::cleanup()
 void DisplaySettingsTests::displayUnit_defaultIsBtc()
 {
     // Verify the default value using the same key the model reads.
+    QCOMPARE(QString::fromUtf8(SettingsKeys::DISPLAY_UNIT), QStringLiteral("DisplayBitcoinUnit"));
     QSettings settings;
     settings.beginGroup(TEST_GROUP);
     int unit = settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt();
@@ -64,7 +65,7 @@ void DisplaySettingsTests::displayUnit_persistsToQSettings()
     {
         QSettings settings;
         settings.beginGroup(TEST_GROUP);
-        settings.setValue(SettingsKeys::DISPLAY_UNIT, 1);
+        settings.setValue(SettingsKeys::DISPLAY_UNIT, 3);
         settings.endGroup();
     }
     {
@@ -72,7 +73,7 @@ void DisplaySettingsTests::displayUnit_persistsToQSettings()
         settings.beginGroup(TEST_GROUP);
         int unit = settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt();
         settings.endGroup();
-        QCOMPARE(unit, 1);
+        QCOMPARE(unit, 3);
     }
 }
 

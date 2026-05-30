@@ -68,6 +68,15 @@ TestCase {
         tryCompare(popup, "opened", true)
     }
 
+    function test_wallet_badge_balance_uses_money_font() {
+        const page = createDesktopWallets()
+        const balanceText = findChild(page, "walletBadgeBalanceText")
+        verify(balanceText !== null)
+
+        compare(balanceText.font.family, optionsModel.moneyFont.family)
+        compare(balanceText.font.weight, optionsModel.moneyFont.weight)
+    }
+
     function test_receive_options_view_address_history_opens_settings_address_stack() {
         const page = createDesktopWallets()
         const receiveTab = findChild(page, "receiveTabButton")

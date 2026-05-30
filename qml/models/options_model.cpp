@@ -11,6 +11,7 @@
 #include <mapport.h>
 #include <netbase.h>
 #include <node/caches.h>
+#include <qml/bitcoinunits.h>
 #include <node/chainstatemanager_args.h>
 #include <qml/guiconstants.h>
 #include <txdb.h>
@@ -95,6 +96,11 @@ constexpr const char* DEFAULT_PROXY_HOST{"127.0.0.1"};
 constexpr int DEFAULT_PROXY_PORT{9050};
 constexpr const char* MONEY_FONT_EMBEDDED{"embedded"};
 constexpr const char* MONEY_FONT_BEST_SYSTEM{"best_system"};
+
+int NormalizeDisplayUnit(int display_unit)
+{
+    return display_unit >= 0 && display_unit <= 3 ? display_unit : 0;
+}
 
 QString DefaultProxyAddress()
 {
@@ -187,7 +193,7 @@ OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, bool is_onboarded)
         m_custom_datadir_string = m_dataDir;
     }
     m_language = settings.value(SettingsKeys::LANGUAGE, "").toString();
-    m_display_unit = settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt();
+    m_display_unit = NormalizeDisplayUnit(settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt());
     m_third_party_transaction_urls = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, "").toString();
     m_money_font_choice = settings.value(SettingsKeys::MONEY_FONT_CHOICE, MONEY_FONT_EMBEDDED).toString();
     if (m_money_font_choice != MONEY_FONT_EMBEDDED && m_money_font_choice != MONEY_FONT_BEST_SYSTEM) {
@@ -708,6 +714,7 @@ QString OptionsQmlModel::languageLabel(const QString& locale_tag) const
 
 void OptionsQmlModel::setDisplayUnit(int new_display_unit)
 {
+    new_display_unit = NormalizeDisplayUnit(new_display_unit);
     if (new_display_unit != m_display_unit) {
         m_display_unit = new_display_unit;
         QSettings settings;
@@ -766,13 +773,12 @@ QFont OptionsQmlModel::moneyFont() const
 
 QString OptionsQmlModel::displayUnitLabel() const
 {
-    return (m_display_unit == 1) ? QStringLiteral("sat") : QStringLiteral("BTC");
+    return QmlBitcoinUnits::label(QmlBitcoinUnits::fromDisplayUnit(m_display_unit));
 }
 
 QString OptionsQmlModel::displayUnitLabelForAmount(qint64 satoshi) const
 {
-    if (m_display_unit != 1) return QStringLiteral("₿");
-    return (qAbs(satoshi) == 1) ? QStringLiteral("sat") : QStringLiteral("sats");
+    return QmlBitcoinUnits::displayLabel(QmlBitcoinUnits::fromDisplayUnit(m_display_unit), satoshi);
 }
 
 
