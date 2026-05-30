@@ -84,9 +84,11 @@
 #include <QIcon>
 #include <QPixmap>
 #include <QGuiApplication>
+#include <QJSEngine>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSettings>
@@ -247,12 +249,32 @@ void ApplyTestSettingsDir()
 void RegisterQmlTypes(AppMode& app_mode, BuildInfo& build_info, Clipboard& clipboard, BitcoinUriModel& bitcoin_uri_model)
 {
     static bool registered{false};
+    static AppMode* app_mode_instance{nullptr};
+    static BuildInfo* build_info_instance{nullptr};
+    static Clipboard* clipboard_instance{nullptr};
+    static BitcoinUriModel* bitcoin_uri_model_instance{nullptr};
     if (registered) return;
+    app_mode_instance = &app_mode;
+    build_info_instance = &build_info;
+    clipboard_instance = &clipboard;
+    bitcoin_uri_model_instance = &bitcoin_uri_model;
 
-    qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
-    qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
-    qmlRegisterSingletonInstance<Clipboard>("org.bitcoincore.qt", 1, 0, "Clipboard", &clipboard);
-    qmlRegisterSingletonInstance<BitcoinUriModel>("org.bitcoincore.qt", 1, 0, "BitcoinUri", &bitcoin_uri_model);
+    qmlRegisterSingletonType<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", [](QQmlEngine*, QJSEngine*) -> QObject* {
+        QQmlEngine::setObjectOwnership(app_mode_instance, QQmlEngine::CppOwnership);
+        return app_mode_instance;
+    });
+    qmlRegisterSingletonType<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", [](QQmlEngine*, QJSEngine*) -> QObject* {
+        QQmlEngine::setObjectOwnership(build_info_instance, QQmlEngine::CppOwnership);
+        return build_info_instance;
+    });
+    qmlRegisterSingletonType<Clipboard>("org.bitcoincore.qt", 1, 0, "Clipboard", [](QQmlEngine*, QJSEngine*) -> QObject* {
+        QQmlEngine::setObjectOwnership(clipboard_instance, QQmlEngine::CppOwnership);
+        return clipboard_instance;
+    });
+    qmlRegisterSingletonType<BitcoinUriModel>("org.bitcoincore.qt", 1, 0, "BitcoinUri", [](QQmlEngine*, QJSEngine*) -> QObject* {
+        QQmlEngine::setObjectOwnership(bitcoin_uri_model_instance, QQmlEngine::CppOwnership);
+        return bitcoin_uri_model_instance;
+    });
     qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
     qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
     qmlRegisterUncreatableType<PeerDetailsModel>("org.bitcoincore.qt", 1, 0, "PeerDetailsModel", "");
@@ -291,10 +313,16 @@ struct PreInitOnboardingContext {
     std::unique_ptr<OnboardingOptionsModel> onboarding_options_model;
     QScopedPointer<const NetworkStyle> network_style;
     std::unique_ptr<QQmlApplicationEngine> engine;
+#ifdef ENABLE_TEST_AUTOMATION
+    std::unique_ptr<TestBridge> test_bridge;
+#endif
     QPointer<QQuickWindow> window;
 
     void close()
     {
+#ifdef ENABLE_TEST_AUTOMATION
+        test_bridge.reset();
+#endif
         if (window) {
             window->close();
         }
@@ -358,6 +386,15 @@ PreInitOnboardingStatus RunPreInitOnboarding(PreInitOnboardingContext& context, 
     if (context.engine->rootObjects().isEmpty()) {
         return PreInitOnboardingStatus::FAILED;
     }
+
+#ifdef ENABLE_TEST_AUTOMATION
+    if (gArgs.IsArgSet("-test-automation")) {
+        const QString socket_path = QString::fromStdString(gArgs.GetArg("-test-automation", ""));
+        if (!socket_path.isEmpty()) {
+            context.test_bridge = std::make_unique<TestBridge>(context.engine.get(), socket_path);
+        }
+    }
+#endif
 
     context.window = qobject_cast<QQuickWindow*>(context.engine->rootObjects().first());
     if (!context.window) {
@@ -521,7 +558,10 @@ int QmlGuiMain(int argc, char* argv[])
 
 #ifdef ENABLE_WALLET
     const bool wallet_enabled = app_mode.walletEnabled();
+#else
+    const bool wallet_enabled{false};
 #endif
+    app_mode.setWalletEnabled(wallet_enabled);
 
     NodeModel node_model{*node};
     node_model.addStartupWarnings(startup_warnings);
@@ -660,6 +700,9 @@ int QmlGuiMain(int argc, char* argv[])
 #else
     engine.rootContext()->setContextProperty("testAutomationEnabled", false);
 #endif
+    engine.rootContext()->setContextProperty("walletAvailable", wallet_enabled);
+    engine.rootContext()->setContextProperty("preInitOnboardingRan", pre_init_onboarding_status == PreInitOnboardingStatus::COMPLETED);
+    engine.rootContext()->setContextProperty("effectiveAppMode", app_mode.state());
 
     // Install language before QML engine loads so that all qsTr() calls in QML
     // pick up the correct locale from the start.

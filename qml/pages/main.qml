@@ -15,6 +15,7 @@ import "./wallet"
 
 ApplicationWindow {
     id: appWindow
+    objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
     minimumWidth: 640
     minimumHeight: 665
@@ -29,6 +30,13 @@ ApplicationWindow {
     visible: false
     width: minimumWidth
     height: minimumHeight
+    readonly property bool walletAvailableForUi: typeof walletAvailable !== "undefined" ? walletAvailable : AppMode.walletEnabled
+    readonly property bool appModeDesktopForUi: typeof effectiveAppMode !== "undefined" ? effectiveAppMode === "DESKTOP" : AppMode.isDesktop
+    readonly property bool appModeWalletEnabledForUi: AppMode.walletEnabled
+    readonly property string appModeStateForUi: AppMode.state
+    readonly property bool preInitOnboardingRanForUi: typeof preInitOnboardingRan !== "undefined" && preInitOnboardingRan
+    readonly property string effectiveAppModeForUi: typeof effectiveAppMode !== "undefined" ? effectiveAppMode : AppMode.state
+    readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
 
     Settings {
         id: windowSettings
@@ -122,7 +130,7 @@ ApplicationWindow {
             if (needOnboarding) {
                 onboardingWizard
             } else {
-                if (AppMode.walletEnabled && AppMode.isDesktop) {
+                if (appWindow.desktopWalletMode) {
                     desktopWallets
                 } else {
                     node
@@ -161,7 +169,7 @@ ApplicationWindow {
             onFinished: {
                 optionsModel.onboard()
                 nodeModel.startNodeInitializionThread()
-                if (AppMode.walletEnabled && AppMode.isDesktop) {
+                if (appWindow.desktopWalletMode) {
                     main.push([
                         desktopWallets, {},
                         createWalletWizard, { "launchContext": CreateWalletWizard.Context.Onboarding }
@@ -250,7 +258,7 @@ ApplicationWindow {
             y = windowSettings.windowY
         }
         visible = true
-        if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
+        if (!needOnboarding && appWindow.desktopWalletMode) {
             nodeModel.startNodeInitializionThread()
         }
     }
