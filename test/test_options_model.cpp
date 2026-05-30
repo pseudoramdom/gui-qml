@@ -4,12 +4,18 @@
 
 #include <QtTest/QtTest>
 
+#include <bitcoin-build-config.h> // IWYU pragma: keep
+
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <test/gmocktestfixture.h>
 #include <test/mocks/mocknode.h>
 #include <qml/models/options_model.h>
+#include <qml/models/settings_keys.h>
+#include <init.h>
 #include <net_processing.h>
+#include <common/args.h>
 #include <common/settings.h>
 #include <util/translation.h>
 
@@ -20,6 +26,15 @@ const TranslateFn G_TRANSLATION_FUN{nullptr};
 class OptionsModelTests : public GmockTestFixture
 {
     Q_OBJECT
+
+public:
+    enum class LegacyDisplayUnit {
+        BTC = 0,
+        mBTC = 1,
+        uBTC = 2,
+        SAT = 3,
+    };
+    Q_ENUM(LegacyDisplayUnit)
 
 private Q_SLOTS:
     void proxyDisabledRemovesKey();
@@ -46,6 +61,16 @@ private Q_SLOTS:
     void signerDirtyNotSetAfterOnboard();
     void externalSignerPathValidationRejectsMissingPath();
     void externalSignerPathValidationAcceptsExecutablePath();
+    void connectionDirtyTracksRestartSettings();
+    void natpmpAppliesLiveWithoutRestartDirty();
+    void storageDirtyIgnoresDisabledPruneSize();
+    void developerDirtyTracksRestartSettings();
+    void proxyValidationAndCommit();
+    void proxyDisabledPreservesPreviousValue();
+    void customDataDirSelectionCreatesDirectoryAndPersists();
+    void thirdPartyTransactionLinksParseValidUrls();
+    void moneyFontChoicePersists();
+    void displayUnitUsesQtCompatibleSettingsKey();
 };
 
 // Convenience: set up a NiceMock whose getPersistentSetting returns null for
@@ -548,6 +573,308 @@ void OptionsModelTests::externalSignerPathValidationAcceptsExecutablePath()
 
     OptionsQmlModel model(node, /*is_onboarded=*/true);
     QVERIFY(model.externalSignerPathValidationError(script_path).isEmpty());
+}
+
+void OptionsModelTests::connectionDirtyTracksRestartSettings()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    ON_CALL(node, getPersistentSetting(std::string{"listen"})).WillByDefault(Return(common::SettingsValue{true}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QVERIFY(!model.connectionSettingsDirty());
+    QVERIFY(!model.restartRequired());
+
+    model.setListen(false);
+    QVERIFY(model.connectionSettingsDirty());
+    QVERIFY(model.restartRequired());
+
+    model.setListen(true);
+    QVERIFY(!model.connectionSettingsDirty());
+    QVERIFY(!model.restartRequired());
+}
+
+void OptionsModelTests::natpmpAppliesLiveWithoutRestartDirty()
+{
+    using ::testing::_;
+    using ::testing::InSequence;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+    using ::testing::Truly;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    InSequence sequence;
+    EXPECT_CALL(node, updateRwSetting(std::string{"natpmp"},
+        Truly([](const common::SettingsValue& value) {
+            const std::optional<bool> parsed = SettingToBool(value);
+            return parsed.has_value() && *parsed;
+        })));
+    EXPECT_CALL(node, mapPort(true));
+    EXPECT_CALL(node, updateRwSetting(std::string{"natpmp"},
+        Truly([](const common::SettingsValue& value) {
+            const std::optional<bool> parsed = SettingToBool(value);
+            return value.isNull() || (parsed.has_value() && !*parsed);
+        })));
+    EXPECT_CALL(node, mapPort(false));
+
+    model.setNatpmp(true);
+    QVERIFY(model.natpmp());
+    QVERIFY(!model.connectionSettingsDirty());
+    QVERIFY(!model.restartRequired());
+    QTest::qWait(300);
+
+    model.setNatpmp(false);
+    QVERIFY(!model.natpmp());
+    QVERIFY(!model.connectionSettingsDirty());
+    QVERIFY(!model.restartRequired());
+    QTest::qWait(300);
+}
+
+void OptionsModelTests::storageDirtyIgnoresDisabledPruneSize()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QVERIFY(!model.prune());
+    model.setPruneSizeGB(10);
+    QVERIFY(!model.storageSettingsDirty());
+
+    model.setPrune(true);
+    QVERIFY(model.storageSettingsDirty());
+    QVERIFY(model.restartRequired());
+}
+
+void OptionsModelTests::developerDirtyTracksRestartSettings()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QVERIFY(!model.developerSettingsDirty());
+
+    model.setScriptThreads(model.scriptThreads() + 1);
+    QVERIFY(model.developerSettingsDirty());
+    QVERIFY(model.restartRequired());
+
+    model.setScriptThreads(model.scriptThreads() - 1);
+    QVERIFY(!model.developerSettingsDirty());
+    QVERIFY(!model.restartRequired());
+
+    model.setMaxMempoolSizeMB(model.maxMempoolSizeMB() + 1);
+    QVERIFY(model.developerSettingsDirty());
+    QVERIFY(model.restartRequired());
+
+    model.setMaxMempoolSizeMB(model.maxMempoolSizeMB() - 1);
+    QVERIFY(!model.developerSettingsDirty());
+    QVERIFY(!model.restartRequired());
+}
+
+void OptionsModelTests::proxyValidationAndCommit()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QVERIFY(model.validateProxyLocation("127.0.0.1:9050").isEmpty());
+    QVERIFY(model.validateProxyLocation("[::1]:9050").isEmpty());
+    QVERIFY(!model.validateProxyLocation("127.0.0.1").isEmpty());
+    QVERIFY(!model.validateProxyLocation("[::1]").isEmpty());
+    QVERIFY(!model.validateProxyLocation("proxy.example:9050").isEmpty());
+    QVERIFY(!model.validateProxyLocation("proxy.example").isEmpty());
+#ifdef HAVE_SOCKADDR_UN
+    QVERIFY(model.validateProxyLocation("unix:/tmp/bitcoin-core-proxy.sock").isEmpty());
+#else
+    QVERIFY(!model.validateProxyLocation("unix:/tmp/bitcoin-core-proxy.sock").isEmpty());
+#endif
+    QVERIFY(!model.validateProxyLocation("abc..abc:23456").isEmpty());
+    QVERIFY(!model.validateProxyLocation("999.999.999.999:9050").isEmpty());
+    QVERIFY(!model.validateProxyLocation("127.0.0.1:0").isEmpty());
+    QVERIFY(!model.validateProxyLocation("127.0.0.1:65536").isEmpty());
+    QVERIFY(!model.validateProxyLocation("127.0.0.1:9050=ipv4").isEmpty());
+    QVERIFY(!model.validateProxyLocation("0=cjdns").isEmpty());
+    QVERIFY(!model.commitProxyLocation("999.999.999.999:9050"));
+    QVERIFY(model.proxyAddress().isEmpty());
+
+    QVERIFY(model.commitProxyLocation("127.0.0.1:9050"));
+    QCOMPARE(model.proxyAddress(), QString("127.0.0.1:9050"));
+}
+
+void OptionsModelTests::proxyDisabledPreservesPreviousValue()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+    using ::testing::Truly;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    ON_CALL(node, getPersistentSetting(std::string{"proxy"}))
+        .WillByDefault(Return(MakeAddress("127.0.0.1:9050")));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"},
+        Truly([](const common::SettingsValue& v) {
+            return v.isStr() && v.get_str() == "127.0.0.1:9050";
+        })));
+    EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
+        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
+
+    model.setProxyEnabled(false);
+    QVERIFY(!model.proxyEnabled());
+}
+
+void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    QSettings settings;
+    const bool had_data_dir_setting = settings.contains(SettingsKeys::DATA_DIR);
+    const QVariant previous_data_dir_setting = settings.value(SettingsKeys::DATA_DIR);
+    settings.remove(SettingsKeys::DATA_DIR);
+
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString data_dir = QDir(temp_dir.path()).filePath("selected-data-dir");
+    QVERIFY(!QFileInfo::exists(data_dir));
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QVERIFY(model.validateCustomDataDir(data_dir).isEmpty());
+    QVERIFY(model.selectCustomDataDir(data_dir));
+
+    QVERIFY(QFileInfo(data_dir).isDir());
+    QVERIFY(QFileInfo(QDir(data_dir).filePath("wallets")).isDir());
+    QCOMPARE(model.dataDir(), data_dir);
+    QCOMPARE(settings.value(SettingsKeys::DATA_DIR).toString(), data_dir);
+
+    if (had_data_dir_setting) {
+        settings.setValue(SettingsKeys::DATA_DIR, previous_data_dir_setting);
+    } else {
+        settings.remove(SettingsKeys::DATA_DIR);
+    }
+}
+
+void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    QSettings settings;
+    const bool had_urls_setting = settings.contains(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS);
+    const QVariant previous_urls_setting = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS);
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    model.setThirdPartyTransactionUrls("https://example.com/tx/%s|https://example.org/tx|not-a-url");
+
+    const QVariantList links = model.thirdPartyTransactionLinks("abc");
+    QCOMPARE(links.size(), 1);
+    const QVariantMap link = links.front().toMap();
+    QCOMPARE(link.value("host").toString(), QString("example.com"));
+    QCOMPARE(link.value("url").toString(), QString("https://example.com/tx/abc"));
+
+    if (had_urls_setting) {
+        settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, previous_urls_setting);
+    } else {
+        settings.remove(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS);
+    }
+}
+
+void OptionsModelTests::moneyFontChoicePersists()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    QSettings settings;
+    const bool had_font_setting = settings.contains(SettingsKeys::MONEY_FONT_CHOICE);
+    const QVariant previous_font_setting = settings.value(SettingsKeys::MONEY_FONT_CHOICE);
+    settings.remove(SettingsKeys::MONEY_FONT_CHOICE);
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QCOMPARE(model.moneyFontChoice(), QString("embedded"));
+    model.setMoneyFontChoice("best_system");
+    QCOMPARE(model.moneyFontChoice(), QString("best_system"));
+    QCOMPARE(settings.value(SettingsKeys::MONEY_FONT_CHOICE).toString(), QString("best_system"));
+
+    if (had_font_setting) {
+        settings.setValue(SettingsKeys::MONEY_FONT_CHOICE, previous_font_setting);
+    } else {
+        settings.remove(SettingsKeys::MONEY_FONT_CHOICE);
+    }
+}
+
+void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    QSettings settings;
+    const bool had_display_unit_setting = settings.contains(SettingsKeys::DISPLAY_UNIT);
+    const QVariant previous_display_unit_setting = settings.value(SettingsKeys::DISPLAY_UNIT);
+    settings.setValue(SettingsKeys::DISPLAY_UNIT, QVariant::fromValue(LegacyDisplayUnit::SAT));
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    QCOMPARE(QString::fromUtf8(SettingsKeys::DISPLAY_UNIT), QStringLiteral("DisplayBitcoinUnit"));
+    QCOMPARE(model.displayUnit(), 3);
+    QCOMPARE(model.displayUnitLabel(), QStringLiteral("sat"));
+    QCOMPARE(model.displayUnitLabelForAmount(2), QStringLiteral("sats"));
+
+    model.setDisplayUnit(1);
+    QCOMPARE(model.displayUnit(), 1);
+    QCOMPARE(model.displayUnitLabel(), QStringLiteral("mBTC"));
+    QCOMPARE(model.displayUnitLabelForAmount(2), QStringLiteral("mBTC"));
+    QCOMPARE(settings.value(SettingsKeys::DISPLAY_UNIT).toInt(), 1);
+
+    model.setDisplayUnit(2);
+    QCOMPARE(model.displayUnit(), 2);
+    QCOMPARE(model.displayUnitLabel(), QStringLiteral("bits"));
+    QCOMPARE(model.displayUnitLabelForAmount(2), QStringLiteral("bits"));
+    QCOMPARE(settings.value(SettingsKeys::DISPLAY_UNIT).toInt(), 2);
+
+    model.setDisplayUnit(9);
+    QCOMPARE(model.displayUnit(), 0);
+    QCOMPARE(settings.value(SettingsKeys::DISPLAY_UNIT).toInt(), 0);
+
+    if (had_display_unit_setting) {
+        settings.setValue(SettingsKeys::DISPLAY_UNIT, previous_display_unit_setting);
+    } else {
+        settings.remove(SettingsKeys::DISPLAY_UNIT);
+    }
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

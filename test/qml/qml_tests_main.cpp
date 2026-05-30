@@ -1461,6 +1461,12 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(QString languageSummary READ languageSummary NOTIFY languageChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QStringList availableLanguages READ availableLanguages CONSTANT)
+    Q_PROPERTY(bool connectionSettingsDirty MEMBER m_connection_settings_dirty NOTIFY connectionSettingsDirtyChanged)
+    Q_PROPERTY(bool storageSettingsDirty MEMBER m_storage_settings_dirty NOTIFY storageSettingsDirtyChanged)
+    Q_PROPERTY(bool developerSettingsDirty MEMBER m_developer_settings_dirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool proxySettingsDirty MEMBER m_proxy_settings_dirty NOTIFY proxySettingsDirtyChanged)
+    Q_PROPERTY(bool restartRequired MEMBER m_restart_required NOTIFY restartRequiredChanged)
+    Q_PROPERTY(QString thirdPartyTransactionUrls MEMBER m_third_party_transaction_urls NOTIFY thirdPartyTransactionUrlsChanged)
     Q_PROPERTY(QString moneyFontChoice MEMBER m_money_font_choice NOTIFY moneyFontChoiceChanged)
     Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
@@ -1475,6 +1481,12 @@ public:
     int m_prune_size_gb{2};
     QString m_data_dir{QStringLiteral("/tmp/bitcoin-default")};
     QString m_custom_data_dir{QStringLiteral("/tmp/bitcoin-custom")};
+    bool m_connection_settings_dirty{false};
+    bool m_storage_settings_dirty{false};
+    bool m_developer_settings_dirty{false};
+    bool m_proxy_settings_dirty{false};
+    bool m_restart_required{false};
+    QString m_third_party_transaction_urls;
     QString m_money_font_choice{QStringLiteral("embedded")};
 
     int maxMempoolSizeMB() const { return m_max_mempool_size_mb; }
@@ -1492,6 +1504,19 @@ public:
     Q_INVOKABLE bool selectCustomDataDir(const QString& dir) { m_custom_data_dir = dir; m_data_dir = dir; Q_EMIT dataDirChanged(); return true; }
     Q_INVOKABLE void useDefaultDataDir() { m_data_dir = getDefaultDataDirString(); Q_EMIT dataDirChanged(); }
     Q_INVOKABLE void onboard() {}
+    Q_INVOKABLE QString validateProxyLocation(const QString& location) const { return location.length() > 0 ? QString{} : QStringLiteral("Proxy location is required."); }
+    Q_INVOKABLE bool commitProxyLocation(const QString&) { return true; }
+    Q_INVOKABLE bool commitTorLocation(const QString&) { return true; }
+    Q_INVOKABLE QString defaultProxyAddress() const { return QStringLiteral("127.0.0.1:9050"); }
+    Q_INVOKABLE QVariantList thirdPartyTransactionLinks(const QString& txid) const {
+        QVariantList result;
+        if (m_third_party_transaction_urls.isEmpty()) return result;
+        QVariantMap link;
+        link.insert("host", "example.com");
+        link.insert("url", QString("https://example.com/tx/%1").arg(txid));
+        result.push_back(link);
+        return result;
+    }
 
     int displayUnit() const { return m_displayUnit; }
     void setDisplayUnit(int u) {
@@ -1535,6 +1560,12 @@ Q_SIGNALS:
     void dataDirChanged();
     void displayUnitChanged(int unit);
     void languageChanged();
+    void connectionSettingsDirtyChanged();
+    void storageSettingsDirtyChanged();
+    void developerSettingsDirtyChanged();
+    void proxySettingsDirtyChanged();
+    void restartRequiredChanged();
+    void thirdPartyTransactionUrlsChanged();
     void moneyFontChoiceChanged();
     void moneyFontChanged();
 
