@@ -25,6 +25,7 @@ InformationPage {
     description: qsTr("Where do you want to store the downloaded block data?\nYou need a minimum of %1GB of storage.").arg(chainModel.assumedChainstateSize + 1)
     descriptionMargin: 20
     detailActive: true
+    buttonEnabled: !loadedDetailItem || loadedDetailItem.validSelection
     detailItem: StorageLocations {}
     buttonText: qsTr("Next")
 }

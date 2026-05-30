@@ -50,6 +50,7 @@
 #include <qml/models/peerlistsortproxy.h>
 #include <qml/models/peerlistmodel.h>
 #include <qml/models/rpcconsolemodel.h>
+#include <qml/models/settings_keys.h>
 #include <qml/models/sendrecipient.h>
 #include <qml/models/walletlistmodel.h>
 #include <qml/models/walletqmlmodel.h>
@@ -63,6 +64,8 @@
 #endif
 #include <util/threadnames.h>
 #include <util/translation.h>
+#include <util/fs.h>
+#include <util/fs_helpers.h>
 
 #include <boost/signals2/connection.hpp>
 #include <cassert>
@@ -239,6 +242,28 @@ void ApplyTestSettingsDir()
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QString::fromStdString(settings_dir));
 }
 #endif
+
+void ApplyGuiDataDirSetting(QGuiApplication* app)
+{
+    if (gArgs.IsArgSet("-datadir") && !gArgs.GetPathArg("-datadir").empty()) return;
+
+    setupChainQSettings(app, QString::fromStdString(gArgs.GetChainTypeString()).toUpper());
+    QSettings settings;
+    const QString default_dir = QString::fromStdString(GetDefaultDataDir().utf8string());
+    const QString data_dir = settings.value(SettingsKeys::DATA_DIR, default_dir).toString();
+    if (!data_dir.isEmpty() && data_dir != default_dir) {
+        const fs::path data_dir_path = fs::u8path(data_dir.toStdString());
+        try {
+            TryCreateDirectories(data_dir_path);
+            TryCreateDirectories(data_dir_path / "wallets");
+        } catch (const fs::filesystem_error&) {
+            // Defer the user-visible error to InitConfig(), matching other
+            // startup datadir validation failures.
+        }
+        gArgs.SoftSetArg("-datadir", fs::PathToString(data_dir_path));
+        gArgs.ClearPathCache();
+    }
+}
 } // namespace
 
 
@@ -313,6 +338,8 @@ int QmlGuiMain(int argc, char* argv[])
 #ifdef ENABLE_TEST_AUTOMATION
     ApplyTestSettingsDir();
 #endif
+
+    ApplyGuiDataDirSetting(&app);
 
     if (auto error = common::InitConfig(
             gArgs,

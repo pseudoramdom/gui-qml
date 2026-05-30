@@ -110,6 +110,11 @@ QString NormalizeLocalPath(QString path)
     return path;
 }
 
+fs::path QStringToPath(const QString& path)
+{
+    return fs::u8path(path.toStdString());
+}
+
 QString ProxyValidationError(const QString& location)
 {
     const QString trimmed = location.trimmed();
@@ -604,6 +609,15 @@ bool OptionsQmlModel::selectCustomDataDir(const QString& path)
     }
     if (local_path == m_custom_datadir_string && m_dataDir == local_path) {
         return true;
+    }
+
+    try {
+        const fs::path data_dir_path = QStringToPath(local_path);
+        if (TryCreateDirectories(data_dir_path)) {
+            TryCreateDirectories(data_dir_path / "wallets");
+        }
+    } catch (const fs::filesystem_error&) {
+        return false;
     }
 
     m_custom_datadir_string = local_path;

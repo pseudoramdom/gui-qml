@@ -1478,7 +1478,10 @@ public:
     QString getDefaultDataDirString() const { return QStringLiteral("/tmp/bitcoin-default"); }
     Q_INVOKABLE QString getCustomDataDirString() const { return m_custom_data_dir; }
     Q_INVOKABLE void setCustomDataDirString(const QString& dir) { m_custom_data_dir = dir; }
-    Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { m_data_dir = dir; }
+    Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { selectCustomDataDir(dir); }
+    Q_INVOKABLE QString validateCustomDataDir(const QString&) const { return {}; }
+    Q_INVOKABLE bool selectCustomDataDir(const QString& dir) { m_custom_data_dir = dir; m_data_dir = dir; Q_EMIT dataDirChanged(); return true; }
+    Q_INVOKABLE void useDefaultDataDir() { m_data_dir = getDefaultDataDirString(); Q_EMIT dataDirChanged(); }
     Q_INVOKABLE void onboard() {}
 
     int displayUnit() const { return m_displayUnit; }

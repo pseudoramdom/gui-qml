@@ -12,6 +12,10 @@ import org.bitcoincore.qt 1.0
 import "../controls"
 
 ColumnLayout {
+    id: root
+    property string validationError: ""
+    readonly property bool validSelection: validationError.length === 0
+
     ButtonGroup {
         id: group
     }
@@ -25,8 +29,8 @@ ColumnLayout {
         customDir: optionsModel.getDefaultDataDirString
         checked: optionsModel.dataDir === optionsModel.getDefaultDataDirString
         onClicked: {
-            defaultDirOption.checked = true
-            optionsModel.dataDir = optionsModel.getDefaultDataDirString
+            root.validationError = ""
+            optionsModel.useDefaultDataDir()
         }
     }
     OptionButton {
@@ -35,32 +39,32 @@ ColumnLayout {
         ButtonGroup.group: group
         text: qsTr("Custom")
         description: qsTr("Choose the directory and storage device.")
-        customDir: customDirOption.checked ? fileDialog.currentFolder.toString() : ""
+        customDir: checked && optionsModel.dataDir !== optionsModel.getDefaultDataDirString ? optionsModel.dataDir : ""
         checked: optionsModel.dataDir !== optionsModel.getDefaultDataDirString
         onClicked: fileDialog.open()
     }
     FileDialog {
         id: fileDialog
         onAccepted: {
-            optionsModel.setCustomDataDirString(fileDialog.selectedFile.toString())
             var customDataDir = fileDialog.selectedFile.toString();
             if (customDataDir !== "") {
-                optionsModel.setCustomDataDirArgs(customDataDir)
-                customDirOption.customDir = optionsModel.getCustomDataDirString()
-                if (optionsModel.dataDir !== optionsModel.getDefaultDataDirString) {
-                    customDirOption.checked = true
-                    defaultDirOption.checked = false
+                root.validationError = optionsModel.validateCustomDataDir(customDataDir)
+                if (root.validationError === "" && optionsModel.selectCustomDataDir(customDataDir)) {
+                } else if (root.validationError === "") {
+                    root.validationError = qsTr("The selected data directory could not be created.")
                 }
             }
         }
         onRejected: {
             console.log("Custom datadir selection canceled")
-            if (optionsModel.dataDir !== optionsModel.getDefaultDataDirString) {
-                customDirOption.checked = true
-                defaultDirOption.checked = false
-            } else {
-                defaultDirOption.checked = true
-            }
         }
+    }
+    CoreText {
+        Layout.fillWidth: true
+        visible: root.validationError.length > 0
+        text: root.validationError
+        color: Theme.color.blue
+        horizontalAlignment: Text.AlignLeft
+        font.pixelSize: 15
     }
 }
