@@ -53,7 +53,7 @@ Page {
                     }
                 }
                 lastPage: true
-                buttonText: qsTr("Next")
+                buttonText: qsTr("Start Bitcoin Core")
                 buttonMargin: 20
                 onNext: root.next()
             }
