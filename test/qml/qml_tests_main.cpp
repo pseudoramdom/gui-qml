@@ -1360,6 +1360,24 @@ public:
         Q_EMIT lastClosedWalletNameChanged();
         Q_EMIT closeWalletCallsChanged();
     }
+    Q_INVOKABLE void setInitialized(bool initialized)
+    {
+        if (m_initialized == initialized) return;
+        m_initialized = initialized;
+        Q_EMIT initializedChanged();
+    }
+    Q_INVOKABLE void setWalletLoaded(bool loaded)
+    {
+        if (m_is_wallet_loaded == loaded) return;
+        m_is_wallet_loaded = loaded;
+        Q_EMIT isWalletLoadedChanged();
+    }
+    Q_INVOKABLE void setNoWalletsFound(bool no_wallets_found)
+    {
+        if (m_no_wallets_found == no_wallets_found) return;
+        m_no_wallets_found = no_wallets_found;
+        Q_EMIT noWalletsFoundChanged();
+    }
     Q_INVOKABLE void reset()
     {
         m_last_selected_wallet_name.clear();
@@ -2326,6 +2344,7 @@ class MockWalletListModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(int listWalletDirCalls READ listWalletDirCalls NOTIFY listWalletDirCallsChanged)
+    Q_PROPERTY(bool walletDirLoaded READ walletDirLoaded WRITE setWalletDirLoaded NOTIFY walletDirLoadedChanged)
 
 public:
     enum class LoadState {
@@ -2379,18 +2398,28 @@ public:
     }
 
     int listWalletDirCalls() const { return m_list_wallet_dir_calls; }
+    bool walletDirLoaded() const { return m_wallet_dir_loaded; }
 
     Q_INVOKABLE void listWalletDir()
     {
         ++m_list_wallet_dir_calls;
         Q_EMIT listWalletDirCallsChanged();
+        setWalletDirLoaded(true);
     }
     Q_INVOKABLE void reset()
     {
         m_list_wallet_dir_calls = 0;
+        m_wallet_dir_loaded = false;
         Q_EMIT listWalletDirCallsChanged();
+        Q_EMIT walletDirLoadedChanged();
         setWalletLoadState(QStringLiteral("testwallet"), 1);
         setWalletLoadState(QStringLiteral("secondarywallet"), 0);
+    }
+    Q_INVOKABLE void setWalletDirLoaded(bool loaded)
+    {
+        if (m_wallet_dir_loaded == loaded) return;
+        m_wallet_dir_loaded = loaded;
+        Q_EMIT walletDirLoadedChanged();
     }
     Q_INVOKABLE void setWalletLoadState(const QString& name, int state)
     {
@@ -2403,9 +2432,11 @@ public:
 
 Q_SIGNALS:
     void listWalletDirCallsChanged();
+    void walletDirLoadedChanged();
 
 private:
     int m_list_wallet_dir_calls{0};
+    bool m_wallet_dir_loaded{false};
     QStringList m_wallet_names{QStringLiteral("testwallet"), QStringLiteral("secondarywallet")};
     QVector<int> m_wallet_load_states{1, 0};
 };

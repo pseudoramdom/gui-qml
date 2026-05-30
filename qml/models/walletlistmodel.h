@@ -20,6 +20,7 @@ class Node;
 class WalletListModel : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(bool walletDirLoaded READ walletDirLoaded NOTIFY walletDirLoadedChanged)
 
 public:
     enum class LoadState {
@@ -46,9 +47,11 @@ public:
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
+    bool walletDirLoaded() const { return m_wallet_dir_loaded; }
 
 Q_SIGNALS:
     void walletListChanged(bool has_wallets);
+    void walletDirLoadedChanged();
 
 public Q_SLOTS:
     void listWalletDir();

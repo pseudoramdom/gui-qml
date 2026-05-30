@@ -37,6 +37,36 @@ ApplicationWindow {
     readonly property bool preInitOnboardingRanForUi: typeof preInitOnboardingRan !== "undefined" && preInitOnboardingRan
     readonly property string effectiveAppModeForUi: typeof effectiveAppMode !== "undefined" ? effectiveAppMode : AppMode.state
     readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
+    readonly property bool waitForPostOnboardingWalletRoute: !needOnboarding && preInitOnboardingRanForUi && desktopWalletMode
+    property bool postOnboardingWalletRouteResolved: false
+    property bool postOnboardingWalletWizardShown: false
+
+    function showPostOnboardingWalletWizard() {
+        if (!appWindow.waitForPostOnboardingWalletRoute || appWindow.postOnboardingWalletWizardShown) {
+            return
+        }
+        appWindow.postOnboardingWalletWizardShown = true
+        main.push(createWalletWizard, {
+            "launchContext": CreateWalletWizard.Context.Onboarding,
+            "waitForWalletDiscovery": true
+        }, StackView.Immediate)
+    }
+
+    function resolvePostOnboardingWalletRoute() {
+        if (appWindow.postOnboardingWalletRouteResolved) {
+            return
+        }
+        if (!appWindow.waitForPostOnboardingWalletRoute) {
+            return
+        }
+        if (!walletController.initialized || !walletListModel.walletDirLoaded) {
+            return
+        }
+        appWindow.postOnboardingWalletRouteResolved = true
+        if (!walletController.noWalletsFound && appWindow.postOnboardingWalletWizardShown && main.depth > 1) {
+            main.pop(StackView.Immediate)
+        }
+    }
 
     Settings {
         id: windowSettings
@@ -163,6 +193,23 @@ ApplicationWindow {
         parent: Overlay.overlay
     }
 
+    Connections {
+        target: appWindow.desktopWalletMode ? walletController : null
+        function onInitializedChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+        function onNoWalletsFoundChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+    }
+
+    Connections {
+        target: appWindow.desktopWalletMode ? walletListModel : null
+        function onWalletDirLoadedChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+    }
+
     Component {
         id: onboardingWizard
         OnboardingWizard {
@@ -184,6 +231,7 @@ ApplicationWindow {
     Component {
         id: desktopWallets
         DesktopWallets {
+            objectName: "desktopWalletsPage"
             onAddWallet: {
                 main.push(createWalletWizard, { "launchContext": CreateWalletWizard.Context.Main })
             }
@@ -197,6 +245,9 @@ ApplicationWindow {
         id: createWalletWizard
         CreateWalletWizard {
             onFinished: {
+                if (waitForWalletDiscovery) {
+                    appWindow.postOnboardingWalletRouteResolved = true
+                }
                 main.pop()
             }
         }
@@ -259,7 +310,9 @@ ApplicationWindow {
         }
         visible = true
         if (!needOnboarding && appWindow.desktopWalletMode) {
+            appWindow.showPostOnboardingWalletWizard()
             nodeModel.startNodeInitializionThread()
+            Qt.callLater(appWindow.resolvePostOnboardingWalletRoute)
         }
     }
 

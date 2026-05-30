@@ -112,8 +112,8 @@ AbstractButton {
     }
     MouseArea {
         anchors.fill: parent
-        hoverEnabled: AppMode.isDesktop && !root.busy
-        enabled: !root.busy
+        hoverEnabled: AppMode.isDesktop && root.enabled && !root.busy
+        enabled: root.enabled && !root.busy
         cursorShape: root.enabled && root.hoverEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onEntered: {
             root.background.state = "HOVER"

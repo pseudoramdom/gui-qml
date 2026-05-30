@@ -86,6 +86,7 @@ private Q_SLOTS:
     void setWalletLoadStateLoadErrorExposesErrorMessageRoleAndClearsOnClosed();
     void setWalletInfoUpdatesBalanceAndKeySchemeRolesForRowOnly();
     void listWalletDirPreservesBalanceAndKeySchemeAcrossRebuilds();
+    void walletDirLoadedFlipsAfterFirstList();
 };
 
 void WalletListModelTests::init()
@@ -474,6 +475,27 @@ void WalletListModelTests::listWalletDirPreservesBalanceAndKeySchemeAcrossRebuil
     const int beta_row = 1 - alpha_row;
     QCOMPARE(model.data(model.index(beta_row, 0), WalletListModel::BalanceRole).toString(), QString{});
     QCOMPARE(model.data(model.index(beta_row, 0), WalletListModel::KeySchemeKindRole).toInt(), 0);
+}
+
+void WalletListModelTests::walletDirLoadedFlipsAfterFirstList()
+{
+    using ::testing::StrictMock;
+
+    StrictMock<MockNode> node;
+    FakeWalletLoader loader;
+    ExpectWalletLoader(node, loader);
+
+    WalletListModel model{node, nullptr};
+    QSignalSpy wallet_dir_loaded_spy(&model, &WalletListModel::walletDirLoadedChanged);
+
+    QCOMPARE(model.walletDirLoaded(), false);
+    model.listWalletDir();
+
+    QCOMPARE(model.walletDirLoaded(), true);
+    QCOMPARE(wallet_dir_loaded_spy.count(), 1);
+
+    model.listWalletDir();
+    QCOMPARE(wallet_dir_loaded_spy.count(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN
