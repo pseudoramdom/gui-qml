@@ -9,6 +9,7 @@
 #include <common/system.h>
 #include <interfaces/node.h>
 #include <mapport.h>
+#include <netbase.h>
 #include <node/caches.h>
 #include <node/chainstatemanager_args.h>
 #include <qml/guiconstants.h>
@@ -23,10 +24,12 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStringList>
+#include <QUrl>
 
 namespace {
 int PruneMiBtoGB(int64_t mib)
@@ -87,6 +90,52 @@ bool TokenLooksLikePath(const QString& token)
            token.contains(QLatin1Char('\\')) ||
            QDir::isAbsolutePath(token);
 }
+
+constexpr const char* DEFAULT_PROXY_HOST{"127.0.0.1"};
+constexpr int DEFAULT_PROXY_PORT{9050};
+constexpr const char* MONEY_FONT_EMBEDDED{"embedded"};
+constexpr const char* MONEY_FONT_BEST_SYSTEM{"best_system"};
+
+QString DefaultProxyAddress()
+{
+    return QStringLiteral("%1:%2").arg(DEFAULT_PROXY_HOST).arg(DEFAULT_PROXY_PORT);
+}
+
+QString NormalizeLocalPath(QString path)
+{
+    path = path.trimmed();
+    if (path.isEmpty()) return {};
+    const QUrl url(path);
+    if (url.isLocalFile()) return url.toLocalFile();
+    return path;
+}
+
+QString ProxyValidationError(const QString& location)
+{
+    const QString trimmed = location.trimmed();
+    if (trimmed.isEmpty()) {
+        return QObject::tr("Proxy location is required.");
+    }
+
+    const std::string value = trimmed.toStdString();
+    if (value.starts_with(ADDR_PREFIX_UNIX)) {
+        if (IsUnixSocketPath(value)) return {};
+        return QObject::tr("This Unix socket proxy path is not supported on this platform or is too long.");
+    }
+
+    uint16_t port{0};
+    std::string host;
+    if (!SplitHostPort(value, port, host) || port == 0) {
+        return QObject::tr("Enter a proxy location as host:port, [IPv6]:port, or unix:/path.");
+    }
+
+    const CService service{LookupNumeric(host, port)};
+    const Proxy proxy{service, /*tor_stream_isolation=*/true};
+    if (!proxy.IsValid()) {
+        return QObject::tr("The supplied proxy address is invalid.");
+    }
+    return {};
+}
 } // namespace
 
 OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, bool is_onboarded)
@@ -109,63 +158,172 @@ OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, bool is_onboarded)
 
     m_server = SettingToBool(m_node.getPersistentSetting("server"), false);
 
-    m_dataDir = getDefaultDataDirString();
-
     QString proxy_setting = QString::fromStdString(SettingToString(m_node.getPersistentSetting("proxy"), ""));
     if (proxy_setting == "0") proxy_setting.clear();
     m_proxy_enabled = !proxy_setting.isEmpty();
-    m_proxy_address = proxy_setting;
+    m_proxy_address = m_proxy_enabled
+        ? proxy_setting
+        : QString::fromStdString(SettingToString(m_node.getPersistentSetting("proxy-prev"), ""));
 
     QString onion_setting = QString::fromStdString(SettingToString(m_node.getPersistentSetting("onion"), ""));
     if (onion_setting == "0") onion_setting.clear();
     m_tor_enabled = !onion_setting.isEmpty();
-    m_tor_address = onion_setting;
+    m_tor_address = m_tor_enabled
+        ? onion_setting
+        : QString::fromStdString(SettingToString(m_node.getPersistentSetting("onion-prev"), ""));
 
     m_external_signer_path = QString::fromStdString(SettingToString(m_node.getPersistentSetting("signer"), ""));
 
-    m_initial_proxy_enabled = m_proxy_enabled;
-    m_initial_proxy_address = m_proxy_address;
-    m_initial_tor_enabled   = m_tor_enabled;
-    m_initial_tor_address   = m_tor_address;
-    m_initial_external_signer_path = m_external_signer_path;
+    resetDirtySnapshots();
 
     QSettings settings;
+    m_dataDir = settings.value(SettingsKeys::DATA_DIR, getDefaultDataDirString()).toString();
+    if (m_dataDir != getDefaultDataDirString()) {
+        m_custom_datadir_string = m_dataDir;
+    }
     m_language = settings.value(SettingsKeys::LANGUAGE, "").toString();
     m_display_unit = settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt();
+    m_third_party_transaction_urls = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, "").toString();
+    m_money_font_choice = settings.value(SettingsKeys::MONEY_FONT_CHOICE, MONEY_FONT_EMBEDDED).toString();
+    if (m_money_font_choice != MONEY_FONT_EMBEDDED && m_money_font_choice != MONEY_FONT_BEST_SYSTEM) {
+        m_money_font_choice = MONEY_FONT_EMBEDDED;
+    }
 
     buildAvailableLanguages();
+}
+
+bool OptionsQmlModel::connectionSettingsDirty() const
+{
+    if (!m_onboarded) return false;
+    return m_listen != m_initial_listen || m_server != m_initial_server;
+}
+
+bool OptionsQmlModel::storageSettingsDirty() const
+{
+    if (!m_onboarded) return false;
+    if (m_prune != m_initial_prune) return true;
+    return m_prune && m_prune_size_gb != m_initial_prune_size_gb;
+}
+
+bool OptionsQmlModel::developerSettingsDirty() const
+{
+    if (!m_onboarded) return false;
+    return m_dbcache_size_mib != m_initial_dbcache_size_mib ||
+           m_max_mempool_size_mb != m_initial_max_mempool_size_mb ||
+           m_script_threads != m_initial_script_threads;
+}
+
+bool OptionsQmlModel::restartRequired() const
+{
+    return connectionSettingsDirty() ||
+           storageSettingsDirty() ||
+           developerSettingsDirty() ||
+           proxySettingsDirty() ||
+           walletSettingsDirty();
+}
+
+OptionsQmlModel::DirtySnapshot OptionsQmlModel::dirtySnapshot() const
+{
+    DirtySnapshot snapshot;
+    snapshot.connection = connectionSettingsDirty();
+    snapshot.storage = storageSettingsDirty();
+    snapshot.developer = developerSettingsDirty();
+    snapshot.proxy = proxySettingsDirty();
+    snapshot.wallet = walletSettingsDirty();
+    snapshot.restart = restartRequired();
+    return snapshot;
+}
+
+void OptionsQmlModel::emitDirtySignals(const DirtySnapshot& before)
+{
+    if (connectionSettingsDirty() != before.connection) Q_EMIT connectionSettingsDirtyChanged();
+    if (storageSettingsDirty() != before.storage) Q_EMIT storageSettingsDirtyChanged();
+    if (developerSettingsDirty() != before.developer) Q_EMIT developerSettingsDirtyChanged();
+    if (proxySettingsDirty() != before.proxy) Q_EMIT proxySettingsDirtyChanged();
+    if (walletSettingsDirty() != before.wallet) Q_EMIT walletSettingsDirtyChanged();
+    if (restartRequired() != before.restart) Q_EMIT restartRequiredChanged();
+}
+
+void OptionsQmlModel::resetDirtySnapshots()
+{
+    m_initial_listen = m_listen;
+    m_initial_server = m_server;
+    m_initial_prune = m_prune;
+    m_initial_prune_size_gb = m_prune_size_gb;
+    m_initial_dbcache_size_mib = m_dbcache_size_mib;
+    m_initial_max_mempool_size_mb = m_max_mempool_size_mb;
+    m_initial_script_threads = m_script_threads;
+    m_initial_proxy_enabled = m_proxy_enabled;
+    m_initial_proxy_address = m_proxy_address;
+    m_initial_tor_enabled = m_tor_enabled;
+    m_initial_tor_address = m_tor_address;
+    m_initial_external_signer_path = m_external_signer_path;
+}
+
+common::SettingsValue OptionsQmlModel::proxySetting(bool enabled, const QString& address) const
+{
+    return enabled && !address.trimmed().isEmpty()
+        ? common::SettingsValue{address.trimmed().toStdString()}
+        : common::SettingsValue{};
+}
+
+bool OptionsQmlModel::writeProxySetting(const QString& key, bool enabled, const QString& address)
+{
+    const QString trimmed = address.trimmed();
+    if (enabled && !validateProxyLocation(trimmed).isEmpty()) return false;
+
+    const std::string setting_key = key.toStdString();
+    const std::string prev_key = QString{key + QStringLiteral("-prev")}.toStdString();
+    if (m_onboarded) {
+        if (enabled) {
+            m_node.updateRwSetting(setting_key, proxySetting(true, trimmed));
+            m_node.updateRwSetting(prev_key, common::SettingsValue{});
+        } else {
+            if (!trimmed.isEmpty()) {
+                m_node.updateRwSetting(prev_key, common::SettingsValue{trimmed.toStdString()});
+            }
+            m_node.updateRwSetting(setting_key, common::SettingsValue{});
+        }
+    }
+    return true;
 }
 
 void OptionsQmlModel::setDbcacheSizeMiB(int new_dbcache_size_mib)
 {
     if (new_dbcache_size_mib != m_dbcache_size_mib) {
+        const DirtySnapshot before = dirtySnapshot();
         m_dbcache_size_mib = new_dbcache_size_mib;
         if (m_onboarded) {
             m_node.updateRwSetting("dbcache", new_dbcache_size_mib);
         }
         Q_EMIT dbcacheSizeMiBChanged(new_dbcache_size_mib);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setListen(bool new_listen)
 {
     if (new_listen != m_listen) {
+        const DirtySnapshot before = dirtySnapshot();
         m_listen = new_listen;
         if (m_onboarded) {
             m_node.updateRwSetting("listen", new_listen);
         }
         Q_EMIT listenChanged(new_listen);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setMaxMempoolSizeMB(int new_max_mempool_size_mb)
 {
     if (new_max_mempool_size_mb != m_max_mempool_size_mb) {
+        const DirtySnapshot before = dirtySnapshot();
         m_max_mempool_size_mb = new_max_mempool_size_mb;
         if (m_onboarded) {
             m_node.updateRwSetting("maxmempool", new_max_mempool_size_mb);
         }
         Q_EMIT maxMempoolSizeMBChanged(new_max_mempool_size_mb);
+        emitDirtySignals(before);
     }
 }
 
@@ -175,6 +333,7 @@ void OptionsQmlModel::setNatpmp(bool new_natpmp)
         m_natpmp = new_natpmp;
         if (m_onboarded) {
             m_node.updateRwSetting("natpmp", new_natpmp);
+            m_node.mapPort(new_natpmp);
         }
         Q_EMIT natpmpChanged(new_natpmp);
     }
@@ -183,120 +342,147 @@ void OptionsQmlModel::setNatpmp(bool new_natpmp)
 void OptionsQmlModel::setPrune(bool new_prune)
 {
     if (new_prune != m_prune) {
+        const DirtySnapshot before = dirtySnapshot();
         m_prune = new_prune;
         if (m_onboarded) {
             m_node.updateRwSetting("prune", pruneSetting());
         }
         Q_EMIT pruneChanged(new_prune);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setPruneSizeGB(int new_prune_size_gb)
 {
+    if (new_prune_size_gb < 1) return;
     if (new_prune_size_gb != m_prune_size_gb) {
+        const DirtySnapshot before = dirtySnapshot();
         m_prune_size_gb = new_prune_size_gb;
         if (m_onboarded) {
             m_node.updateRwSetting("prune", pruneSetting());
         }
         Q_EMIT pruneSizeGBChanged(new_prune_size_gb);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setScriptThreads(int new_script_threads)
 {
     if (new_script_threads != m_script_threads) {
+        const DirtySnapshot before = dirtySnapshot();
         m_script_threads = new_script_threads;
         if (m_onboarded) {
             m_node.updateRwSetting("par", new_script_threads);
         }
         Q_EMIT scriptThreadsChanged(new_script_threads);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setServer(bool new_server)
 {
     if (new_server != m_server) {
+        const DirtySnapshot before = dirtySnapshot();
         m_server = new_server;
         if (m_onboarded) {
             m_node.updateRwSetting("server", new_server);
         }
         Q_EMIT serverChanged(new_server);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setProxyEnabled(bool enabled)
 {
     if (enabled != m_proxy_enabled) {
-        bool was_dirty = proxySettingsDirty();
+        const DirtySnapshot before = dirtySnapshot();
+        if (enabled && m_proxy_address.isEmpty()) {
+            m_proxy_address = defaultProxyAddress();
+            Q_EMIT proxyAddressChanged(m_proxy_address);
+        }
+        if (enabled && !validateProxyLocation(m_proxy_address).isEmpty()) {
+            return;
+        }
         m_proxy_enabled = enabled;
-        if (m_onboarded) {
-            if (enabled && !m_proxy_address.isEmpty()) {
-                m_node.updateRwSetting("proxy", m_proxy_address.toStdString());
-            } else {
-                m_node.updateRwSetting("proxy", common::SettingsValue{});
-            }
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
+        writeProxySetting(QStringLiteral("proxy"), m_proxy_enabled, m_proxy_address);
         Q_EMIT proxyEnabledChanged(enabled);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setProxyAddress(const QString& address)
 {
-    if (address != m_proxy_address) {
-        bool was_dirty = proxySettingsDirty();
-        m_proxy_address = address;
-        if (m_onboarded && m_proxy_enabled) {
-            m_node.updateRwSetting("proxy", address.toStdString());
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT proxyAddressChanged(address);
-    }
+    commitProxyLocation(address);
 }
 
 void OptionsQmlModel::setTorEnabled(bool enabled)
 {
     if (enabled != m_tor_enabled) {
-        bool was_dirty = proxySettingsDirty();
+        const DirtySnapshot before = dirtySnapshot();
+        if (enabled && m_tor_address.isEmpty()) {
+            m_tor_address = defaultProxyAddress();
+            Q_EMIT torAddressChanged(m_tor_address);
+        }
+        if (enabled && !validateProxyLocation(m_tor_address).isEmpty()) {
+            return;
+        }
         m_tor_enabled = enabled;
-        if (m_onboarded) {
-            if (enabled && !m_tor_address.isEmpty()) {
-                m_node.updateRwSetting("onion", m_tor_address.toStdString());
-            } else {
-                m_node.updateRwSetting("onion", common::SettingsValue{});
-            }
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
+        writeProxySetting(QStringLiteral("onion"), m_tor_enabled, m_tor_address);
         Q_EMIT torEnabledChanged(enabled);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setTorAddress(const QString& address)
 {
-    if (address != m_tor_address) {
-        bool was_dirty = proxySettingsDirty();
-        m_tor_address = address;
-        if (m_onboarded && m_tor_enabled) {
-            m_node.updateRwSetting("onion", address.toStdString());
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT torAddressChanged(address);
-    }
+    commitTorLocation(address);
+}
+
+QString OptionsQmlModel::validateProxyLocation(const QString& location) const
+{
+    return ProxyValidationError(location);
+}
+
+bool OptionsQmlModel::commitProxyLocation(const QString& location)
+{
+    const QString trimmed = location.trimmed();
+    const QString error = validateProxyLocation(trimmed);
+    if (!error.isEmpty()) return false;
+    if (trimmed == m_proxy_address) return true;
+
+    const DirtySnapshot before = dirtySnapshot();
+    m_proxy_address = trimmed;
+    writeProxySetting(QStringLiteral("proxy"), m_proxy_enabled, m_proxy_address);
+    Q_EMIT proxyAddressChanged(m_proxy_address);
+    emitDirtySignals(before);
+    return true;
+}
+
+bool OptionsQmlModel::commitTorLocation(const QString& location)
+{
+    const QString trimmed = location.trimmed();
+    const QString error = validateProxyLocation(trimmed);
+    if (!error.isEmpty()) return false;
+    if (trimmed == m_tor_address) return true;
+
+    const DirtySnapshot before = dirtySnapshot();
+    m_tor_address = trimmed;
+    writeProxySetting(QStringLiteral("onion"), m_tor_enabled, m_tor_address);
+    Q_EMIT torAddressChanged(m_tor_address);
+    emitDirtySignals(before);
+    return true;
+}
+
+QString OptionsQmlModel::defaultProxyAddress() const
+{
+    return DefaultProxyAddress();
 }
 
 void OptionsQmlModel::setExternalSignerPath(const QString& path)
 {
     const QString normalized_path = NormalizeCommandPath(path);
     if (normalized_path != m_external_signer_path) {
-        bool was_dirty = walletSettingsDirty();
+        const DirtySnapshot before = dirtySnapshot();
         m_external_signer_path = normalized_path;
         if (m_external_signer_path.isEmpty()) {
             m_node.forceSetting("signer", common::SettingsValue{});
@@ -310,10 +496,8 @@ void OptionsQmlModel::setExternalSignerPath(const QString& path)
                 m_node.updateRwSetting("signer", m_external_signer_path.toStdString());
             }
         }
-        if (walletSettingsDirty() != was_dirty) {
-            Q_EMIT walletSettingsDirtyChanged();
-        }
         Q_EMIT externalSignerPathChanged(m_external_signer_path);
+        emitDirtySignals(before);
     }
 }
 
@@ -367,24 +551,7 @@ QUrl OptionsQmlModel::getDefaultDataDirectory()
 
 bool OptionsQmlModel::setCustomDataDirArgs(QString path)
 {
-    if (!path.isEmpty()) {
-    // TODO: add actual custom data wiring
-#ifdef __ANDROID__
-    QString uri = path;
-    QString originalPrefix = "content://com.android.externalstorage.documents/tree/primary%3A";
-    QString newPrefix = "/storage/self/primary/";
-    QString path = uri.replace(originalPrefix, newPrefix);
-#else
-    path = QUrl(path).toLocalFile();
-#endif // __ANDROID__
-        qDebug() << "PlaceHolder: Created data directory: " << path;
-
-        m_custom_datadir_string = path;
-        Q_EMIT customDataDirStringChanged(path);
-        setDataDir(path);
-        return true;
-    }
-    return false;
+    return selectCustomDataDir(path);
 }
 
 QString OptionsQmlModel::getCustomDataDirString()
@@ -395,17 +562,74 @@ QString OptionsQmlModel::getCustomDataDirString()
     return m_custom_datadir_string;
 }
 
+QString OptionsQmlModel::validateCustomDataDir(const QString& path) const
+{
+#ifdef __ANDROID__
+    Q_UNUSED(path);
+    return tr("Custom data directories are not supported on this platform yet.");
+#else
+    const QString local_path = NormalizeLocalPath(path);
+    if (local_path.isEmpty()) {
+        return tr("Choose a data directory.");
+    }
+
+    QFileInfo target_info(local_path);
+    if (target_info.exists() && !target_info.isDir()) {
+        return tr("The selected path exists and is not a directory.");
+    }
+    if (target_info.exists() && !target_info.isWritable()) {
+        return tr("The selected directory is not writable.");
+    }
+
+    QDir parent = target_info.absoluteDir();
+    while (!parent.exists()) {
+        const QString current = parent.absolutePath();
+        if (!parent.cdUp() || parent.absolutePath() == current) {
+            return tr("The data directory cannot be created here.");
+        }
+    }
+    QFileInfo parent_info(parent.absolutePath());
+    if (!parent_info.isDir() || !parent_info.isWritable()) {
+        return tr("The parent directory is not writable.");
+    }
+    return {};
+#endif
+}
+
+bool OptionsQmlModel::selectCustomDataDir(const QString& path)
+{
+    const QString local_path = NormalizeLocalPath(path);
+    if (!validateCustomDataDir(local_path).isEmpty()) {
+        return false;
+    }
+    if (local_path == m_custom_datadir_string && m_dataDir == local_path) {
+        return true;
+    }
+
+    m_custom_datadir_string = local_path;
+    QSettings settings;
+    settings.setValue(SettingsKeys::DATA_DIR, local_path);
+    Q_EMIT customDataDirStringChanged(local_path);
+    setDataDir(local_path);
+    return true;
+}
+
+void OptionsQmlModel::useDefaultDataDir()
+{
+    m_custom_datadir_string.clear();
+    QSettings settings;
+    settings.remove(SettingsKeys::DATA_DIR);
+    Q_EMIT customDataDirStringChanged({});
+    setDataDir(getDefaultDataDirString());
+}
+
 void OptionsQmlModel::setDataDir(QString new_data_dir)
 {
-    if (new_data_dir != m_dataDir) {
-        m_dataDir = new_data_dir;
-        if (!getCustomDataDirString().isEmpty() && (new_data_dir != getDefaultDataDirString())) {
-            m_dataDir = getCustomDataDirString();
-        } else {
-            m_dataDir = getDefaultDataDirString();
-        }
-        Q_EMIT dataDirChanged(new_data_dir);
-    }
+    const QString normalized = NormalizeLocalPath(new_data_dir);
+    const QString effective = normalized.isEmpty() ? getDefaultDataDirString() : normalized;
+    if (effective == m_dataDir) return;
+    m_dataDir = effective;
+    Q_EMIT dataDirChanged(m_dataDir);
 }
 
 void OptionsQmlModel::buildAvailableLanguages()
@@ -478,6 +702,54 @@ void OptionsQmlModel::setDisplayUnit(int new_display_unit)
     }
 }
 
+void OptionsQmlModel::setThirdPartyTransactionUrls(const QString& urls)
+{
+    if (urls == m_third_party_transaction_urls) return;
+    m_third_party_transaction_urls = urls;
+    QSettings settings;
+    settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, m_third_party_transaction_urls);
+    Q_EMIT thirdPartyTransactionUrlsChanged();
+}
+
+QVariantList OptionsQmlModel::thirdPartyTransactionLinks(const QString& txid) const
+{
+    QVariantList links;
+    const QStringList urls = m_third_party_transaction_urls.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+    for (QString url : urls) {
+        url = url.trimmed();
+        if (!url.contains(QStringLiteral("%s"))) continue;
+        const QUrl parsed{url, QUrl::StrictMode};
+        const QString host = parsed.host();
+        if (host.isEmpty()) continue;
+        QVariantMap link;
+        link.insert(QStringLiteral("host"), host);
+        link.insert(QStringLiteral("url"), url.replace(QStringLiteral("%s"), txid));
+        links.push_back(link);
+    }
+    return links;
+}
+
+void OptionsQmlModel::setMoneyFontChoice(const QString& choice)
+{
+    const QString normalized = choice == MONEY_FONT_BEST_SYSTEM ? QString{MONEY_FONT_BEST_SYSTEM} : QString{MONEY_FONT_EMBEDDED};
+    if (normalized == m_money_font_choice) return;
+    m_money_font_choice = normalized;
+    QSettings settings;
+    settings.setValue(SettingsKeys::MONEY_FONT_CHOICE, m_money_font_choice);
+    Q_EMIT moneyFontChoiceChanged();
+    Q_EMIT moneyFontChanged();
+}
+
+QFont OptionsQmlModel::moneyFont() const
+{
+    if (m_money_font_choice == MONEY_FONT_BEST_SYSTEM) {
+        return QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    }
+    QFont font{QStringLiteral("Roboto Mono")};
+    font.setStyleName(QStringLiteral("Regular"));
+    return font;
+}
+
 QString OptionsQmlModel::displayUnitLabel() const
 {
     return (m_display_unit == 1) ? QStringLiteral("sat") : QStringLiteral("BTC");
@@ -526,9 +798,11 @@ void OptionsQmlModel::onboard()
         m_node.updateRwSetting("signer", m_external_signer_path.toStdString());
     }
     m_onboarded = true;
-    m_initial_proxy_enabled = m_proxy_enabled;
-    m_initial_proxy_address = m_proxy_address;
-    m_initial_tor_enabled   = m_tor_enabled;
-    m_initial_tor_address   = m_tor_address;
-    m_initial_external_signer_path = m_external_signer_path;
+    resetDirtySnapshots();
+    Q_EMIT connectionSettingsDirtyChanged();
+    Q_EMIT storageSettingsDirtyChanged();
+    Q_EMIT developerSettingsDirtyChanged();
+    Q_EMIT proxySettingsDirtyChanged();
+    Q_EMIT walletSettingsDirtyChanged();
+    Q_EMIT restartRequiredChanged();
 }

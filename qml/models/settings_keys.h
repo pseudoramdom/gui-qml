@@ -11,6 +11,9 @@
 namespace SettingsKeys {
     inline constexpr const char* LANGUAGE     = "language";
     inline constexpr const char* DISPLAY_UNIT = "displayUnit";
+    inline constexpr const char* DATA_DIR = "strDataDir";
+    inline constexpr const char* THIRD_PARTY_TRANSACTION_URLS = "strThirdPartyTxUrls";
+    inline constexpr const char* MONEY_FONT_CHOICE = "FontForMoney";
 } // namespace SettingsKeys
 
 #endif // BITCOIN_QML_MODELS_SETTINGS_KEYS_H

@@ -78,6 +78,7 @@ void OptionsModelTests::proxyDisabledRemovesKey()
 
     // When proxy is disabled, updateRwSetting must be called with a null (not
     // empty-string) SettingsValue so that the key is erased from settings.json.
+    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"}, _));
     EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
         Truly([](const common::SettingsValue& v) { return v.isNull(); })));
 
@@ -100,6 +101,7 @@ void OptionsModelTests::torDisabledRemovesKey()
     OptionsQmlModel model(node, /*is_onboarded=*/true);
     QVERIFY(model.torEnabled());
 
+    EXPECT_CALL(node, updateRwSetting(std::string{"onion-prev"}, _));
     EXPECT_CALL(node, updateRwSetting(std::string{"onion"},
         Truly([](const common::SettingsValue& v) { return v.isNull(); })));
 
@@ -130,6 +132,8 @@ void OptionsModelTests::proxyEnabledWritesAddress()
         Truly([](const common::SettingsValue& v) {
             return v.isStr() && v.get_str() == "10.0.0.1:9050";
         })));
+    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"},
+        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
 
     model.setProxyEnabled(true);
     QVERIFY(model.proxyEnabled());

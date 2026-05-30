@@ -17,8 +17,10 @@
 #include <qml/models/settings_keys.h>
 
 #include <QObject>
+#include <QFont>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 #include <QUrl>
 
 namespace interfaces {
@@ -53,11 +55,18 @@ class OptionsQmlModel : public QObject
     Q_PROPERTY(QString externalSignerPath READ externalSignerPath WRITE setExternalSignerPath NOTIFY externalSignerPathChanged)
     Q_PROPERTY(bool proxySettingsDirty READ proxySettingsDirty NOTIFY proxySettingsDirtyChanged)
     Q_PROPERTY(bool walletSettingsDirty READ walletSettingsDirty NOTIFY walletSettingsDirtyChanged)
+    Q_PROPERTY(bool connectionSettingsDirty READ connectionSettingsDirty NOTIFY connectionSettingsDirtyChanged)
+    Q_PROPERTY(bool storageSettingsDirty READ storageSettingsDirty NOTIFY storageSettingsDirtyChanged)
+    Q_PROPERTY(bool developerSettingsDirty READ developerSettingsDirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY restartRequiredChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString languageSummary READ languageSummary NOTIFY languageChanged)
     Q_PROPERTY(QStringList availableLanguages READ availableLanguages CONSTANT)
     Q_PROPERTY(int displayUnit READ displayUnit WRITE setDisplayUnit NOTIFY displayUnitChanged)
     Q_PROPERTY(QString displayUnitLabel READ displayUnitLabel NOTIFY displayUnitChanged)
+    Q_PROPERTY(QString thirdPartyTransactionUrls READ thirdPartyTransactionUrls WRITE setThirdPartyTransactionUrls NOTIFY thirdPartyTransactionUrlsChanged)
+    Q_PROPERTY(QString moneyFontChoice READ moneyFontChoice WRITE setMoneyFontChoice NOTIFY moneyFontChoiceChanged)
+    Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
 public:
     explicit OptionsQmlModel(interfaces::Node& node, bool is_onboarded);
@@ -90,6 +99,9 @@ public:
     QUrl getDefaultDataDirectory();
     Q_INVOKABLE bool setCustomDataDirArgs(QString path);
     Q_INVOKABLE QString getCustomDataDirString();
+    Q_INVOKABLE QString validateCustomDataDir(const QString& path) const;
+    Q_INVOKABLE bool selectCustomDataDir(const QString& path);
+    Q_INVOKABLE void useDefaultDataDir();
     Q_INVOKABLE QString externalSignerPathValidationError(const QString& path) const;
     bool proxyEnabled() const { return m_proxy_enabled; }
     void setProxyEnabled(bool enabled);
@@ -113,6 +125,15 @@ public:
         if (!m_onboarded) return false;
         return m_external_signer_path != m_initial_external_signer_path;
     }
+    bool connectionSettingsDirty() const;
+    bool storageSettingsDirty() const;
+    bool developerSettingsDirty() const;
+    bool restartRequired() const;
+    Q_INVOKABLE QString validateProxyLocation(const QString& location) const;
+    Q_INVOKABLE bool commitProxyLocation(const QString& location);
+    Q_INVOKABLE bool commitTorLocation(const QString& location);
+    Q_INVOKABLE QString defaultProxyAddress() const;
+    Q_INVOKABLE QVariantList thirdPartyTransactionLinks(const QString& txid) const;
     QString language() const { return m_language; }
     void setLanguage(const QString& new_language);
     QString languageSummary() const;
@@ -122,6 +143,11 @@ public:
     void setDisplayUnit(int new_display_unit);
     QString displayUnitLabel() const;
     Q_INVOKABLE QString displayUnitLabelForAmount(qint64 satoshi) const;
+    QString thirdPartyTransactionUrls() const { return m_third_party_transaction_urls; }
+    void setThirdPartyTransactionUrls(const QString& urls);
+    QString moneyFontChoice() const { return m_money_font_choice; }
+    void setMoneyFontChoice(const QString& choice);
+    QFont moneyFont() const;
 
 public Q_SLOTS:
     void setCustomDataDirString(const QString &new_custom_datadir_string) {
@@ -147,10 +173,26 @@ Q_SIGNALS:
     void externalSignerPathChanged(QString path);
     void proxySettingsDirtyChanged();
     void walletSettingsDirtyChanged();
+    void connectionSettingsDirtyChanged();
+    void storageSettingsDirtyChanged();
+    void developerSettingsDirtyChanged();
+    void restartRequiredChanged();
     void languageChanged();
     void displayUnitChanged(int new_display_unit);
+    void thirdPartyTransactionUrlsChanged();
+    void moneyFontChoiceChanged();
+    void moneyFontChanged();
 
 private:
+    struct DirtySnapshot {
+        bool connection{false};
+        bool storage{false};
+        bool developer{false};
+        bool proxy{false};
+        bool wallet{false};
+        bool restart{false};
+    };
+
     interfaces::Node& m_node;
     bool m_onboarded;
 
@@ -180,6 +222,13 @@ private:
     bool m_tor_enabled;
     QString m_tor_address;
     QString m_external_signer_path;
+    bool m_initial_listen;
+    bool m_initial_server;
+    bool m_initial_prune;
+    int m_initial_prune_size_gb;
+    int m_initial_dbcache_size_mib;
+    int m_initial_max_mempool_size_mb;
+    int m_initial_script_threads;
     bool m_initial_proxy_enabled;
     QString m_initial_proxy_address;
     bool m_initial_tor_enabled;
@@ -188,8 +237,15 @@ private:
     QString m_language;
     QStringList m_available_languages;
     int m_display_unit{0};
+    QString m_third_party_transaction_urls;
+    QString m_money_font_choice;
 
     common::SettingsValue pruneSetting() const;
+    common::SettingsValue proxySetting(bool enabled, const QString& address) const;
+    void resetDirtySnapshots();
+    DirtySnapshot dirtySnapshot() const;
+    void emitDirtySignals(const DirtySnapshot& before);
+    bool writeProxySetting(const QString& key, bool enabled, const QString& address);
     void buildAvailableLanguages();
 };
 
