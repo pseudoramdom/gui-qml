@@ -10,8 +10,7 @@ import "../controls"
 import org.bitcoincore.qt 1.0
 
 ColumnLayout {
-    property string ipAndPortHeader: qsTr("IP and Port")
-    property string invalidIpError: qsTr("Invalid IP address or port format. Use '255.255.255.255:65535' or '[ffff::]:65535'")
+    property string proxyLocationHeader: qsTr("Proxy location")
 
     spacing: 4
     Header {
@@ -31,15 +30,8 @@ ColumnLayout {
         actionItem: OptionSwitch {
             objectName: "proxyEnableSwitch"
             checked: optionsModel.proxyEnabled
-            onCheckedChanged: {
-                // Default to the standard SOCKS5 proxy address (port 9050).
-                // The Tor daemon also defaults to port 9050; the user can
-                // edit the address after enabling.
-                if (checked && optionsModel.proxyAddress === "") {
-                    optionsModel.proxyAddress = nodeModel.defaultProxyAddress()
-                }
+            onToggled: {
                 optionsModel.proxyEnabled = checked
-                defaultProxy.state = checked ? "FILLED" : "DISABLED"
             }
         }
         onClicked: {
@@ -51,31 +43,35 @@ ColumnLayout {
     Setting {
         id: defaultProxy
         Layout.fillWidth: true
-        header: ipAndPortHeader
-        errorText: invalidIpError
-        state: !defaultProxyEnable.loadedItem.checked ? "DISABLED" : "FILLED"
-        showErrorText: !defaultProxy.loadedItem.validInput && defaultProxyEnable.loadedItem.checked
-        actionItem: IPAddressValueInput {
+        header: proxyLocationHeader
+        errorText: loadedItem ? loadedItem.validationError : ""
+        state: optionsModel.proxyEnabled ? "FILLED" : "DISABLED"
+        showErrorText: loadedItem && !loadedItem.validInput && optionsModel.proxyEnabled
+        actionItem: ProxyLocationInput {
             objectName: "proxyAddressInput"
             parentState: defaultProxy.state
+            accessibleName: qsTr("Default proxy location")
             description: optionsModel.proxyAddress.length > 0
                          ? optionsModel.proxyAddress
-                         : nodeModel.defaultProxyAddress()
-            activeFocusOnTab: true
-            // IPAddressValueInput.text is initially bound to `description`.
-            // If a stored address was loaded, text is non-empty here and we
-            // mark the field as filled so it renders in the active style.
+                         : optionsModel.defaultProxyAddress()
             Component.onCompleted: {
                 if (text !== "") filled = true
+                validationError = optionsModel.validateProxyLocation(text)
+                validInput = validationError === ""
             }
             onTextChanged: {
-                validInput = nodeModel.validateProxyAddress(text)
-                if (validInput) optionsModel.proxyAddress = text
+                validationError = optionsModel.validateProxyLocation(text)
+                validInput = validationError === ""
+            }
+            onEditingFinished: {
+                if (validInput) {
+                    optionsModel.commitProxyLocation(text)
+                    filled = true
+                }
             }
         }
         onClicked: {
-            loadedItem.filled = true
-            loadedItem.forceActiveFocus()
+            loadedItem.beginEdit()
         }
     }
     Separator { Layout.fillWidth: true }
@@ -97,15 +93,8 @@ ColumnLayout {
         actionItem: OptionSwitch {
             objectName: "torEnableSwitch"
             checked: optionsModel.torEnabled
-            onCheckedChanged: {
-                // Default to the standard SOCKS5 proxy address (port 9050).
-                // The Tor daemon also defaults to port 9050; the user can
-                // edit the address after enabling.
-                if (checked && optionsModel.torAddress === "") {
-                    optionsModel.torAddress = nodeModel.defaultProxyAddress()
-                }
+            onToggled: {
                 optionsModel.torEnabled = checked
-                torProxy.state = checked ? "FILLED" : "DISABLED"
             }
         }
         onClicked: {
@@ -117,31 +106,35 @@ ColumnLayout {
     Setting {
         id: torProxy
         Layout.fillWidth: true
-        header: ipAndPortHeader
-        errorText: invalidIpError
-        state: !torProxyEnable.loadedItem.checked ? "DISABLED" : "FILLED"
-        showErrorText: !torProxy.loadedItem.validInput && torProxyEnable.loadedItem.checked
-        actionItem: IPAddressValueInput {
+        header: proxyLocationHeader
+        errorText: loadedItem ? loadedItem.validationError : ""
+        state: optionsModel.torEnabled ? "FILLED" : "DISABLED"
+        showErrorText: loadedItem && !loadedItem.validInput && optionsModel.torEnabled
+        actionItem: ProxyLocationInput {
             objectName: "torAddressInput"
             parentState: torProxy.state
+            accessibleName: qsTr("Tor proxy location")
             description: optionsModel.torAddress.length > 0
                          ? optionsModel.torAddress
-                         : nodeModel.defaultProxyAddress()
-            activeFocusOnTab: true
-            // IPAddressValueInput.text is initially bound to `description`.
-            // If a stored address was loaded, text is non-empty here and we
-            // mark the field as filled so it renders in the active style.
+                         : optionsModel.defaultProxyAddress()
             Component.onCompleted: {
                 if (text !== "") filled = true
+                validationError = optionsModel.validateProxyLocation(text)
+                validInput = validationError === ""
             }
             onTextChanged: {
-                validInput = nodeModel.validateProxyAddress(text)
-                if (validInput) optionsModel.torAddress = text
+                validationError = optionsModel.validateProxyLocation(text)
+                validInput = validationError === ""
+            }
+            onEditingFinished: {
+                if (validInput) {
+                    optionsModel.commitTorLocation(text)
+                    filled = true
+                }
             }
         }
         onClicked: {
-            loadedItem.filled = true
-            loadedItem.forceActiveFocus()
+            loadedItem.beginEdit()
         }
     }
     Separator { Layout.fillWidth: true }

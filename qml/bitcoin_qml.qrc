@@ -70,7 +70,6 @@
         <file>controls/Icon.qml</file>
         <file>controls/IconButton.qml</file>
         <file>controls/InformationPage.qml</file>
-        <file>controls/IPAddressValueInput.qml</file>
         <file>controls/KeyValueRow.qml</file>
         <file>controls/LabeledTextInput.qml</file>
         <file>controls/LabeledCoinControlButton.qml</file>
@@ -84,6 +83,7 @@
         <file>controls/PageIndicator.qml</file>
         <file>controls/PageStack.qml</file>
         <file>controls/ProgressIndicator.qml</file>
+        <file>controls/ProxyLocationInput.qml</file>
         <file>controls/QRImage.qml</file>
         <file>controls/qmldir</file>
         <file>controls/SendOptionsPopup.qml</file>

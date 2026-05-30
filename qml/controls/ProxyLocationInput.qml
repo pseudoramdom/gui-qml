@@ -1,4 +1,4 @@
-// Copyright (c) 2024 The Bitcoin Core developers
+// Copyright (c) 2026 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,13 +12,16 @@ TextInput {
     property bool filled: false
     property int descriptionSize: 18
     property color textColor: root.filled ? Theme.color.neutral9 : Theme.color.neutral5
-    // Expose a property to indicate validity, initial value will be true (no error message displayed)
     property bool validInput: true
-    enabled: true
-    state: root.parentState
-    validator: RegularExpressionValidator { regularExpression: /^[\][0-9a-f.:]+$/i } // Allow only IPv4/ IPv6 chars
+    property string validationError: ""
+    property string accessibleName: ""
 
-    maximumLength: 47
+    readOnly: root.parentState === "DISABLED"
+    activeFocusOnTab: !root.readOnly
+    state: root.parentState
+    maximumLength: 255
+    Accessible.role: Accessible.EditableText
+    Accessible.name: root.accessibleName
 
     states: [
         State {
@@ -36,7 +39,6 @@ TextInput {
             name: "DISABLED"
             PropertyChanges {
                 target: root
-                enabled: false
                 textColor: Theme.color.neutral4
             }
         }
@@ -48,9 +50,15 @@ TextInput {
     color: root.textColor
     text: root.description
     horizontalAlignment: Text.AlignRight
-    wrapMode: Text.WordWrap
+    wrapMode: Text.NoWrap
 
     Behavior on color {
         ColorAnimation { duration: 150 }
+    }
+
+    function beginEdit() {
+        if (root.readOnly || !root.enabled) return
+        root.filled = true
+        root.forceActiveFocus()
     }
 }
