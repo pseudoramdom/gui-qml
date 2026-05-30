@@ -12,51 +12,88 @@ import "../controls"
 
 ColumnLayout {
     id: root
+    property var settingsModel: optionsModel
+    property var coreSettingsModel: settingsModel.coreSettings
+    property int assumedBlockchainSize: 0
+    property int assumedChainstateSize: 0
     property bool customStorage: false
     property int customStorageAmount
+    signal storageSelectionChanged(bool customStorage, int customStorageAmount)
+    readonly property int reducedStorageTargetGB: 2
+    readonly property int reduceRequiredGB: root.assumedChainstateSize + root.reducedStorageTargetGB
+    readonly property int fullRequiredGB: root.settingsModel.fullStorageRequiredGB || (root.assumedBlockchainSize + root.assumedChainstateSize)
+    readonly property int availableGB: root.settingsModel.storageAvailableGB || 0
+    readonly property bool hasStorageResult: root.settingsModel.storageAvailableText && !root.settingsModel.storageCheckPending
+    readonly property var pruneSetting: root.coreSettingsModel.entry("prune")
+    readonly property bool storageOptionsEditable: root.pruneSetting.canEdit
+    readonly property bool showCustomOption: root.customStorage || (root.pruneSetting.enabled && root.pruneSetting.value !== root.reducedStorageTargetGB)
+    readonly property int effectiveCustomStorageAmount: root.customStorage ? root.customStorageAmount : root.pruneSetting.value
+
+    function hasEnoughStorage(requiredGB) {
+        return !root.hasStorageResult || root.availableGB >= requiredGB
+    }
+
     ButtonGroup {
         id: group
     }
     spacing: 15
+    CoreText {
+        objectName: "storagePruneCommandLineInfo"
+        Layout.fillWidth: true
+        visible: !root.storageOptionsEditable && root.pruneSetting.infoText.length > 0
+        text: root.pruneSetting.infoText
+        color: Theme.color.neutral7
+        font.pixelSize: 15
+        horizontalAlignment: Text.AlignLeft
+    }
     OptionButton {
+        objectName: "storageReduceOption"
         Layout.fillWidth: true
         ButtonGroup.group: group
         text: qsTr("Reduce storage")
-        description: qsTr("Uses about %1GB. For simple wallet use.").arg(chainModel.assumedChainstateSize + 2)
-        recommended: true
-        checked: !root.customStorage && optionsModel.prune
+        description: root.hasStorageResult
+            ? qsTr("Uses about %1GB. For simple wallet use. %2GB available.").arg(root.reduceRequiredGB).arg(root.availableGB)
+            : qsTr("Uses about %1GB. For simple wallet use.").arg(root.reduceRequiredGB)
+        enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.reduceRequiredGB)
+        recommended: root.storageOptionsEditable && !root.settingsModel.storageEnoughForFull && root.hasEnoughStorage(root.reduceRequiredGB)
+        checked: root.pruneSetting.enabled && root.pruneSetting.value === root.reducedStorageTargetGB
         onClicked: {
-            optionsModel.prune = true
-            optionsModel.pruneSizeGB = 2
-        }
-        Component.onCompleted: {
-            optionsModel.prune = true
-            optionsModel.pruneSizeGB = 2
+            root.storageSelectionChanged(root.showCustomOption, root.effectiveCustomStorageAmount)
+            root.pruneSetting.enabled = true
+            root.pruneSetting.value = root.reducedStorageTargetGB
         }
     }
     OptionButton {
+        objectName: "storageFullOption"
         Layout.fillWidth: true
         ButtonGroup.group: group
         text: qsTr("Store all data")
-        checked: !optionsModel.prune
-        description: qsTr("Uses about %1GB. Support the network.").arg(
-            chainModel.assumedBlockchainSize + chainModel.assumedChainstateSize)
+        checked: !root.pruneSetting.enabled
+        description: root.hasStorageResult
+            ? qsTr("Uses about %1GB. Support the network. %2GB available.").arg(root.fullRequiredGB).arg(root.availableGB)
+            : qsTr("Uses about %1GB. Support the network.").arg(root.fullRequiredGB)
+        enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.fullRequiredGB)
+        recommended: root.storageOptionsEditable && root.settingsModel.storageEnoughForFull
         onClicked: {
-            optionsModel.prune = false
+            root.storageSelectionChanged(root.showCustomOption, root.effectiveCustomStorageAmount)
+            root.pruneSetting.enabled = false
         }
     }
     Loader {
         Layout.fillWidth: true
-        active: root.customStorage
+        active: root.showCustomOption
         visible: active
         sourceComponent: OptionButton {
+            objectName: "storageCustomOption"
             ButtonGroup.group: group
-            checked: root.customStorage && optionsModel.prune
-            text: qsTr("Custom")
-            description: qsTr("Storing about %1GB of data.").arg(root.customStorageAmount + chainModel.assumedChainstateSize)
+            checked: root.pruneSetting.enabled && root.pruneSetting.value === root.effectiveCustomStorageAmount
+            text: qsTr("Custom (%1GB)").arg(root.effectiveCustomStorageAmount)
+            description: qsTr("Uses about %1GB including chainstate.").arg(root.effectiveCustomStorageAmount + root.assumedChainstateSize)
+            enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.effectiveCustomStorageAmount + root.assumedChainstateSize)
             onClicked: {
-                optionsModel.prune = true
-                optionsModel.pruneSizeGB = root.customStorageAmount
+                root.storageSelectionChanged(true, root.effectiveCustomStorageAmount)
+                root.pruneSetting.enabled = true
+                root.pruneSetting.value = root.effectiveCustomStorageAmount
             }
         }
     }

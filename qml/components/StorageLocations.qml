@@ -13,8 +13,30 @@ import "../controls"
 
 ColumnLayout {
     id: root
+    property var settingsModel: optionsModel
     property string validationError: ""
-    readonly property bool validSelection: validationError.length === 0
+    readonly property string storagePathMessage: root.settingsModel.storagePathMessage || ""
+    readonly property string storageAvailableText: root.settingsModel.storageAvailableText || ""
+    readonly property string storageErrorText: root.settingsModel.storageErrorText || ""
+    readonly property bool storageCheckPending: root.settingsModel.storageCheckPending || false
+    readonly property bool validSelection: validationError.length === 0 && storageErrorText.length === 0 && !storageCheckPending
+
+    function updateValidation() {
+        if (root.settingsModel.dataDir === root.settingsModel.getDefaultDataDirString) {
+            root.validationError = ""
+        } else {
+            root.validationError = root.settingsModel.validateCustomDataDir(root.settingsModel.dataDir)
+        }
+    }
+
+    Component.onCompleted: updateValidation()
+
+    Connections {
+        target: root.settingsModel
+        function onDataDirChanged() {
+            root.updateValidation()
+        }
+    }
 
     ButtonGroup {
         id: group
@@ -26,11 +48,11 @@ ColumnLayout {
         ButtonGroup.group: group
         text: qsTr("Default")
         description: qsTr("Your application directory.")
-        customDir: optionsModel.getDefaultDataDirString
-        checked: optionsModel.dataDir === optionsModel.getDefaultDataDirString
+        customDir: root.settingsModel.getDefaultDataDirString
+        checked: root.settingsModel.dataDir === root.settingsModel.getDefaultDataDirString
         onClicked: {
             root.validationError = ""
-            optionsModel.useDefaultDataDir()
+            root.settingsModel.useDefaultDataDir()
         }
     }
     OptionButton {
@@ -39,17 +61,18 @@ ColumnLayout {
         ButtonGroup.group: group
         text: qsTr("Custom")
         description: qsTr("Choose the directory and storage device.")
-        customDir: checked && optionsModel.dataDir !== optionsModel.getDefaultDataDirString ? optionsModel.dataDir : ""
-        checked: optionsModel.dataDir !== optionsModel.getDefaultDataDirString
-        onClicked: fileDialog.open()
+        customDir: checked && root.settingsModel.dataDir !== root.settingsModel.getDefaultDataDirString ? root.settingsModel.dataDir : ""
+        checked: root.settingsModel.dataDir !== root.settingsModel.getDefaultDataDirString
+        onClicked: folderDialog.open()
     }
-    FileDialog {
-        id: fileDialog
+    FolderDialog {
+        id: folderDialog
+        objectName: "customDataDirFolderDialog"
         onAccepted: {
-            var customDataDir = fileDialog.selectedFile.toString();
+            var customDataDir = folderDialog.selectedFolder.toString();
             if (customDataDir !== "") {
-                root.validationError = optionsModel.validateCustomDataDir(customDataDir)
-                if (root.validationError === "" && optionsModel.selectCustomDataDir(customDataDir)) {
+                root.validationError = root.settingsModel.validateCustomDataDir(customDataDir)
+                if (root.validationError === "" && root.settingsModel.selectCustomDataDir(customDataDir)) {
                 } else if (root.validationError === "") {
                     root.validationError = qsTr("The selected data directory could not be created.")
                 }
@@ -64,6 +87,26 @@ ColumnLayout {
         visible: root.validationError.length > 0
         text: root.validationError
         color: Theme.color.blue
+        horizontalAlignment: Text.AlignLeft
+        font.pixelSize: 15
+    }
+    CoreText {
+        Layout.fillWidth: true
+        visible: root.validationError.length === 0 && root.storageErrorText.length > 0
+        text: root.storageErrorText
+        color: Theme.color.blue
+        horizontalAlignment: Text.AlignLeft
+        font.pixelSize: 15
+    }
+    CoreText {
+        Layout.fillWidth: true
+        visible: root.validationError.length === 0 && root.storageErrorText.length === 0 && (root.storageCheckPending || root.storageAvailableText.length > 0 || root.storagePathMessage.length > 0)
+        text: root.storageCheckPending
+            ? qsTr("Checking available storage...")
+            : root.storageAvailableText.length > 0
+                ? qsTr("%1. %2").arg(root.storageAvailableText).arg(root.storagePathMessage)
+                : root.storagePathMessage
+        color: Theme.color.neutral7
         horizontalAlignment: Text.AlignLeft
         font.pixelSize: 15
     }

@@ -12,6 +12,8 @@ import "../../components"
 InformationPage {
     id: root
     objectName: "onboardingStorageLocation"
+    property int assumedChainstateSize: 0
+    property var settingsModel: optionsModel
     buttonObjectName: "onboardingStorageLocationButton"
     navLeftDetail: NavButton {
         iconSource: "image://images/caret-left"
@@ -22,10 +24,12 @@ InformationPage {
     bold: true
     headerText: qsTr("Storage location")
     headerMargin: 0
-    description: qsTr("Where do you want to store the downloaded block data?\nYou need a minimum of %1GB of storage.").arg(chainModel.assumedChainstateSize + 1)
+    description: qsTr("Where do you want to store the downloaded block data?\nYou need a minimum of %1GB of storage.").arg(root.assumedChainstateSize + 1)
     descriptionMargin: 20
     detailActive: true
     buttonEnabled: !loadedDetailItem || loadedDetailItem.validSelection
-    detailItem: StorageLocations {}
+    detailItem: StorageLocations {
+        settingsModel: root.settingsModel
+    }
     buttonText: qsTr("Next")
 }

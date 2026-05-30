@@ -14,24 +14,28 @@ Button {
     property string customDir: ""
     padding: 15
     checkable: true
+    hoverEnabled: enabled
     implicitWidth: 450
     background: Rectangle {
+        objectName: "optionButtonBackground"
         border.width: 1
-        border.color: button.checked ? Theme.color.orange : button.hovered ? Theme.color.neutral9 : Theme.color.neutral5
+        border.color: !button.enabled ? Theme.color.neutral4 : button.checked ? Theme.color.orange : button.hovered ? Theme.color.neutral9 : Theme.color.neutral5
         radius: 10
         color: "transparent"
         FocusBorder {
-            visible: button.visualFocus
+            visible: button.enabled && button.visualFocus
             borderRadius: 14
         }
     }
 
     MouseArea {
         anchors.fill: parent
+        enabled: button.enabled
         onClicked: button.clicked()
     }
 
     contentItem: RowLayout {
+        opacity: button.enabled ? 1 : 0.55
         spacing: 3
         Loader {
             active: button.image !== ""

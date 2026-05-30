@@ -69,7 +69,7 @@ ColumnLayout {
         showInfoText: !showErrorText && infoText.length > 0
         actionItem: ValueInput {
             objectName: "pruneTargetInput"
-            parentState: pruneTargetSetting.state
+            parentState: pruneTargetSetting.visualState
             description: root.pruneSetting.value
             onTextEdited: {
                 pruneTargetSetting.showErrorText = false

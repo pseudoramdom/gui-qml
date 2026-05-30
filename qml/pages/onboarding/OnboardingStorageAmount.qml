@@ -14,8 +14,15 @@ Page {
     objectName: "onboardingStorageAmount"
     signal back
     signal next
+    property var settingsModel: optionsModel
+    property int assumedBlockchainSize: 0
+    property int assumedChainstateSize: 0
     property bool customStorage: false
     property int customStorageAmount
+    readonly property string storageAvailableText: root.settingsModel.storageAvailableText || ""
+    readonly property string storageWarningText: root.settingsModel.storageWarningText || ""
+    readonly property string storageErrorText: root.settingsModel.storageErrorText || ""
+    readonly property string storageRecommendationText: root.settingsModel.storageRecommendationText || ""
     background: null
     clip: true
     PageStack {
@@ -26,26 +33,38 @@ Page {
         Component {
             id: onboardingStorageAmount
             InformationPage {
+                objectName: "onboardingStorageAmountPage"
                 buttonObjectName: "onboardingStorageAmountButton"
-                navLeftDetail: NavButton {
-                    iconSource: "image://images/caret-left"
-                    text: qsTr("Back")
-                    onClicked: root.back()
-                }
+                navLeftDetail: backButton
                 bannerActive: false
                 bold: true
                 headerText: qsTr("Storage")
                 headerMargin: 0
-                description: qsTr("Data retrieved from the Bitcoin network is stored on your device.\nYou have 500GB of storage available.")
+                description: root.storageAvailableText.length > 0
+                    ? qsTr("Data retrieved from the Bitcoin network is stored on your device.\n%1.").arg(root.storageAvailableText)
+                    : qsTr("Data retrieved from the Bitcoin network is stored on your device.")
                 descriptionMargin: 10
+                subtext: root.storageErrorText.length > 0
+                    ? root.storageErrorText
+                    : root.storageWarningText.length > 0
+                        ? root.storageWarningText
+                        : root.storageRecommendationText
+                subtextMargin: 10
                 detailActive: true
                 detailItem: ColumnLayout {
                     spacing: 0
                     StorageOptions {
-                        customStorage: advancedStorage.loadedDetailItem.customStorage
-                        customStorageAmount: advancedStorage.loadedDetailItem.customStorageAmount
+                        settingsModel: root.settingsModel
+                        assumedBlockchainSize: root.assumedBlockchainSize
+                        assumedChainstateSize: root.assumedChainstateSize
+                        customStorage: root.customStorage
+                        customStorageAmount: root.customStorageAmount
                         Layout.maximumWidth: 450
                         Layout.alignment: Qt.AlignCenter
+                        onStorageSelectionChanged: function(customStorage, customStorageAmount) {
+                            root.customStorage = customStorage
+                            root.customStorageAmount = customStorageAmount
+                        }
                     }
                     TextButton {
                         Layout.topMargin: 10
@@ -56,13 +75,26 @@ Page {
                 }
                 buttonText: qsTr("Next")
                 buttonMargin: 20
+                buttonEnabled: !root.settingsModel.storageCheckPending && root.storageErrorText.length === 0 && root.settingsModel.storageEnoughForSelected
                 onNext: root.next()
             }
         }
+
+        Component {
+            id: backButton
+            NavButton {
+                objectName: "onboardingStorageAmountBackButton"
+                iconSource: "image://images/caret-left"
+                text: qsTr("Back")
+                onClicked: root.back()
+            }
+        }
+
         Component {
             id: storageAmountSettings
             SettingsStorage {
                 id: advancedStorage
+                settingsModel: root.settingsModel
                 onboarding: true
                 onBack: stack.pop()
                 onCustomStorageChanged: {
