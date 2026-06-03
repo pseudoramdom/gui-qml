@@ -19,6 +19,7 @@ private Q_SLOTS:
     void singleRecipientReviewAmountsInheritRecipientUnit();
     void multipleRecipientReviewAmountsStayInBtc();
     void recipientRolesExposeFormattedAddressAndUnitLabel();
+    void removingRecipientUpdatesTotalOnce();
 };
 
 void WalletQmlModelTransactionTests::singleRecipientReviewAmountsInheritRecipientUnit()
@@ -73,6 +74,20 @@ void WalletQmlModelTransactionTests::recipientRolesExposeFormattedAddressAndUnit
     QCOMPARE(
         recipients.data(index, SendRecipientsListModel::AmountUnitLabelRole).toString(),
         QString("sats"));
+}
+
+void WalletQmlModelTransactionTests::removingRecipientUpdatesTotalOnce()
+{
+    SendRecipientsListModel recipients;
+    recipients.currentRecipient()->amount()->setSatoshi(1000);
+    recipients.add();
+    recipients.currentRecipient()->amount()->setSatoshi(2000);
+
+    QSignalSpy total_changed_spy{&recipients, &SendRecipientsListModel::totalAmountChanged};
+    recipients.remove();
+
+    QCOMPARE(recipients.totalAmountSatoshi(), 1000);
+    QCOMPARE(total_changed_spy.count(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

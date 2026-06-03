@@ -35,17 +35,19 @@ ColumnLayout {
 
     Item {
         id: inputRow
-        height: amountInput.height
         Layout.fillWidth: true
+        Layout.preferredHeight: 56
 
         CoreText {
             id: lbl
-            width: 110
+            width: 128
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignLeft
             text: root.labelText
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
         }
 
         TextField {
@@ -88,9 +90,7 @@ ColumnLayout {
             anchors.verticalCenter: parent.verticalCenter
             leftPadding: 0
             enabled: root.enabled
-            font.family: "BitcoinCoreSans"
-            font.styleName: "Regular"
-            font.pixelSize: 18
+            font: Theme.text.body.font
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
@@ -173,7 +173,9 @@ ColumnLayout {
                 anchors.right: flipIcon.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.amount ? root.amount.unitLabel : ""
-                font.pixelSize: 18
+                font: Theme.text.body.font
+                lineHeight: Theme.text.body.lineHeight
+                lineHeightMode: Text.FixedHeight
                 color: root.enabled ? Theme.color.neutral7 : Theme.color.neutral4
             }
 
@@ -202,7 +204,9 @@ ColumnLayout {
         CoreText {
             id: errorTextLabel
             text: root.errorText
-            font.pixelSize: 15
+            font: Theme.text.description.font
+            lineHeight: Theme.text.description.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.red
             horizontalAlignment: Text.AlignLeft
             Layout.fillWidth: true

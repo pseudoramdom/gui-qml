@@ -17,6 +17,7 @@ class SendRecipientsListModel : public QAbstractListModel
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(SendRecipient* current READ currentRecipient NOTIFY currentRecipientChanged)
     Q_PROPERTY(QString totalAmount READ totalAmount NOTIFY totalAmountChanged)
+    Q_PROPERTY(qint64 totalAmountSatoshi READ totalAmountSatoshi NOTIFY totalAmountChanged)
     Q_PROPERTY(bool allValid READ allValid NOTIFY validationChanged)
     Q_PROPERTY(QString validationError READ validationError NOTIFY validationChanged)
 

@@ -56,12 +56,15 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
+        Layout.minimumHeight: 56
         spacing: 16
 
         CoreText {
-            Layout.preferredWidth: 110
+            Layout.preferredWidth: 128
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             text: root.customSelected ? qsTr("Fee Rate") : qsTr("Fee")
         }
 
@@ -70,7 +73,9 @@ ColumnLayout {
             objectName: "feeSelectionEstimateLabel"
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.neutral7
             text: root.selectedEstimate
             visible: !root.customSelected
@@ -82,9 +87,7 @@ ColumnLayout {
             Layout.fillWidth: true
             visible: root.customSelected
             leftPadding: 0
-            font.family: "Inter"
-            font.styleName: "Regular"
-            font.pixelSize: 18
+            font: Theme.text.body.font
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
@@ -121,13 +124,16 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
+        Layout.minimumHeight: 56
         spacing: 16
         visible: root.customSelected
 
         CoreText {
-            Layout.preferredWidth: 110
+            Layout.preferredWidth: 128
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             text: qsTr("Fee")
         }
 
@@ -136,7 +142,9 @@ ColumnLayout {
             objectName: "feeSelectionCustomEstimateLabel"
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.neutral7
             text: root.walletModel ? (root.walletModel.feeEstimateRevision, root.walletModel.estimatedFee) : ""
         }

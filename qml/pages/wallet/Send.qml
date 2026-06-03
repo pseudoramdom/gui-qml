@@ -73,7 +73,7 @@ PageStack {
         target: root.wallet ? root.wallet.recipients : null
         function onListCleared() {
             root.clearPrepareTransactionError()
-            settings.multipleRecipientsEnabled = false
+            sendOptionsPopup.multipleRecipientsEnabled = false
             if (root.wallet) {
                 root.wallet.scheduleFeeEstimates()
             }
@@ -116,6 +116,14 @@ PageStack {
         when: root.recipient !== null
     }
 
+    BitcoinAmount {
+        id: recipientsTotalAmount
+        satoshi: root.wallet && root.wallet.recipients
+            ? root.wallet.recipients.totalAmountSatoshi
+            : 0
+        unit: optionsModel.displayUnit
+    }
+
     initialItem: Page {
         id: sendPage
         objectName: "walletSendPage"
@@ -125,7 +133,7 @@ PageStack {
             sendOptionsPopup.close()
             if (mode === "single-review" || mode === "multiple-review") {
                 const multipleRecipientsEnabled = mode === "multiple-review"
-                settings.multipleRecipientsEnabled = multipleRecipientsEnabled
+                sendOptionsPopup.multipleRecipientsEnabled = multipleRecipientsEnabled
                 root.transactionPrepared(multipleRecipientsEnabled)
             } else if (mode === "unsupported") {
                 unsupportedPsbtPopup.message = root.wallet.importedPsbtError.length > 0
@@ -447,19 +455,25 @@ PageStack {
 
         Settings {
             id: settings
-            property alias coinControlEnabled: sendOptionsPopup.coinControlEnabled
-            property alias multipleRecipientsEnabled: sendOptionsPopup.multipleRecipientsEnabled
+            property bool coinControlEnabled: false
+            property bool multipleRecipientsEnabled: false
+        }
 
-            onMultipleRecipientsEnabledChanged: {
-                if (!multipleRecipientsEnabled) {
+        Connections {
+            target: sendOptionsPopup
+
+            function onMultipleRecipientsEnabledChanged() {
+                settings.multipleRecipientsEnabled = sendOptionsPopup.multipleRecipientsEnabled
+                if (!sendOptionsPopup.multipleRecipientsEnabled) {
                     root.wallet.recipients.clearToFront()
                 } else if (root.wallet.recipients.count === 1) {
                     root.wallet.recipients.add()
                 }
             }
 
-            onCoinControlEnabledChanged: {
-                if (coinControlEnabled && root.wallet) {
+            function onCoinControlEnabledChanged() {
+                settings.coinControlEnabled = sendOptionsPopup.coinControlEnabled
+                if (sendOptionsPopup.coinControlEnabled && root.wallet) {
                     root.wallet.coinsListModel.update()
                 }
             }
@@ -477,15 +491,18 @@ PageStack {
                 width: 520
                 anchors.horizontalCenter: parent.horizontalCenter
 
-                spacing: 10
+                readonly property int rowHeight: 56
+
+                spacing: 0
 
                 enabled: walletController.initialized
 
                 Item {
                     id: titleRow
                     Layout.fillWidth: true
-                    Layout.topMargin: 30
-                    Layout.bottomMargin: root.externalSignerWallet ? 10 : 20
+                    Layout.preferredHeight: title.implicitHeight
+                    Layout.topMargin: 48
+                    Layout.bottomMargin: root.externalSignerWallet ? 24 : 36
 
                     CoreText {
                         id: title
@@ -493,9 +510,10 @@ PageStack {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("Send bitcoin")
-                        font.pixelSize: 21
+                        font: Theme.text.subtitle.font
+                        lineHeight: Theme.text.subtitle.lineHeight
+                        lineHeightMode: Text.FixedHeight
                         color: Theme.color.neutral9
-                        bold: true
                     }
 
                     IconButton {
@@ -518,6 +536,8 @@ PageStack {
                         id: sendOptionsPopup
                         x: menuButton.x - width + menuButton.width
                         y: menuButton.y + menuButton.height
+                        coinControlEnabled: settings.coinControlEnabled
+                        multipleRecipientsEnabled: settings.multipleRecipientsEnabled
                         onClearFormRequested: {
                             sendOptionsPopup.close()
                             root.wallet.recipients.clear()
@@ -538,11 +558,13 @@ PageStack {
                 CoreText {
                     visible: root.externalSignerWallet
                     Layout.fillWidth: true
-                    Layout.bottomMargin: 10
+                    Layout.bottomMargin: 16
                     horizontalAlignment: Text.AlignLeft
                     wrap: true
                     text: qsTr("Make sure you have your external signer at hand to approve this transaction.")
-                    font.pixelSize: 18
+                    font: Theme.text.body.font
+                    lineHeight: Theme.text.body.lineHeight
+                    lineHeightMode: Text.FixedHeight
                     color: Theme.color.neutral7
                 }
 
@@ -679,17 +701,17 @@ PageStack {
                     id: selectAndAddRecipients
                     objectName: "sendMultipleRecipientsRow"
                     Layout.fillWidth: true
-                    Layout.topMargin: 10
-                    Layout.bottomMargin: 10
-                    visible: settings.multipleRecipientsEnabled
+                    Layout.preferredHeight: columnLayout.rowHeight
+                    spacing: 8
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
 
                     CoreText {
                         id: selectAndAddRecipientsLabel
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignLeft
                         text: qsTr("Recipient %1 of %2").arg(wallet.recipients.currentIndex).arg(wallet.recipients.count)
                         horizontalAlignment: Text.AlignLeft
-                        font.pixelSize: 18
+                        font: Theme.text.body.font
+                        lineHeight: Theme.text.body.lineHeight
+                        lineHeightMode: Text.FixedHeight
                         color: Theme.color.neutral9
                     }
 
@@ -718,6 +740,20 @@ PageStack {
                     }
 
                     IconButton {
+                        objectName: "sendRecipientRemoveButton"
+                        Layout.preferredWidth: 30
+                        Layout.preferredHeight: 30
+                        size: 30
+                        iconSource: "image://images/cross"
+                        enabled: wallet.recipients.count > 1
+                        onClicked: {
+                            wallet.recipients.remove()
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    IconButton {
                         objectName: "sendRecipientAddButton"
                         Layout.preferredWidth: 30
                         Layout.preferredHeight: 30
@@ -728,22 +764,10 @@ PageStack {
                             wallet.recipients.add()
                         }
                     }
-
-                    IconButton {
-                        objectName: "sendRecipientRemoveButton"
-                        Layout.preferredWidth: 30
-                        Layout.preferredHeight: 30
-                        size: 30
-                        iconSource: "image://images/minus"
-                        enabled: wallet.recipients.count > 1
-                        onClicked: {
-                            wallet.recipients.remove()
-                        }
-                    }
                 }
 
                 Separator {
-                    visible: settings.multipleRecipientsEnabled
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
                     Layout.fillWidth: true
                 }
 
@@ -759,6 +783,21 @@ PageStack {
                         root.scheduleFeeEstimates()
                     }
                     onEditingFinished: root.scheduleFeeEstimates()
+                }
+
+                Separator {
+                    Layout.fillWidth: true
+                }
+
+                LabeledTextInput {
+                    id: label
+                    objectName: "sendNoteField"
+                    inputObjectName: "sendNoteInput"
+                    Layout.fillWidth: true
+                    labelText: qsTr("Note to self")
+                    placeholderText: qsTr("Recommended")
+                    text: root.recipient.label
+                    onTextEdited: root.recipient.label = label.text
                 }
 
                 Separator {
@@ -785,28 +824,40 @@ PageStack {
                 }
 
                 Separator {
+                    visible: !sendOptionsPopup.multipleRecipientsEnabled
                     Layout.fillWidth: true
                 }
 
-                LabeledTextInput {
-                    id: label
-                    objectName: "sendNoteField"
-                    inputObjectName: "sendNoteInput"
+                Item {
+                    id: transactionSectionHeader
+                    objectName: "sendTransactionSectionHeader"
                     Layout.fillWidth: true
-                    labelText: qsTr("Note to self")
-                    placeholderText: qsTr("Enter note…")
-                    text: root.recipient.label
-                    onTextEdited: root.recipient.label = label.text
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 8
+                    Layout.preferredHeight: transactionSectionTitle.implicitHeight
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
+
+                    CoreText {
+                        id: transactionSectionTitle
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Transaction")
+                        font: Theme.text.heading.font
+                        lineHeight: Theme.text.heading.lineHeight
+                        lineHeightMode: Text.FixedHeight
+                        color: Theme.color.neutral9
+                    }
                 }
 
                 Separator {
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
                     Layout.fillWidth: true
                 }
 
                 LabeledCoinControlButton {
                     objectName: "sendCoinControlButton"
                     valueObjectName: "sendCoinControlButtonText"
-                    visible: settings.coinControlEnabled
+                    visible: sendOptionsPopup.coinControlEnabled
                     Layout.fillWidth: true
                     coinsSelected: wallet.coinsListModel.selectedCoinsCount
                     coinCount: wallet.coinsListModel.coinCount
@@ -817,7 +868,7 @@ PageStack {
                 }
 
                 Separator {
-                    visible: settings.coinControlEnabled
+                    visible: sendOptionsPopup.coinControlEnabled
                     Layout.fillWidth: true
                 }
 
@@ -844,35 +895,78 @@ PageStack {
                     }
                 }
 
+                Separator {
+                    Layout.fillWidth: true
+                }
+
+                Item {
+                    id: totalAmountRow
+                    objectName: "sendTotalAmountRow"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: columnLayout.rowHeight
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
+
+                    CoreText {
+                        id: totalAmountLabel
+                        width: 128
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignLeft
+                        text: qsTr("Total amount")
+                        font: Theme.text.body.font
+                        lineHeight: Theme.text.body.lineHeight
+                        lineHeightMode: Text.FixedHeight
+                    }
+
+                    CoreText {
+                        objectName: "sendTotalAmountValue"
+                        anchors.left: totalAmountLabel.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignLeft
+                        text: recipientsTotalAmount.displayWithUnit
+                        font: Theme.text.body.font
+                        lineHeight: Theme.text.body.lineHeight
+                        lineHeightMode: Text.FixedHeight
+                        color: Theme.color.neutral9
+                    }
+                }
+
+                Separator {
+                    visible: sendOptionsPopup.multipleRecipientsEnabled
+                    Layout.fillWidth: true
+                }
+
                 RowLayout {
                     objectName: "sendFeeIncludedNote"
                     Layout.fillWidth: true
+                    Layout.topMargin: visible ? 12 : 0
                     visible: root.recipient && root.recipient.subtractFeeFromAmount
+                    spacing: 8
 
                     Icon {
                         source: "image://images/check"
                         size: 18
-                        color: Theme.color.green
+                        color: Theme.color.neutral7
                     }
 
                     CoreText {
                         objectName: "sendFeeIncludedNoteText"
                         Layout.fillWidth: true
                         text: qsTr("Fee is included in the amount")
-                        font.pixelSize: 15
+                        font: Theme.text.description.font
+                        lineHeight: Theme.text.description.lineHeight
+                        lineHeightMode: Text.FixedHeight
                         color: Theme.color.neutral7
                         horizontalAlignment: Text.AlignLeft
                     }
                 }
 
-                Separator {
-                    Layout.fillWidth: true
-                }
-
                 RowLayout {
                     objectName: "sendPrepareTransactionError"
                     Layout.fillWidth: true
+                    Layout.topMargin: visible ? 12 : 0
                     visible: root.formErrorText.length > 0
+                    spacing: 8
 
                     Icon {
                         source: "image://images/alert-filled"
@@ -883,7 +977,9 @@ PageStack {
                     CoreText {
                         objectName: "sendPrepareTransactionErrorText"
                         text: root.formErrorText
-                        font.pixelSize: 15
+                        font: Theme.text.description.font
+                        lineHeight: Theme.text.description.lineHeight
+                        lineHeightMode: Text.FixedHeight
                         color: Theme.color.red
                         horizontalAlignment: Text.AlignLeft
                         Layout.fillWidth: true
@@ -894,7 +990,8 @@ PageStack {
                     id: continueButton
                     objectName: "sendReviewButton"
                     Layout.fillWidth: true
-                    Layout.topMargin: 30
+                    Layout.topMargin: 36
+                    Layout.bottomMargin: 24
                     text: root.externalSignerWallet ? qsTr("Review transaction") : qsTr("Review")
                     enabled: root.wallet
                         && root.wallet.recipients.allValid
@@ -903,7 +1000,7 @@ PageStack {
                     onClicked: {
                         root.clearPrepareTransactionError()
                         if (root.wallet.prepareTransaction()) {
-                            root.transactionPrepared(settings.multipleRecipientsEnabled)
+                            root.transactionPrepared(sendOptionsPopup.multipleRecipientsEnabled)
                         } else if (root.wallet.transactionNeedsUnlock) {
                             reviewPassphrasePopup.errorText = ""
                             reviewPassphrasePopup.open()
@@ -1003,7 +1100,7 @@ PageStack {
             if (root.wallet.prepareTransactionWithPassphrase(passphrase)) {
                 reviewPassphrasePopup.busy = false
                 reviewPassphrasePopup.close()
-                root.transactionPrepared(settings.multipleRecipientsEnabled)
+                root.transactionPrepared(sendOptionsPopup.multipleRecipientsEnabled)
                 return
             }
             reviewPassphrasePopup.busy = false

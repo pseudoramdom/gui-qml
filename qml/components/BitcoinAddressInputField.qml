@@ -27,17 +27,18 @@ ColumnLayout {
     Item {
         id: inputRow
         Layout.fillWidth: true
-        implicitHeight: Math.max(label.implicitHeight + 6, addressInput.height)
+        implicitHeight: Math.max(56, addressInput.height + 16)
 
         CoreText {
             id: label
-            width: 110
+            width: 128
             anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.topMargin: 6
+            anchors.verticalCenter: addressInput.verticalCenter
             horizontalAlignment: Text.AlignLeft
             text: root.labelText
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
         }
 
         TextArea {
@@ -45,7 +46,7 @@ ColumnLayout {
             objectName: root.inputObjectName
             anchors.left: label.right
             anchors.right: parent.right
-            anchors.top: parent.top
+            anchors.verticalCenter: parent.verticalCenter
             enabled: root.enabled
             placeholderText: qsTr("Enter address...")
             text: root.address ? root.address.formattedAddress : ""
@@ -55,9 +56,7 @@ ColumnLayout {
             rightPadding: 0
             bottomPadding: 0
             height: Math.max(contentHeight, 32)
-            font.family: "Roboto Mono"
-            font.styleName: "Regular"
-            font.pixelSize: 18
+            font: Theme.text.monoBody.font
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
@@ -101,7 +100,9 @@ ColumnLayout {
 
         CoreText {
             text: root.errorText
-            font.pixelSize: 15
+            font: Theme.text.description.font
+            lineHeight: Theme.text.description.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.red
             horizontalAlignment: Text.AlignLeft
             Layout.fillWidth: true

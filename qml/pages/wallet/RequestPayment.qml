@@ -140,14 +140,15 @@ Page {
         ColumnLayout {
             width: 520
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10
+            spacing: 0
             enabled: walletController.initialized
 
             Item {
                 id: titleRow
                 Layout.fillWidth: true
-                Layout.topMargin: 30
-                Layout.bottomMargin: 20
+                Layout.preferredHeight: titleText.implicitHeight
+                Layout.topMargin: 36
+                Layout.bottomMargin: 36
 
                 CoreText {
                     id: titleText
@@ -157,9 +158,10 @@ Page {
                     text: root.hasSavedRequest
                         ? qsTr("Payment request #%1").arg(root.requestValue("id"))
                         : qsTr("Request a payment")
-                    font.pixelSize: 21
+                    font: Theme.text.subtitle.font
+                    lineHeight: Theme.text.subtitle.lineHeight
+                    lineHeightMode: Text.FixedHeight
                     color: Theme.color.neutral9
-                    bold: true
                 }
 
                 IconButton {
@@ -304,7 +306,7 @@ Page {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    height: 40
+                    Layout.preferredHeight: 56
 
                     CoreText {
                         id: addressTypePickerLabel
@@ -314,7 +316,9 @@ Page {
                         Layout.rightMargin: 10
                         horizontalAlignment: Text.AlignLeft
                         text: qsTr("Address type")
-                        font.pixelSize: 18
+                        font: Theme.text.body.font
+                        lineHeight: Theme.text.body.lineHeight
+                        lineHeightMode: Text.FixedHeight
                         wrapMode: Text.NoWrap
                     }
 
@@ -368,17 +372,18 @@ Page {
             Item {
                 Layout.fillWidth: true
                 visible: root.hasAddressType
-                implicitHeight: addressTypeLabel.implicitHeight + 16
-                height: implicitHeight
+                Layout.preferredHeight: 56
 
                 CoreText {
                     id: addressTypeLabel
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 110
+                    width: 128
                     horizontalAlignment: Text.AlignLeft
                     text: qsTr("Type")
-                    font.pixelSize: 18
+                    font: Theme.text.body.font
+                    lineHeight: Theme.text.body.lineHeight
+                    lineHeightMode: Text.FixedHeight
                 }
 
                 CoreText {
@@ -387,7 +392,9 @@ Page {
                     anchors.verticalCenter: parent.verticalCenter
                     horizontalAlignment: Text.AlignLeft
                     text: root.requestValue("addressType")
-                    font.pixelSize: 18
+                    font: Theme.text.body.font
+                    lineHeight: Theme.text.body.lineHeight
+                    lineHeightMode: Text.FixedHeight
                     color: Theme.color.neutral9
                 }
             }
@@ -409,9 +416,11 @@ Page {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     horizontalAlignment: Text.AlignLeft
-                    width: 110
+                    width: 128
                     text: qsTr("Address")
-                    font.pixelSize: 18
+                    font: Theme.text.body.font
+                    lineHeight: Theme.text.body.lineHeight
+                    lineHeightMode: Text.FixedHeight
                 }
 
                 CoreText {
@@ -419,9 +428,11 @@ Page {
                     anchors.left: parent.left
                     anchors.top: addressLabel.bottom
                     horizontalAlignment: Text.AlignLeft
-                    width: 110
+                    width: 128
                     text: qsTr("Copy")
-                    font.pixelSize: 18
+                    font: Theme.text.body.font
+                    lineHeight: Theme.text.body.lineHeight
+                    lineHeightMode: Text.FixedHeight
                     color: Theme.color.orange
                 }
 
@@ -433,7 +444,9 @@ Page {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     horizontalAlignment: Text.AlignLeft
-                    font.pixelSize: 18
+                    font: Theme.text.monoBody.font
+                    lineHeight: Theme.text.monoBody.lineHeight
+                    lineHeightMode: Text.FixedHeight
                     wrapMode: Text.WordWrap
                     text: root.request ? root.request.addressFormatted : ""
                 }
@@ -458,7 +471,7 @@ Page {
                 id: generateButton
                 objectName: "requestPaymentGenerateButton"
                 Layout.fillWidth: true
-                Layout.topMargin: 30
+                Layout.topMargin: 36
                 text: {
                     if (!root.request || root.requestIsEditing()) {
                         return root.hasSavedRequest

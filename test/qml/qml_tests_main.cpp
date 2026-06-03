@@ -186,7 +186,12 @@ public:
         Q_EMIT displayChanged();
         Q_EMIT amountChanged();
     }
-    QString unitLabel() const { return m_unit == BTC ? QStringLiteral("BTC") : QStringLiteral("sat"); }
+    QString unitLabel() const
+    {
+        if (m_unit == BTC) return QStringLiteral("BTC");
+        const qint64 sats = satoshi();
+        return sats == 1 || sats == -1 ? QStringLiteral("sat") : QStringLiteral("sats");
+    }
     QString displayWithUnit() const { return m_display.isEmpty() ? QString{} : m_display + QStringLiteral(" ") + unitLabel(); }
     Q_INVOKABLE void format()
     {
@@ -500,6 +505,7 @@ class MockRecipientsModel : public QAbstractListModel
     Q_PROPERTY(QObject* current READ current NOTIFY currentChanged)
     Q_PROPERTY(int currentIndex READ currentIndex WRITE setCurrentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(qint64 totalAmountSatoshi READ totalAmountSatoshi WRITE setTotalAmountSatoshi NOTIFY totalAmountChanged)
     Q_PROPERTY(bool allValid READ allValid WRITE setAllValid NOTIFY validationChanged)
     Q_PROPERTY(QString validationError READ validationError WRITE setValidationError NOTIFY validationChanged)
 
@@ -528,6 +534,7 @@ public:
     QObject* current() const { return m_current; }
     int currentIndex() const { return m_current_index; } // 1-based, matches QML expectations.
     int count() const { return static_cast<int>(m_rows.size()); }
+    qint64 totalAmountSatoshi() const { return m_total_amount_satoshi; }
     bool allValid() const { return m_all_valid; }
     QString validationError() const { return m_validation_error; }
 
@@ -543,6 +550,13 @@ public:
         if (m_validation_error == validation_error) return;
         m_validation_error = validation_error;
         Q_EMIT validationChanged();
+    }
+
+    void setTotalAmountSatoshi(qint64 total_amount_satoshi)
+    {
+        if (m_total_amount_satoshi == total_amount_satoshi) return;
+        m_total_amount_satoshi = total_amount_satoshi;
+        Q_EMIT totalAmountChanged();
     }
 
     void setCurrent(QObject* recipient)
@@ -595,6 +609,7 @@ public:
         }
         endResetModel();
         m_current_index = 1;
+        setTotalAmountSatoshi(0);
         Q_EMIT countChanged();
         Q_EMIT currentIndexChanged();
         Q_EMIT listCleared();
@@ -636,12 +651,14 @@ Q_SIGNALS:
     void currentRecipientChanged();
     void currentIndexChanged();
     void countChanged();
+    void totalAmountChanged();
     void listCleared();
     void validationChanged();
 
 private:
     QObject* m_current{nullptr};
     int m_current_index{1};
+    qint64 m_total_amount_satoshi{0};
     std::vector<RecipientRow> m_rows{};
     bool m_all_valid{true};
     QString m_validation_error;

@@ -3,7 +3,9 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 import QtQuick 2.15
+import QtQuick.Window 2.15
 import QtTest 1.2
+import org.bitcoincore.qt 1.0
 import "../../qml/pages/wallet"
 
 TestCase {
@@ -11,6 +13,13 @@ TestCase {
     when: windowShown
     width: 900
     height: 700
+
+    Window {
+        id: testWindow
+        width: 900
+        height: 700
+        visible: true
+    }
 
     Component {
         id: sendComponent
@@ -35,6 +44,9 @@ TestCase {
         testSendRecipient.isValid = true
         testRecipientsModel.allValid = true
         testRecipientsModel.validationError = ""
+        testRecipientsModel.clearToFront()
+        testRecipientsModel.totalAmountSatoshi = 0
+        optionsModel.displayUnit = BitcoinAmount.BTC
         testCoinsListModel.reset()
     }
 
@@ -54,7 +66,77 @@ TestCase {
         verify(findChild(page, "sendFeeIncludedNoteText") !== null)
         verify(findChild(page, "sendPrepareTransactionError") !== null)
         verify(findChild(page, "sendPrepareTransactionErrorText") !== null)
+        verify(findChild(page, "sendTransactionSectionHeader") !== null)
+        verify(findChild(page, "sendTotalAmountRow") !== null)
+        verify(findChild(page, "sendTotalAmountValue") !== null)
         verify(findChild(page, "sendReviewButton") !== null)
+    }
+
+    function test_send_multiple_recipient_layout_and_total_follow_state() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const optionsPopup = findChild(page, "sendOptionsPopup")
+        const recipientsRow = findChild(page, "sendMultipleRecipientsRow")
+        const transactionHeader = findChild(page, "sendTransactionSectionHeader")
+        const totalRow = findChild(page, "sendTotalAmountRow")
+        const totalValue = findChild(page, "sendTotalAmountValue")
+        const addButton = findChild(page, "sendRecipientAddButton")
+        const removeButton = findChild(page, "sendRecipientRemoveButton")
+        const multipleRecipientsToggle = findChild(page, "sendOptionsMultipleRecipientsToggle")
+        verify(optionsPopup !== null)
+        verify(recipientsRow !== null)
+        verify(transactionHeader !== null)
+        verify(totalRow !== null)
+        verify(totalValue !== null)
+        verify(addButton !== null)
+        verify(removeButton !== null)
+        verify(multipleRecipientsToggle !== null)
+
+        try {
+            optionsPopup.multipleRecipientsEnabled = false
+            tryCompare(testRecipientsModel, "count", 1)
+            compare(recipientsRow.visible, false)
+            compare(transactionHeader.visible, false)
+            compare(totalRow.visible, false)
+
+            optionsPopup.open()
+            tryCompare(optionsPopup, "opened", true)
+            mouseClick(
+                multipleRecipientsToggle,
+                multipleRecipientsToggle.width / 2,
+                multipleRecipientsToggle.height / 2)
+            compare(optionsPopup.multipleRecipientsEnabled, true)
+            tryCompare(recipientsRow, "visible", true)
+            tryCompare(transactionHeader, "visible", true)
+            tryCompare(totalRow, "visible", true)
+            optionsPopup.close()
+            tryCompare(optionsPopup, "opened", false)
+
+            compare(testRecipientsModel.count, 2)
+            verify(removeButton.enabled)
+
+            addButton.clicked()
+            compare(testRecipientsModel.count, 3)
+            verify(removeButton.enabled)
+
+            testRecipientsModel.totalAmountSatoshi = 123456789
+            tryCompare(totalValue, "text", "1.23456789 BTC")
+
+            optionsModel.displayUnit = BitcoinAmount.SAT
+            tryCompare(totalValue, "text", "123456789 sats")
+
+            removeButton.clicked()
+            compare(testRecipientsModel.count, 2)
+            removeButton.clicked()
+            compare(testRecipientsModel.count, 1)
+            compare(removeButton.enabled, false)
+        } finally {
+            optionsPopup.multipleRecipientsEnabled = false
+        }
     }
 
     function test_send_continue_button_tracks_recipient_validity() {

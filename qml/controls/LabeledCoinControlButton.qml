@@ -14,7 +14,7 @@ Item {
     signal openCoinControl
 
     id: root
-    implicitHeight: label.height
+    implicitHeight: 56
 
     function click() {
         if (coinCount > 0) {
@@ -27,9 +27,11 @@ Item {
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignLeft
-        width: 110
-        font.pixelSize: 18
-        text: qsTr("Inputs")
+        width: 128
+        font: Theme.text.body.font
+        lineHeight: Theme.text.body.lineHeight
+        lineHeightMode: Text.FixedHeight
+        text: qsTr("Coins")
     }
 
     CoreText {
@@ -38,16 +40,16 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignLeft
         color: enabled ? Theme.color.orangeLight1 : Theme.color.neutral2
-        font.pixelSize: 18
+        font: Theme.text.body.font
+        lineHeight: Theme.text.body.lineHeight
+        lineHeightMode: Text.FixedHeight
         text: {
             if (coinCount === 0) {
                 qsTr("No coins available")
             } else if (coinsSelected === 0) {
                 qsTr("Select")
             } else {
-                qsTr("%1 input%2 selected")
-                    .arg(coinsSelected)
-                    .arg(coinsSelected === 1 ? "" : "s")
+                qsTr("%n coin selected", "", coinsSelected)
             }
         }
 
