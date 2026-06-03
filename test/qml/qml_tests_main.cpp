@@ -8,7 +8,6 @@
 #include <QDateTime>
 #include <QFont>
 #include <QHash>
-#include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -66,7 +65,7 @@ Q_SIGNALS:
 private:
     bool m_is_desktop{true};
     bool m_wallet_enabled{true};
-    QString m_state{QStringLiteral("desktop")};
+    QString m_state{QStringLiteral("DESKTOP")};
 };
 
 class MockPeerDetailsModel : public QObject
@@ -1300,9 +1299,21 @@ class MockWalletController : public QObject
     Q_PROPERTY(bool initialized MEMBER m_initialized NOTIFY initializedChanged)
     Q_PROPERTY(bool isWalletLoaded MEMBER m_is_wallet_loaded NOTIFY isWalletLoadedChanged)
     Q_PROPERTY(bool noWalletsFound MEMBER m_no_wallets_found NOTIFY noWalletsFoundChanged)
-    Q_PROPERTY(QString walletLoadError MEMBER m_wallet_load_error NOTIFY walletLoadErrorChanged)
-    Q_PROPERTY(QString walletCreateError MEMBER m_wallet_create_error NOTIFY walletCreateErrorChanged)
     Q_PROPERTY(bool walletLoadInProgress MEMBER m_wallet_load_in_progress NOTIFY walletLoadInProgressChanged)
+    Q_PROPERTY(QString walletLoadError MEMBER m_wallet_load_error NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletLoadWarnings MEMBER m_wallet_load_warnings NOTIFY walletLoadWarningsChanged)
+    Q_PROPERTY(QString walletImportErrorTitle READ walletImportErrorTitle NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletImportErrorDescription READ walletImportErrorDescription NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletImportErrorHelpText READ walletImportErrorHelpText NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletCreateError MEMBER m_wallet_create_error NOTIFY walletCreateErrorChanged)
+    Q_PROPERTY(bool walletMigrationInProgress MEMBER m_wallet_migration_in_progress NOTIFY walletMigrationInProgressChanged)
+    Q_PROPERTY(QString walletMigrationError MEMBER m_wallet_migration_error NOTIFY walletMigrationErrorChanged)
+    Q_PROPERTY(QString lastImportedWalletName MEMBER m_last_imported_wallet_name NOTIFY lastImportedWalletInfoChanged)
+    Q_PROPERTY(QString lastImportedWalletKeyScheme MEMBER m_last_imported_wallet_key_scheme NOTIFY lastImportedWalletInfoChanged)
+    Q_PROPERTY(bool canCreateExternalSignerWallet MEMBER m_can_create_external_signer_wallet NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString externalSignerName MEMBER m_external_signer_name NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString externalSignerError MEMBER m_external_signer_error NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString suggestedExternalSignerWalletName MEMBER m_suggested_external_signer_wallet_name NOTIFY externalSignerStatusChanged)
     Q_PROPERTY(QString lastSelectedWalletName READ lastSelectedWalletName NOTIFY lastSelectedWalletNameChanged)
     Q_PROPERTY(QString lastClosedWalletName READ lastClosedWalletName NOTIFY lastClosedWalletNameChanged)
     Q_PROPERTY(int closeWalletCalls READ closeWalletCalls NOTIFY closeWalletCallsChanged)
@@ -1316,9 +1327,18 @@ public:
     bool m_initialized{true};
     bool m_is_wallet_loaded{true};
     bool m_no_wallets_found{false};
-    QString m_wallet_load_error;
-    QString m_wallet_create_error;
     bool m_wallet_load_in_progress{false};
+    QString m_wallet_load_error;
+    QString m_wallet_load_warnings;
+    QString m_wallet_create_error;
+    bool m_wallet_migration_in_progress{false};
+    QString m_wallet_migration_error;
+    QString m_last_imported_wallet_name;
+    QString m_last_imported_wallet_key_scheme;
+    bool m_can_create_external_signer_wallet{false};
+    QString m_external_signer_name;
+    QString m_external_signer_error;
+    QString m_suggested_external_signer_wallet_name{QStringLiteral("external_signer")};
     QObject* m_selected_wallet{nullptr};
     QString m_last_selected_wallet_name;
     QString m_last_closed_wallet_name;
@@ -1336,9 +1356,68 @@ public:
     int closeWalletCalls() const { return m_close_wallet_calls; }
     QString walletLocationOpenError() const { return m_wallet_location_open_error; }
     int openSelectedWalletLocationCalls() const { return m_open_selected_wallet_location_calls; }
+    QString walletImportErrorTitle() const { return m_wallet_load_error.isEmpty() ? QString{} : QStringLiteral("Failed to load wallet"); }
+    QString walletImportErrorDescription() const { return m_wallet_load_error; }
+    QString walletImportErrorHelpText() const { return QString{}; }
     Q_INVOKABLE QString homePath() const { return QStringLiteral("/tmp"); }
     Q_INVOKABLE QString normalizeWalletPath(const QString& path) const { return path; }
     Q_INVOKABLE bool walletPathExists(const QString&) const { return false; }
+    Q_INVOKABLE QString walletNameAvailabilityError(const QString&) const { return QString{}; }
+    Q_INVOKABLE void refreshExternalSignerStatus() { Q_EMIT externalSignerStatusChanged(); }
+    Q_INVOKABLE void clearWalletLoadStatus()
+    {
+        m_wallet_load_error.clear();
+        m_wallet_load_warnings.clear();
+        m_wallet_load_in_progress = false;
+        Q_EMIT walletLoadErrorChanged();
+        Q_EMIT walletLoadWarningsChanged();
+        Q_EMIT walletLoadInProgressChanged();
+    }
+    Q_INVOKABLE void clearWalletCreateStatus()
+    {
+        m_wallet_create_error.clear();
+        Q_EMIT walletCreateErrorChanged();
+    }
+    Q_INVOKABLE void clearWalletMigrationStatus()
+    {
+        m_wallet_migration_in_progress = false;
+        m_wallet_migration_error.clear();
+        Q_EMIT walletMigrationInProgressChanged();
+        Q_EMIT walletMigrationErrorChanged();
+    }
+    Q_INVOKABLE void createWatchOnlyWallet(const QString& /*name*/, const QString& /*xpub*/)
+    {
+        clearWalletLoadStatus();
+        Q_EMIT walletCreateSucceeded();
+    }
+    Q_INVOKABLE void createSingleSigWallet(const QString&, const QString&)
+    {
+        clearWalletCreateStatus();
+        clearWalletLoadStatus();
+        Q_EMIT walletCreateSucceeded();
+    }
+    Q_INVOKABLE bool createExternalSignerWallet(const QString&)
+    {
+        clearWalletLoadStatus();
+        if (!m_can_create_external_signer_wallet) {
+            m_wallet_load_error = QStringLiteral("Connect an external signer and try again.");
+            Q_EMIT walletLoadErrorChanged();
+            return false;
+        }
+        Q_EMIT walletCreateSucceeded();
+        return true;
+    }
+    Q_INVOKABLE void importWallet(const QString&)
+    {
+        clearWalletLoadStatus();
+        Q_EMIT walletImportSucceeded();
+    }
+    Q_INVOKABLE void migrateWallet(const QString&, const QString& = QString())
+    {
+        clearWalletMigrationStatus();
+        Q_EMIT walletMigrationSucceeded();
+    }
+    Q_INVOKABLE void requestOpenWalletSettings() { Q_EMIT openWalletSettingsRequested(); }
     void setSelectedWalletObject(QObject* wallet)
     {
         if (m_selected_wallet == wallet) return;
@@ -1389,12 +1468,23 @@ public:
         m_open_selected_wallet_location_result = true;
         m_open_selected_wallet_location_error.clear();
         clearWalletLocationOpenError();
+        clearWalletLoadStatus();
+        clearWalletCreateStatus();
+        clearWalletMigrationStatus();
+        m_last_imported_wallet_name.clear();
+        m_last_imported_wallet_key_scheme.clear();
+        m_can_create_external_signer_wallet = false;
+        m_external_signer_name.clear();
+        m_external_signer_error.clear();
+        m_suggested_external_signer_wallet_name = QStringLiteral("external_signer");
         Q_EMIT lastSelectedWalletNameChanged();
         Q_EMIT lastClosedWalletNameChanged();
         Q_EMIT closeWalletCallsChanged();
         Q_EMIT closePaymentRequestDetailRequestsChanged();
         Q_EMIT openReceiveRequestsChanged();
         Q_EMIT openSelectedWalletLocationCallsChanged();
+        Q_EMIT lastImportedWalletInfoChanged();
+        Q_EMIT externalSignerStatusChanged();
     }
     Q_INVOKABLE void requestClosePaymentRequestDetail()
     {
@@ -1413,10 +1503,6 @@ public:
         QString t = xpub.trimmed();
         return t.length() >= 100 && (t.startsWith("xpub") || t.startsWith("tpub"));
     }
-    Q_INVOKABLE void createWatchOnlyWallet(const QString& /*name*/, const QString& /*xpub*/) { Q_EMIT walletCreateSucceeded(); }
-    Q_INVOKABLE void createSingleSigWallet(const QString& /*name*/, const QString& /*passphrase*/) { Q_EMIT walletCreateSucceeded(); }
-    Q_INVOKABLE void clearWalletLoadStatus() { m_wallet_load_error.clear(); Q_EMIT walletLoadErrorChanged(); }
-    Q_INVOKABLE void clearWalletCreateStatus() { m_wallet_create_error.clear(); Q_EMIT walletCreateErrorChanged(); }
     Q_INVOKABLE void setOpenSelectedWalletLocationResult(const bool result, const QString& error = QString())
     {
         m_open_selected_wallet_location_result = result;
@@ -1447,9 +1533,14 @@ Q_SIGNALS:
     void initializedChanged();
     void isWalletLoadedChanged();
     void noWalletsFoundChanged();
-    void walletLoadErrorChanged();
-    void walletCreateErrorChanged();
     void walletLoadInProgressChanged();
+    void walletLoadErrorChanged();
+    void walletLoadWarningsChanged();
+    void walletCreateErrorChanged();
+    void walletMigrationInProgressChanged();
+    void walletMigrationErrorChanged();
+    void lastImportedWalletInfoChanged();
+    void externalSignerStatusChanged();
     void lastSelectedWalletNameChanged();
     void lastClosedWalletNameChanged();
     void closeWalletCallsChanged();
@@ -1458,7 +1549,10 @@ Q_SIGNALS:
     void closePaymentRequestDetailRequested();
     void openReceiveRequestsChanged();
     void openReceiveRequested();
+    void openWalletSettingsRequested();
     void walletCreateSucceeded();
+    void walletImportSucceeded();
+    void walletMigrationSucceeded();
     void walletLocationOpenErrorChanged();
     void openSelectedWalletLocationCallsChanged();
 };
@@ -1735,8 +1829,26 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(bool restartRequired MEMBER m_restart_required NOTIFY restartRequiredChanged)
     Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
     Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
+    Q_PROPERTY(QString previewError MEMBER m_preview_error NOTIFY previewErrorChanged)
+    Q_PROPERTY(bool canFinish READ canFinish NOTIFY canFinishChanged)
+    Q_PROPERTY(int assumedBlockchainSize MEMBER m_assumed_blockchain_size NOTIFY assumedSizesChanged)
+    Q_PROPERTY(int assumedChainstateSize MEMBER m_assumed_chainstate_size NOTIFY assumedSizesChanged)
+    Q_PROPERTY(bool storageCheckPending MEMBER m_storage_check_pending NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageStatus READ storageStatus NOTIFY storageStatusChanged)
+    Q_PROPERTY(int storageAvailableGB MEMBER m_storage_available_gb NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageAvailableText READ storageAvailableText NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storagePathMessage MEMBER m_storage_path_message NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageWarningText MEMBER m_storage_warning_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageErrorText MEMBER m_storage_error_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageRecommendationText MEMBER m_storage_recommendation_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(bool storageEnoughForSelected READ storageEnoughForSelected NOTIFY storageStatusChanged)
+    Q_PROPERTY(bool storageEnoughForFull READ storageEnoughForFull NOTIFY storageStatusChanged)
     Q_PROPERTY(QString thirdPartyTransactionUrls MEMBER m_third_party_transaction_urls NOTIFY thirdPartyTransactionUrlsChanged)
     Q_PROPERTY(QString moneyFontChoice MEMBER m_money_font_choice NOTIFY moneyFontChoiceChanged)
+    Q_PROPERTY(QString externalSignerPath MEMBER m_external_signer_path NOTIFY externalSignerPathChanged)
     Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
 public:
@@ -1755,13 +1867,24 @@ public:
     bool m_developer_settings_dirty{false};
     bool m_proxy_settings_dirty{false};
     bool m_restart_required{false};
+    QString m_preview_error;
+    int m_assumed_blockchain_size{610};
+    int m_assumed_chainstate_size{12};
+    bool m_storage_check_pending{false};
+    int m_storage_available_gb{123};
+    QString m_storage_path_message{QStringLiteral("Directory already exists.")};
+    QString m_storage_warning_text;
+    QString m_storage_error_text;
+    QString m_storage_recommendation_text{QStringLiteral("This disk has enough space for the full blockchain.")};
     QString m_third_party_transaction_urls;
     QString m_money_font_choice{QStringLiteral("embedded")};
+    QString m_external_signer_path;
     QVariantMap m_core_setting_status_overrides;
     MockCoreSettingsModel m_core_settings;
 
     MockOptionsModel()
     {
+        connect(&m_core_settings, &MockCoreSettingsModel::changed, this, &MockOptionsModel::syncCoreSettingsFromDocument);
         m_core_settings.setListen(m_listen);
         m_core_settings.setNatpmp(m_natpmp);
         m_core_settings.setServer(m_server);
@@ -1784,17 +1907,41 @@ public:
         Q_EMIT maxMempoolSizeMBChanged(value);
     }
     QString getDefaultDataDirString() const { return QStringLiteral("/tmp/bitcoin-default"); }
+    bool canFinish() const { return m_preview_error.isEmpty() && !m_storage_check_pending && m_storage_error_text.isEmpty(); }
+    QString storageStatus() const
+    {
+        if (m_storage_check_pending) return QStringLiteral("checking");
+        if (!m_storage_error_text.isEmpty()) return QStringLiteral("error");
+        if (!m_storage_warning_text.isEmpty()) return QStringLiteral("warning");
+        return QStringLiteral("ok");
+    }
+    QString storageAvailableText() const
+    {
+        return m_storage_check_pending ? QStringLiteral("Checking available storage...") : QStringLiteral("%1GB available").arg(m_storage_available_gb);
+    }
+    int fullStorageRequiredGB() const { return m_assumed_blockchain_size + m_assumed_chainstate_size; }
     bool prune() const { return m_core_settings.prune(); }
     void setPrune(bool value) { m_core_settings.setPrune(value); }
     int pruneSizeGB() const { return m_core_settings.pruneSizeGB(); }
     void setPruneSizeGB(int value) { m_core_settings.setPruneSizeGB(value); }
+    int prunedStorageRequiredGB() const { return pruneSizeGB() + m_assumed_chainstate_size; }
+    int selectedStorageRequiredGB() const { return prune() ? prunedStorageRequiredGB() : fullStorageRequiredGB(); }
+    bool storageEnoughForSelected() const { return m_storage_available_gb >= selectedStorageRequiredGB(); }
+    bool storageEnoughForFull() const { return m_storage_available_gb >= fullStorageRequiredGB(); }
     Q_INVOKABLE QString getCustomDataDirString() const { return m_custom_data_dir; }
     Q_INVOKABLE void setCustomDataDirString(const QString& dir) { m_custom_data_dir = dir; }
     Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { selectCustomDataDir(dir); }
     Q_INVOKABLE QString validateCustomDataDir(const QString&) const { return {}; }
     Q_INVOKABLE bool selectCustomDataDir(const QString& dir) { m_custom_data_dir = dir; m_data_dir = dir; Q_EMIT dataDirChanged(); return true; }
     Q_INVOKABLE void useDefaultDataDir() { m_data_dir = getDefaultDataDirString(); Q_EMIT dataDirChanged(); }
-    Q_INVOKABLE void onboard() {}
+    Q_INVOKABLE void setStorageStatusForTest(bool pending, int available_gb, const QString& error_text, const QString& warning_text) {
+        m_storage_check_pending = pending;
+        m_storage_available_gb = available_gb;
+        m_storage_error_text = error_text;
+        m_storage_warning_text = warning_text;
+        Q_EMIT storageStatusChanged();
+        Q_EMIT canFinishChanged();
+    }
     Q_INVOKABLE QString validateProxyLocation(const QString& location) const { return location.length() > 0 ? QString{} : QStringLiteral("Proxy location is required."); }
     Q_INVOKABLE bool commitProxyLocation(const QString&) { return true; }
     Q_INVOKABLE bool commitTorLocation(const QString&) { return true; }
@@ -1897,6 +2044,31 @@ public:
         return tag;
     }
 
+    void syncCoreSettingsFromDocument() {
+        if (m_listen != m_core_settings.listen()) {
+            m_listen = m_core_settings.listen();
+            Q_EMIT listenChanged();
+        }
+        if (m_natpmp != m_core_settings.natpmp()) {
+            m_natpmp = m_core_settings.natpmp();
+            Q_EMIT natpmpChanged();
+        }
+        if (m_server != m_core_settings.server()) {
+            m_server = m_core_settings.server();
+            Q_EMIT serverChanged();
+        }
+        if (m_prune != m_core_settings.prune()) {
+            m_prune = m_core_settings.prune();
+            Q_EMIT pruneChanged();
+            Q_EMIT storageStatusChanged();
+        }
+        if (m_prune_size_gb != m_core_settings.pruneSizeGB()) {
+            m_prune_size_gb = m_core_settings.pruneSizeGB();
+            Q_EMIT pruneSizeGBChanged();
+            Q_EMIT storageStatusChanged();
+        }
+    }
+
 Q_SIGNALS:
     void listenChanged();
     void natpmpChanged();
@@ -1913,8 +2085,13 @@ Q_SIGNALS:
     void proxySettingsDirtyChanged();
     void restartRequiredChanged();
     void coreSettingStatusesChanged();
+    void previewErrorChanged();
+    void canFinishChanged();
+    void assumedSizesChanged();
+    void storageStatusChanged();
     void thirdPartyTransactionUrlsChanged();
     void moneyFontChoiceChanged();
+    void externalSignerPathChanged();
     void moneyFontChanged();
 
 private:
@@ -2900,7 +3077,6 @@ public Q_SLOTS:
         );
         qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
         qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
-        engine->rootContext()->setContextProperty(QStringLiteral("needOnboarding"), true);
         engine->rootContext()->setContextProperty(QStringLiteral("optionsModel"), &options_model);
         engine->rootContext()->setContextProperty(QStringLiteral("chainModel"), &chain_model);
         engine->rootContext()->setContextProperty(QStringLiteral("nodeModel"), &node_model);
