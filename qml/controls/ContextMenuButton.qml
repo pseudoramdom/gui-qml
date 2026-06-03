@@ -42,8 +42,8 @@ AbstractButton {
     implicitHeight: 36
 
     onClicked: {
-        root.triggered()
         if (root.autoClose) root._closeEnclosingMenu()
+        root.triggered()
     }
 
     function _closeEnclosingMenu() {

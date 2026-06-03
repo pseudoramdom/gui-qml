@@ -322,7 +322,7 @@ Page {
                         Layout.fillWidth: true
                     }
 
-                    Button {
+                    DropdownButton {
                         id: addressTypePicker
                         objectName: "receiveAddressTypePicker"
                         property int selectedIndex: root.addressTypeIndex(root.selectedReceiveAddressType)
@@ -330,166 +330,36 @@ Page {
                             ? root.availableAddressTypes[selectedIndex].label : ""
 
                         enabled: root.request !== null && root.requestIsEditing() && root.availableAddressTypes.length > 0
-                        hoverEnabled: AppMode.isDesktop
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         Layout.preferredWidth: Math.min(addressTypePicker.implicitWidth, 280)
                         Layout.maximumWidth: 280
-                        Layout.preferredHeight: 30
-                        leftPadding: 10
-                        rightPadding: 4
-                        topPadding: 2
-                        bottomPadding: 2
-                        implicitHeight: 30
-                        onPressed: addressTypePopup.open()
 
-                        HoverHandler {
-                            cursorShape: Qt.PointingHandCursor
-                        }
-
-                        contentItem: Item {
-                            id: addressTypePickerContent
-                            implicitWidth: selectedAddressTypeLabel.implicitWidth + addressTypeCaret.width
-                            implicitHeight: Math.max(selectedAddressTypeLabel.implicitHeight, addressTypeCaret.height)
-
-                            CoreText {
-                                id: selectedAddressTypeLabel
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.min(implicitWidth, Math.max(0, parent.width - addressTypeCaret.width))
-                                text: addressTypePicker.selectedLabel
-                                font.pixelSize: 18
-                                horizontalAlignment: Text.AlignRight
-                                elide: Text.ElideRight
-                            }
-
-                            Icon {
-                                id: addressTypeCaret
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                source: "image://images/caret-down-medium-filled"
-                                width: 24
-                                height: 24
-                                size: 24
-                                color: addressTypePicker.enabled ? Theme.color.orange : Theme.color.neutral4
-                            }
-                        }
-
-                        background: Rectangle {
-                            id: addressTypePickerBg
-                            color: Theme.color.background
-                            radius: 6
-                            Behavior on color {
-                                ColorAnimation {
-                                    duration: 150
-                                }
-                            }
-                        }
-
-                        states: [
-                            State {
-                                name: "HOVER"
-                                when: addressTypePicker.hovered
-                                PropertyChanges {
-                                    target: addressTypePickerBg
-                                    color: Theme.color.neutral2
-                                }
-                            }
-                        ]
+                        text: selectedLabel
+                        textAlignment: Text.AlignRight
+                        labelTextStyle: Theme.text.body
+                        caretSize: 24
+                        opened: addressTypePopup.visible
+                        onClicked: addressTypePopup.opened ? addressTypePopup.close() : addressTypePopup.open()
                     }
                 }
 
-                Popup {
+                ContextMenu {
                     id: addressTypePopup
                     modal: true
                     dim: false
-
-                    background: Rectangle {
-                        color: Theme.color.background
-                        radius: 6
-                        border.color: Theme.color.neutral4
-                    }
-
-                    width: 300
-                    height: Math.min(addressTypeList.contentHeight + 10, 400)
                     x: Math.max(0, addressTypePicker.x + addressTypePicker.width - width)
                     y: addressTypePicker.y + addressTypePicker.height + 2
-                    padding: 5
 
-                    contentItem: ListView {
-                        id: addressTypeList
+                    ContextMenuPicker {
+                        objectName: "receiveAddressTypeList"
                         model: root.availableAddressTypes
-                        interactive: false
-                        width: 300
-                        height: contentHeight
-                        spacing: 2
-                        delegate: ItemDelegate {
-                            id: delegate
-                            required property var modelData
-                            required property int index
-
-                            width: ListView.view.width
-                            leftPadding: 10
-                            rightPadding: 4
-                            topPadding: 6
-                            bottomPadding: 6
-
-                            background: Item {
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 6
-                                    color: Theme.color.neutral2
-                                    visible: delegate.hovered
-                                }
-                            }
-
-                            contentItem: RowLayout {
-                                spacing: 5
-
-                                Item {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    Layout.preferredWidth: 24
-                                    Layout.preferredHeight: 24
-
-                                    Icon {
-                                        anchors.fill: parent
-                                        visible: delegate.index === addressTypePicker.selectedIndex
-                                        source: "image://images/check"
-                                        color: Theme.color.orange
-                                        size: 24
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 2
-
-                                    CoreText {
-                                        text: delegate.modelData.label
-                                        horizontalAlignment: Text.AlignLeft
-                                        Layout.fillWidth: true
-                                        font.pixelSize: 15
-                                        elide: Text.ElideRight
-                                    }
-
-                                    CoreText {
-                                        text: delegate.modelData.description
-                                        horizontalAlignment: Text.AlignLeft
-                                        Layout.fillWidth: true
-                                        font.pixelSize: 13
-                                        color: Theme.color.neutral7
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-                            }
-
-                            HoverHandler {
-                                cursorShape: Qt.PointingHandCursor
-                            }
-
-                            onClicked: {
-                                root.selectedReceiveAddressType = delegate.modelData.id
-                                addressTypePopup.close()
-                            }
+                        textRole: "label"
+                        valueRole: "id"
+                        subtitleRole: "description"
+                        currentValue: root.selectedReceiveAddressType
+                        onActivated: function(value) {
+                            root.selectedReceiveAddressType = value
+                            addressTypePopup.close()
                         }
                     }
                 }

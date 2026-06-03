@@ -7,10 +7,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import org.bitcoincore.qt 1.0
 
-import "../components"
-import "../controls"
-
-OptionPopup {
+ContextMenu {
     id: root
     objectName: "sendOptionsPopup"
 
@@ -21,109 +18,44 @@ OptionPopup {
     signal importPsbtFromFileRequested()
     signal clearFormRequested()
 
-    implicitWidth: 305
-    implicitHeight: columnLayout.implicitHeight + 20
-
-    clip: true
     modal: true
     dim: false
 
-    ColumnLayout {
-        id: columnLayout
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.topMargin: 5
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
-        spacing: 0
+    ContextMenuButton {
+        objectName: "sendOptionsOpenPaymentRequestButton"
+        text: qsTr("Open payment request")
+        onTriggered: root.openPaymentRequest()
+    }
 
-        EllipsisMenuButtonItem {
-            objectName: "sendOptionsOpenPaymentRequestButton"
-            Layout.fillWidth: true
-            text: qsTr("Open payment request")
-            onClicked: {
-                root.close()
-                root.openPaymentRequest()
-            }
-        }
+    ContextMenuDivider {}
 
-        Separator {
-            Layout.fillWidth: true
-        }
+    ContextMenuToggle {
+        id: coinControlToggle
+        objectName: "sendOptionsCoinControlToggle"
+        text: qsTr("Enable Coin control")
+    }
 
-        EllipsisMenuToggleItem {
-            id: coinControlToggle
-            objectName: "sendOptionsCoinControlToggle"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 33
-            Layout.minimumHeight: 33
-            Layout.maximumHeight: 33
-            bgRadius: 0
-            contentTopPadding: 4
-            contentBottomPadding: 5
-            text: qsTr("Enable Coin control")
-        }
+    ContextMenuToggle {
+        id: multipleRecipientsToggle
+        objectName: "sendOptionsMultipleRecipientsToggle"
+        text: qsTr("Multiple Recipients")
+    }
 
-        EllipsisMenuToggleItem {
-            id: multipleRecipientsToggle
-            objectName: "sendOptionsMultipleRecipientsToggle"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 33
-            Layout.minimumHeight: 33
-            Layout.maximumHeight: 33
-            bgRadius: 0
-            contentTopPadding: 4
-            contentBottomPadding: 5
-            text: qsTr("Multiple Recipients")
-        }
+    ContextMenuDivider {}
 
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 9
+    ContextMenuButton {
+        objectName: "sendImportPsbtFromFileButton"
+        text: qsTr("Import PSBT from file…")
+        iconSource: "qrc:/icons/file"
+        onTriggered: root.importPsbtFromFileRequested()
+    }
 
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                height: 1
-                color: Theme.color.neutral5
-            }
-        }
+    ContextMenuDivider {}
 
-        EllipsisMenuActionItem {
-            id: fileImportButton
-            objectName: "sendImportPsbtFromFileButton"
-            Layout.fillWidth: true
-            text: qsTr("Import PSBT from file…")
-            leftIconSource: "qrc:/icons/file"
-            onClicked: root.importPsbtFromFileRequested()
-        }
-
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 9
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                height: 1
-                color: Theme.color.neutral5
-            }
-        }
-
-        EllipsisMenuActionItem {
-            id: clearFormButton
-            objectName: "sendClearFormButton"
-            Layout.fillWidth: true
-            text: qsTr("Clear form")
-            leftIconSource: "qrc:/icons/cross"
-            onClicked: root.clearFormRequested()
-        }
+    ContextMenuButton {
+        objectName: "sendClearFormButton"
+        text: qsTr("Clear form")
+        iconSource: "qrc:/icons/cross"
+        onTriggered: root.clearFormRequested()
     }
 }

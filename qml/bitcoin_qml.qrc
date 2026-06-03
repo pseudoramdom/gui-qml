@@ -71,9 +71,6 @@
         <file>controls/KeyValueRow.qml</file>
         <file>controls/LabeledTextInput.qml</file>
         <file>controls/LabeledCoinControlButton.qml</file>
-        <file>controls/EllipsisMenuButtonItem.qml</file>
-        <file>controls/EllipsisMenuActionItem.qml</file>
-        <file>controls/EllipsisMenuToggleItem.qml</file>
         <file>controls/NavButton.qml</file>
         <file>controls/NavigationBar.qml</file>
         <file>controls/NavigationBar2.qml</file>
@@ -86,7 +83,6 @@
         <file>controls/ProgressIndicator.qml</file>
         <file>controls/QRImage.qml</file>
         <file>controls/qmldir</file>
-        <file>controls/ReceiveOptionsPopup.qml</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>
         <file>controls/Setting.qml</file>

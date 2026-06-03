@@ -37,12 +37,16 @@ TestCase {
             y: 20
 
             property int triggerCount: 0
+            property bool openedWhenTriggered: true
             property alias button: testButton
 
             ContextMenuButton {
                 id: testButton
                 text: "Action"
-                onTriggered: testMenu.triggerCount += 1
+                onTriggered: {
+                    testMenu.openedWhenTriggered = testMenu.opened
+                    testMenu.triggerCount += 1
+                }
             }
         }
     }
@@ -98,6 +102,7 @@ TestCase {
 
         mouseClick(menu.button, menu.button.width / 2, menu.button.height / 2)
         compare(menu.triggerCount, 1)
+        compare(menu.openedWhenTriggered, false)
         tryCompare(menu, "opened", false)
     }
 

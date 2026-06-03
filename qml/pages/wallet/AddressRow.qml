@@ -4,6 +4,7 @@
 
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import org.bitcoincore.qt 1.0
 
 import "../../controls"
 import "../../components"
@@ -24,8 +25,11 @@ Item {
     required property bool canEditLabel
     required property bool canCreatePaymentRequest
 
+    property alias menu: rowMenu
+
     signal editLabelRequested(string address, string label)
-    signal menuRequested(string address, string label, string amount, bool hasAmount, string category, string scriptType, bool used, Item menuButton)
+    signal createPaymentRequestRequested(string address)
+    signal detailsRequested(string address, string label, string amount, bool hasAmount, string category, string scriptType, bool used)
 
     height: 100
 
@@ -100,15 +104,38 @@ Item {
         iconColor: Theme.color.neutral9
         enabled: root.canCreatePaymentRequest || root.address !== ""
         onClicked: {
-            root.menuRequested(
-                root.address,
-                root.label,
-                root.displayAmount,
-                root.hasAmount,
-                root.category,
-                root.scriptType,
-                root.isUsed,
-                menuButton)
+            const pos = menuButton.mapToItem(Overlay.overlay, menuButton.width, menuButton.height)
+            rowMenu.x = Math.max(12, Math.min(pos.x - rowMenu.width, Overlay.overlay.width - rowMenu.width - 12))
+            rowMenu.y = Math.max(12, Math.min(pos.y, Overlay.overlay.height - rowMenu.height - 12))
+            rowMenu.open()
+        }
+    }
+
+    ContextMenu {
+        id: rowMenu
+        parent: Overlay.overlay
+        modal: true
+        dim: false
+        focus: true
+
+        ContextMenuButton {
+            objectName: "addressRowCreatePaymentRequestButton"
+            text: qsTr("Create payment request")
+            visible: root.category === "single-use" && !root.isUsed
+            enabled: root.address !== ""
+            onTriggered: root.createPaymentRequestRequested(root.address)
+        }
+        ContextMenuButton {
+            objectName: "addressRowCopyAddressButton"
+            text: qsTr("Copy address")
+            enabled: root.address !== ""
+            onTriggered: Clipboard.setText(root.address)
+        }
+        ContextMenuButton {
+            objectName: "addressRowDetailsButton"
+            text: qsTr("Address details")
+            enabled: root.address !== ""
+            onTriggered: root.detailsRequested(root.address, root.label, root.displayAmount, root.hasAmount, root.category, root.scriptType, root.isUsed)
         }
     }
 

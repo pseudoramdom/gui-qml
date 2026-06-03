@@ -364,11 +364,11 @@ TestCase {
         popup.open()
         tryCompare(popup, "opened", true)
 
-        toggle.clicked()
+        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
 
         compare(testSendRecipient.subtractFeeFromAmount, true)
         tryCompare(testWalletModel, "scheduleFeeEstimatesCalls", callsBefore + 1)
-        compare(popup.visible, false)
+        tryCompare(popup, "visible", false)
     }
 
     function test_send_uri_import_schedules_fee_estimate() {

@@ -311,76 +311,24 @@ PageStack {
                         }
                     }
 
-                    Button {
+                    DropdownButton {
                         id: dateFilterButton
                         objectName: "activityDateFilterButton"
-                        Layout.preferredHeight: 30
-                        leftPadding: 10
-                        rightPadding: 4
-                        topPadding: 2
-                        bottomPadding: 2
-                        hoverEnabled: AppMode.isDesktop
+                        text: root.dateFilterText()
+                        textColor: Theme.color.neutral7
+                        textAlignment: Text.AlignHCenter
+                        opened: datePopup.visible
                         onClicked: datePopup.opened ? datePopup.close() : datePopup.open()
-
-                        HoverHandler {
-                            cursorShape: Qt.PointingHandCursor
-                        }
-
-                        background: Rectangle {
-                            radius: 6
-                            color: dateFilterButton.hovered || dateFilterButton.pressed || datePopup.opened ? Theme.color.neutral2 : Theme.color.background
-                        }
-
-                        contentItem: RowLayout {
-                            spacing: 5
-                            CoreText {
-                                text: root.dateFilterText()
-                                color: Theme.color.neutral7
-                                font.pixelSize: 15
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                            Icon {
-                                source: "image://images/caret-down-medium-filled"
-                                color: Theme.color.orange
-                                size: 20
-                            }
-                        }
                     }
 
-                    Button {
+                    DropdownButton {
                         id: typeFilterButton
                         objectName: "activityTypeFilterButton"
-                        Layout.preferredHeight: 30
-                        leftPadding: 10
-                        rightPadding: 4
-                        topPadding: 2
-                        bottomPadding: 2
-                        hoverEnabled: AppMode.isDesktop
+                        text: root.typeFilterText()
+                        textColor: Theme.color.neutral7
+                        textAlignment: Text.AlignHCenter
+                        opened: typePopup.visible
                         onClicked: typePopup.opened ? typePopup.close() : typePopup.open()
-
-                        HoverHandler {
-                            cursorShape: Qt.PointingHandCursor
-                        }
-
-                        background: Rectangle {
-                            radius: 6
-                            color: typeFilterButton.hovered || typeFilterButton.pressed || typePopup.opened ? Theme.color.neutral2 : Theme.color.background
-                        }
-
-                        contentItem: RowLayout {
-                            spacing: 5
-                            CoreText {
-                                text: root.typeFilterText()
-                                color: Theme.color.neutral7
-                                font.pixelSize: 15
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                            Icon {
-                                source: "image://images/caret-down-medium-filled"
-                                color: Theme.color.orange
-                                size: 20
-                            }
-                        }
                     }
                 }
             }
@@ -676,7 +624,7 @@ PageStack {
                 }
             }
 
-            Popup {
+            ContextMenu {
                 id: datePopup
                 objectName: "activityDateFilterPopup"
                 parent: dateFilterButton
@@ -684,69 +632,25 @@ PageStack {
                 y: datePopup.parent.height + 2
                 modal: true
                 dim: false
-                width: 250
-                height: 5 * 36 + 10
-                padding: 5
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-                background: Rectangle {
-                    color: Theme.color.background
-                    border.color: Theme.color.neutral4
-                    radius: 6
-                }
-
-                contentItem: ColumnLayout {
-                    spacing: 0
-
-                    FilterMenuItem {
-                        objectName: "activityDateAll"
-                        text: qsTr("All")
-                        selected: activityFilterProxy.dateFilter === ActivityFilterProxyModel.DateAll
-                        onClicked: {
-                            activityFilterProxy.dateFilter = ActivityFilterProxyModel.DateAll
-                            datePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityDateToday"
-                        text: qsTr("Today")
-                        selected: activityFilterProxy.dateFilter === ActivityFilterProxyModel.Today
-                        onClicked: {
-                            activityFilterProxy.dateFilter = ActivityFilterProxyModel.Today
-                            datePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityDateThisWeek"
-                        text: qsTr("This week")
-                        selected: activityFilterProxy.dateFilter === ActivityFilterProxyModel.ThisWeek
-                        onClicked: {
-                            activityFilterProxy.dateFilter = ActivityFilterProxyModel.ThisWeek
-                            datePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityDateThisMonth"
-                        text: qsTr("This month")
-                        selected: activityFilterProxy.dateFilter === ActivityFilterProxyModel.ThisMonth
-                        onClicked: {
-                            activityFilterProxy.dateFilter = ActivityFilterProxyModel.ThisMonth
-                            datePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityDateThisYear"
-                        text: qsTr("This year")
-                        selected: activityFilterProxy.dateFilter === ActivityFilterProxyModel.ThisYear
-                        onClicked: {
-                            activityFilterProxy.dateFilter = ActivityFilterProxyModel.ThisYear
-                            datePopup.close()
-                        }
+                ContextMenuPicker {
+                    objectNameRole: "objectName"
+                    currentValue: activityFilterProxy.dateFilter
+                    model: [
+                        { text: qsTr("All"),         value: ActivityFilterProxyModel.DateAll,   objectName: "activityDateAll" },
+                        { text: qsTr("Today"),       value: ActivityFilterProxyModel.Today,     objectName: "activityDateToday" },
+                        { text: qsTr("This week"),   value: ActivityFilterProxyModel.ThisWeek,  objectName: "activityDateThisWeek" },
+                        { text: qsTr("This month"),  value: ActivityFilterProxyModel.ThisMonth, objectName: "activityDateThisMonth" },
+                        { text: qsTr("This year"),   value: ActivityFilterProxyModel.ThisYear,  objectName: "activityDateThisYear" }
+                    ]
+                    onActivated: function(value) {
+                        activityFilterProxy.dateFilter = value
+                        datePopup.close()
                     }
                 }
             }
 
-            Popup {
+            ContextMenu {
                 id: typePopup
                 objectName: "activityTypeFilterPopup"
                 parent: typeFilterButton
@@ -754,116 +658,21 @@ PageStack {
                 y: typePopup.parent.height + 2
                 modal: true
                 dim: false
-                width: 250
-                height: 6 * 36 + 10
-                padding: 5
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-                background: Rectangle {
-                    color: Theme.color.background
-                    border.color: Theme.color.neutral4
-                    radius: 6
-                }
-
-                contentItem: ColumnLayout {
-                    spacing: 0
-
-                    FilterMenuItem {
-                        objectName: "activityTypeAll"
-                        text: qsTr("All")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.TypeAll
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.TypeAll
-                            typePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityTypeReceived"
-                        text: qsTr("Received")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.Received
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.Received
-                            typePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityTypeSent"
-                        text: qsTr("Sent")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.Sent
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.Sent
-                            typePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityTypeSentToSelf"
-                        text: qsTr("Sent to yourself")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.SentToSelf
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.SentToSelf
-                            typePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityTypeMined"
-                        text: qsTr("Mined")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.Mined
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.Mined
-                            typePopup.close()
-                        }
-                    }
-                    FilterMenuItem {
-                        objectName: "activityTypePaymentRequest"
-                        text: qsTr("Payment request")
-                        selected: activityFilterProxy.typeFilter === ActivityFilterProxyModel.PaymentRequest
-                        onClicked: {
-                            activityFilterProxy.typeFilter = ActivityFilterProxyModel.PaymentRequest
-                            typePopup.close()
-                        }
-                    }
-                }
-            }
-
-            component FilterMenuItem: ItemDelegate {
-                id: menuItem
-                property bool selected: false
-                Layout.fillWidth: true
-                Layout.preferredHeight: 36
-                leftPadding: 10
-                rightPadding: 4
-                topPadding: 2
-                bottomPadding: 2
-                hoverEnabled: AppMode.isDesktop
-
-                HoverHandler {
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                background: Item {
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 6
-                        color: Theme.color.neutral2
-                        visible: menuItem.hovered || menuItem.pressed
-                    }
-                }
-
-                contentItem: RowLayout {
-                    spacing: 5
-                    CoreText {
-                        Layout.fillWidth: true
-                        text: menuItem.text
-                        color: Theme.color.neutral9
-                        font.pixelSize: 15
-                        horizontalAlignment: Text.AlignLeft
-                        elide: Text.ElideRight
-                    }
-                    Icon {
-                        visible: menuItem.selected
-                        source: "image://images/check"
-                        color: Theme.color.orange
-                        size: 20
+                ContextMenuPicker {
+                    objectNameRole: "objectName"
+                    currentValue: activityFilterProxy.typeFilter
+                    model: [
+                        { text: qsTr("All"),              value: ActivityFilterProxyModel.TypeAll,        objectName: "activityTypeAll" },
+                        { text: qsTr("Received"),         value: ActivityFilterProxyModel.Received,       objectName: "activityTypeReceived" },
+                        { text: qsTr("Sent"),             value: ActivityFilterProxyModel.Sent,           objectName: "activityTypeSent" },
+                        { text: qsTr("Sent to yourself"), value: ActivityFilterProxyModel.SentToSelf,     objectName: "activityTypeSentToSelf" },
+                        { text: qsTr("Mined"),            value: ActivityFilterProxyModel.Mined,          objectName: "activityTypeMined" },
+                        { text: qsTr("Payment request"),  value: ActivityFilterProxyModel.PaymentRequest, objectName: "activityTypePaymentRequest" }
+                    ]
+                    onActivated: function(value) {
+                        activityFilterProxy.typeFilter = value
+                        typePopup.close()
                     }
                 }
             }

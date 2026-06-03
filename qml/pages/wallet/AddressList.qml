@@ -78,84 +78,18 @@ Page {
 
     Component.onCompleted: addressModel.refresh()
 
-    Popup {
+    ContextMenu {
         id: pageMenu
         parent: Overlay.overlay
-        width: 300
-        height: pageMenuContent.implicitHeight + 20
         modal: true
+        dim: false
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            color: Theme.color.neutral0
-            border.color: Theme.color.neutral4
-            radius: 5
-        }
-        contentItem: ColumnLayout {
-            id: pageMenuContent
-            anchors.fill: parent
-            anchors.margins: 10
-            spacing: 0
 
-            EllipsisMenuToggleItem {
-                Layout.fillWidth: true
-                text: qsTr("Show used addresses")
-                checked: addressModel.showUsed
-                onCheckedChanged: {
-                    if (addressModel.showUsed !== checked) {
-                        addressModel.showUsed = checked;
-                    }
-                }
-            }
-        }
-    }
-
-    Popup {
-        id: rowMenu
-        parent: Overlay.overlay
-        width: 280
-        height: rowMenuContent.implicitHeight + 20
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            color: Theme.color.neutral0
-            border.color: Theme.color.neutral4
-            radius: 5
-        }
-        contentItem: ColumnLayout {
-            id: rowMenuContent
-            anchors.fill: parent
-            anchors.margins: 10
-            spacing: 0
-
-            MenuButton {
-                objectName: "addressRowCreatePaymentRequestButton"
-                text: qsTr("Create payment request")
-                visible: root.selectedCategory === "single-use" && !root.selectedUsed
-                enabled: root.selectedAddress !== ""
-                onClicked: {
-                    root.createPaymentRequestFromSelected(function() { rowMenu.close(); });
-                }
-            }
-            MenuButton {
-                objectName: "addressRowCopyAddressButton"
-                text: qsTr("Copy address")
-                enabled: root.selectedAddress !== ""
-                onClicked: {
-                    Clipboard.setText(root.selectedAddress);
-                    rowMenu.close();
-                }
-            }
-            MenuButton {
-                objectName: "addressRowDetailsButton"
-                text: qsTr("Address details")
-                enabled: root.selectedAddress !== ""
-                onClicked: {
-                    rowMenu.close();
-                    detailsPopup.open();
-                }
-            }
+        ContextMenuToggle {
+            checkable: false
+            text: qsTr("Show used addresses")
+            checked: addressModel.showUsed
+            onClicked: addressModel.showUsed = !addressModel.showUsed
         }
     }
 
@@ -302,7 +236,11 @@ Page {
                         labelInput.text = label;
                         labelPopup.open();
                     }
-                    onMenuRequested: (address, label, amount, hasAmount, category, scriptType, used, menuButton) => {
+                    onCreatePaymentRequestRequested: (address) => {
+                        root.selectedAddress = address;
+                        root.createPaymentRequestFromSelected(undefined);
+                    }
+                    onDetailsRequested: (address, label, amount, hasAmount, category, scriptType, used) => {
                         root.selectedAddress = address;
                         root.selectedLabel = label;
                         root.selectedAmount = amount;
@@ -310,29 +248,11 @@ Page {
                         root.selectedCategory = category;
                         root.selectedScriptType = scriptType;
                         root.selectedUsed = used;
-                        root.openMenuAt(rowMenu, menuButton);
+                        detailsPopup.open();
                     }
                 }
             }
         }
     }
 
-    component MenuButton: Button {
-        Layout.fillWidth: true
-        implicitHeight: 48
-        padding: 0
-
-        contentItem: CoreText {
-            text: parent.text
-            color: parent.enabled ? Theme.color.neutral7 : Theme.color.neutral4
-            font: Theme.text.body.font
-            horizontalAlignment: Text.AlignLeft
-            verticalAlignment: Text.AlignVCenter
-        }
-
-        background: Rectangle {
-            color: parent.hovered ? Theme.color.neutral2 : "transparent"
-            radius: 4
-        }
-    }
 }
