@@ -29,12 +29,11 @@ from qml_driver import QmlDriver, QmlDriverError
 
 class DebugLogHarness:
     """Launches the GUI node without -resetguisettings so the app starts
-    directly on NodeRunner (not the onboarding wizard).
+    directly on NodeRunner.
 
-    bitcoin.cpp sets needOnboarding=true whenever -resetguisettings is
-    passed, which sends the app to the OnboardingWizard before NodeRunner.
     Since the debug log test only needs to navigate within a running node,
-    we omit that flag and rely on the datadir existing to skip onboarding.
+    we omit that flag and rely on the datadir existing to skip pre-init
+    onboarding.
     """
 
     def __init__(self):
@@ -53,7 +52,7 @@ class DebugLogHarness:
             f"-datadir={self.datadir}",
             f"-test-automation={self.socket_path}",
             # Intentionally omit -resetguisettings: the datadir already
-            # exists so needOnboarding stays false and NodeRunner loads first.
+            # exists so pre-init onboarding is skipped and NodeRunner loads.
             # -disablewallet forces AppMode.walletEnabled=false so main.qml
             # routes to the node/NodeRunner stack instead of desktopWallets.
             "-disablewallet",

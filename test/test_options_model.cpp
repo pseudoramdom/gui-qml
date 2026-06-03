@@ -109,6 +109,7 @@ private Q_SLOTS:
     void onboardingPreviewReadsSelectedDatadirConfig();
     void onboardingApplyDoesNotCopyUntouchedConfig();
     void onboardingApplyWritesTouchedConfigOverride();
+    void onboardingApplyWritesTouchedParameterInteractionOverride();
 };
 
 // Convenience: set up a NiceMock whose getPersistentSetting returns null for
@@ -1861,6 +1862,56 @@ void OptionsModelTests::onboardingApplyWritesTouchedConfigOverride()
     });
     QVERIFY(listen_override.isBool());
     QVERIFY(listen_override.get_bool());
+}
+
+void OptionsModelTests::onboardingApplyWritesTouchedParameterInteractionOverride()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(data_dir.filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("regtest=1\n[regtest]\nproxy=10.0.0.3:9050\n") > 0);
+    conf.close();
+
+    const std::vector<std::string> argv = TestArgv();
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QVERIFY(model.selectCustomDataDir(data_dir.path()));
+    QVERIFY(model.proxyEnabled());
+    QVERIFY(!model.listen());
+
+    const QVariantMap listen_status = model.coreSettingStatuses().value(QStringLiteral("listen")).toMap();
+    QCOMPARE(listen_status.value(QStringLiteral("source")).toString(), QStringLiteral("startup"));
+    QCOMPARE(listen_status.value(QStringLiteral("canEdit")).toBool(), true);
+
+    model.setListen(true);
+    QVERIFY(model.listen());
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(model.applyToArgs(args, &apply_error), qPrintable(apply_error));
+
+    common::SettingsValue listen_override;
+    bool has_forced_listen{true};
+    bool has_forced_natpmp{true};
+    bool has_forced_discover{true};
+    args.LockSettings([&](common::Settings& settings) {
+        if (const auto* value = common::FindKey(settings.rw_settings, "listen")) {
+            listen_override = *value;
+        }
+        has_forced_listen = settings.forced_settings.count("listen") > 0;
+        has_forced_natpmp = settings.forced_settings.count("natpmp") > 0;
+        has_forced_discover = settings.forced_settings.count("discover") > 0;
+    });
+
+    QVERIFY(listen_override.isBool());
+    QVERIFY(listen_override.get_bool());
+    QVERIFY(!has_forced_listen);
+    QVERIFY(!has_forced_natpmp);
+    QVERIFY(!has_forced_discover);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN
