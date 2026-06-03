@@ -54,7 +54,11 @@ void NetworkStatusModel::setReachability(QNetworkInformation::Reachability reach
 void NetworkStatusModel::initializeMonitoring()
 {
     if (!QNetworkInformation::instance()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
         QNetworkInformation::loadBackendByFeatures(QNetworkInformation::Feature::Reachability);
+#else
+        QNetworkInformation::load(QNetworkInformation::Feature::Reachability);
+#endif
     }
 
     QNetworkInformation* info{QNetworkInformation::instance()};
