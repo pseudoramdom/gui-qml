@@ -30,6 +30,7 @@ add_executable(bitcoinqml_unit_tests
   test_networkstyle.cpp
   test_networkstatusmodel.cpp
   test_qmlinitexecutor_api.cpp
+  test_guiargs.cpp
   test_options_model.cpp
   test_banlistmodel.cpp
   test_walletlistmodel.cpp
