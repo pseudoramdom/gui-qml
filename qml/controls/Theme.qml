@@ -233,6 +233,14 @@ Control {
             lineHeight: 22
         }
 
+        // Menu
+        readonly property TextStyle menuItem: TextStyle {
+            family: textSetRoot.family
+            styleName: "Regular"
+            pixelSize: 15
+            lineHeight: 22
+        }
+
         // Mono — Roboto Mono Regular
         readonly property TextStyle monoLead: TextStyle {
             family: textSetRoot.monoFamily
