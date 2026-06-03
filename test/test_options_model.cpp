@@ -11,8 +11,15 @@
 #include <QTemporaryDir>
 #include <test/gmocktestfixture.h>
 #include <test/mocks/mocknode.h>
+#include <chainparams.h>
+#include <qml/core_settings.h>
+#include <qml/datadir.h>
+#include <qml/guiargs.h>
+#include <qml/models/core_settings_model.h>
+#include <qml/models/onboardingoptionsmodel.h>
 #include <qml/models/options_model.h>
 #include <qml/models/settings_keys.h>
+#include <qml/onboarding_settings.h>
 #include <init.h>
 #include <net_processing.h>
 #include <common/args.h>
@@ -60,10 +67,48 @@ private Q_SLOTS:
     void developerDirtyTracksRestartSettings();
     void proxyValidationAndCommit();
     void proxyDisabledPreservesPreviousValue();
+    void customDataDirValidationRejectsFile();
     void customDataDirSelectionCreatesDirectoryAndPersists();
+    void guiDataDirSettingSoftSetsCustomPath();
+    void guiDataDirSettingAbsolutizesSavedRelativePath();
+    void guiDataDirSettingSkipsUnusableConfiguredDir();
+    void guiDataDirSettingSkipsExplicitDatadir();
+    void guiDataDirSettingLeavesDefaultOverridable();
+    void guiDataDirChooserShowsForMissingConfiguredDir();
+    void guiDataDirChooserShowsForUnwritableConfiguredDir();
+    void resetGuiSettingsClearsQSettings();
+    void resetGuiSettingsStartsOnboardingFromDefaultDataDir();
+    void resetGuiSettingsClearsSettingsJson();
+    void resetGuiSettingsPreviewIgnoresSelectedCustomDataDirSettingsJson();
+    void resetGuiSettingsApplyClearsSelectedCustomDataDirSettingsJson();
+    void resetGuiSettingsPreservesCommandLineOverrides();
+    void resetGuiSettingsPreservesBitcoinConfOverrides();
+    void resetGuiSettingsExplicitDatadirClearsThatDatadirSettingsJson();
+    void onboardingPreviewAppliesParameterInteractions();
+    void storageSpaceCheckAcceptsExistingDirectory();
+    void storageSpaceCheckRejectsExistingFile();
     void thirdPartyTransactionLinksParseValidUrls();
     void moneyFontChoicePersists();
     void displayUnitUsesQtCompatibleSettingsKey();
+    void sharedCoreSettingHelpersDeduplicateOverrides();
+    void coreSettingsModelEntryMutatesRuntimeModel();
+    void coreSettingsSessionCommandLineSettingDoesNotWrite();
+    void coreSettingsSessionDoesNotCopyUntouchedConfig();
+    void coreSettingsSessionWritesTouchedConfigOverride();
+    void coreSettingsSessionRevertingToDefaultDeletesOverride();
+    void coreSettingsSessionProxyDisabledPreservesPreviousValue();
+    void coreSettingsSessionPreviewRefreshPreservesTouchedValues();
+    void coreSettingsSessionChangeReportsFieldDiffs();
+    void coreSettingsSessionProxyCommitAcceptsUnchangedAddressWithoutValueChange();
+    void coreSettingStatusTracksSourcePrecedence();
+    void commandLineOverriddenSettingDoesNotWrite();
+    void revertingToConfigValueDeletesRwOverride();
+    void revertingToDefaultValueDeletesRwOverride();
+    void languageCommandLineOverrideDoesNotPersist();
+    void onboardingPreviewHelperReadsSelectedDatadirConfig();
+    void onboardingPreviewReadsSelectedDatadirConfig();
+    void onboardingApplyDoesNotCopyUntouchedConfig();
+    void onboardingApplyWritesTouchedConfigOverride();
 };
 
 // Convenience: set up a NiceMock whose getPersistentSetting returns null for
@@ -77,6 +122,83 @@ static common::SettingsValue MakeInt(int value)
 {
     return common::SettingsValue{value};
 }
+
+static void InstallPersistentSettings(MockNode& node, ArgsManager& args)
+{
+    using ::testing::_;
+    using ::testing::Invoke;
+
+    ON_CALL(node, getPersistentSetting(_))
+        .WillByDefault(Invoke([&args](const std::string& name) {
+            return args.GetPersistentSetting(name);
+        }));
+}
+
+static void InstallRwSettingsWriter(MockNode& node, ArgsManager& args)
+{
+    using ::testing::_;
+    using ::testing::Invoke;
+
+    ON_CALL(node, updateRwSetting(_, _))
+        .WillByDefault(Invoke([&args](const std::string& name, const common::SettingsValue& value) {
+            args.LockSettings([&](common::Settings& settings) {
+                if (value.isNull()) {
+                    settings.rw_settings.erase(name);
+                } else {
+                    settings.rw_settings[name] = value;
+                }
+            });
+        }));
+}
+
+static std::vector<std::string> TestArgv()
+{
+    return {std::string{"bitcoinqml"}, std::string{"-regtest"}};
+}
+
+static bool PrepareTestArgs(ArgsManager& args, const std::vector<std::string>& argv, std::string& error)
+{
+    SetupServerArgs(args, /*can_listen_ipc=*/false);
+    SetupQmlGuiArgs(args);
+    std::vector<const char*> raw_argv;
+    raw_argv.reserve(argv.size());
+    for (const std::string& arg : argv) raw_argv.push_back(arg.c_str());
+    return args.ParseParameters(static_cast<int>(raw_argv.size()), raw_argv.data(), error);
+}
+
+class SavedGuiDataDirSettings
+{
+public:
+    SavedGuiDataDirSettings()
+    {
+        QSettings settings;
+        for (const QString& key : settings.allKeys()) {
+            m_values.insert(key, settings.value(key));
+        }
+    }
+
+    ~SavedGuiDataDirSettings()
+    {
+        QSettings settings;
+        settings.clear();
+        for (auto it = m_values.cbegin(); it != m_values.cend(); ++it) {
+            settings.setValue(it.key(), it.value());
+        }
+    }
+
+private:
+    QVariantMap m_values;
+};
+
+class CurrentDirectoryRestorer
+{
+public:
+    CurrentDirectoryRestorer() : m_original{QDir::currentPath()} {}
+    ~CurrentDirectoryRestorer() { QDir::setCurrent(m_original); }
+
+private:
+    const QString m_original;
+};
 
 void OptionsModelTests::proxyDisabledRemovesKey()
 {
@@ -182,7 +304,7 @@ void OptionsModelTests::proxyDirtyResetWhenReverted()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    // Start with proxy disabled (no saved proxy).
+    // Start onboarded with proxy disabled (no saved proxy).
     OptionsQmlModel model(node);
     QVERIFY(!model.proxySettingsDirty());
 
@@ -596,16 +718,37 @@ void OptionsModelTests::proxyDisabledPreservesPreviousValue()
     QVERIFY(!model.proxyEnabled());
 }
 
+void OptionsModelTests::customDataDirValidationRejectsFile()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString file_path = QDir(temp_dir.path()).filePath("not-a-directory");
+    QFile file(file_path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node);
+    QVERIFY(!model.validateCustomDataDir(file_path).isEmpty());
+    QVERIFY(!model.selectCustomDataDir(file_path));
+}
+
 void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
 {
     using ::testing::_;
     using ::testing::NiceMock;
     using ::testing::Return;
 
+    SavedGuiDataDirSettings saved_settings;
     QSettings settings;
-    const bool had_data_dir_setting = settings.contains(SettingsKeys::DATA_DIR);
-    const QVariant previous_data_dir_setting = settings.value(SettingsKeys::DATA_DIR);
     settings.remove(SettingsKeys::DATA_DIR);
+    settings.remove("fReset");
 
     QTemporaryDir temp_dir;
     QVERIFY(temp_dir.isValid());
@@ -623,12 +766,509 @@ void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
     QVERIFY(QFileInfo(QDir(data_dir).filePath("wallets")).isDir());
     QCOMPARE(model.dataDir(), data_dir);
     QCOMPARE(settings.value(SettingsKeys::DATA_DIR).toString(), data_dir);
+    QCOMPARE(settings.value("fReset").toBool(), false);
+}
 
-    if (had_data_dir_setting) {
-        settings.setValue(SettingsKeys::DATA_DIR, previous_data_dir_setting);
-    } else {
-        settings.remove(SettingsKeys::DATA_DIR);
+void OptionsModelTests::guiDataDirSettingSoftSetsCustomPath()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString data_dir = QDir(temp_dir.path()).filePath("selected-data-dir");
+    settings.setValue(SettingsKeys::DATA_DIR, data_dir);
+
+    ArgsManager args;
+    QVERIFY(QmlDataDir::ApplyGuiDataDirSetting(args));
+    QVERIFY(args.IsArgSet("-datadir"));
+    QCOMPARE(QString::fromStdString(args.GetArg("-datadir", "")), data_dir);
+    QVERIFY(QFileInfo(data_dir).isDir());
+    QVERIFY(QFileInfo(QDir(data_dir).filePath("wallets")).isDir());
+}
+
+void OptionsModelTests::guiDataDirSettingAbsolutizesSavedRelativePath()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    CurrentDirectoryRestorer restore_current_dir;
+    QVERIFY(QDir::setCurrent(temp_dir.path()));
+
+    const QString relative_data_dir = QStringLiteral("relative-data-dir");
+    const QString data_dir = QDir::current().absoluteFilePath(relative_data_dir);
+    settings.setValue(SettingsKeys::DATA_DIR, relative_data_dir);
+
+    QCOMPARE(QmlDataDir::ReadGuiDataDir(), data_dir);
+
+    ArgsManager args;
+    QVERIFY(QmlDataDir::ApplyGuiDataDirSetting(args));
+    QVERIFY(args.IsArgSet("-datadir"));
+    QCOMPARE(QString::fromStdString(args.GetArg("-datadir", "")), data_dir);
+    QVERIFY(QFileInfo(data_dir).isDir());
+    QVERIFY(QFileInfo(QDir(data_dir).filePath("wallets")).isDir());
+}
+
+void OptionsModelTests::guiDataDirSettingSkipsUnusableConfiguredDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString file_path = QDir(temp_dir.path()).filePath("not-a-directory");
+    QFile file(file_path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+    settings.setValue(SettingsKeys::DATA_DIR, file_path);
+
+    ArgsManager args;
+    QVERIFY(!QmlDataDir::ApplyGuiDataDirSetting(args));
+    QVERIFY(!args.IsArgSet("-datadir"));
+}
+
+void OptionsModelTests::guiDataDirSettingSkipsExplicitDatadir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString saved_data_dir = QDir(temp_dir.path()).filePath("saved-data-dir");
+    const QString explicit_data_dir = QDir(temp_dir.path()).filePath("explicit-data-dir");
+    settings.setValue(SettingsKeys::DATA_DIR, saved_data_dir);
+
+    ArgsManager args;
+    args.ForceSetArg("-datadir", explicit_data_dir.toStdString());
+    QVERIFY(!QmlDataDir::ApplyGuiDataDirSetting(args));
+    QCOMPARE(QString::fromStdString(args.GetArg("-datadir", "")), explicit_data_dir);
+    QVERIFY(!QFileInfo(saved_data_dir).exists());
+}
+
+void OptionsModelTests::guiDataDirSettingLeavesDefaultOverridable()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    settings.setValue(SettingsKeys::DATA_DIR, QmlDataDir::DefaultDataDirString());
+
+    ArgsManager args;
+    QVERIFY(!QmlDataDir::ApplyGuiDataDirSetting(args));
+    QVERIFY(!args.IsArgSet("-datadir"));
+}
+
+void OptionsModelTests::guiDataDirChooserShowsForMissingConfiguredDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString missing_data_dir = QDir(temp_dir.path()).filePath("missing-data-dir");
+    settings.setValue(SettingsKeys::DATA_DIR, missing_data_dir);
+    QVERIFY(!QFileInfo::exists(missing_data_dir));
+
+    ArgsManager args;
+    QVERIFY(QmlDataDir::ShouldShowDataDirChooser(args));
+
+    args.ForceSetArg("-datadir", QDir(temp_dir.path()).filePath("explicit-data-dir").toStdString());
+    QVERIFY(!QmlDataDir::ShouldShowDataDirChooser(args));
+}
+
+void OptionsModelTests::guiDataDirChooserShowsForUnwritableConfiguredDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString data_dir = QDir(temp_dir.path()).filePath("unwritable-data-dir");
+    QVERIFY(QDir().mkpath(data_dir));
+    settings.setValue(SettingsKeys::DATA_DIR, data_dir);
+
+    const QFileDevice::Permissions original_permissions = QFileInfo(data_dir).permissions();
+    QVERIFY(QFile(data_dir).setPermissions(QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+    if (QFileInfo(data_dir).isWritable()) {
+        QVERIFY(QFile(data_dir).setPermissions(original_permissions));
+        QSKIP("Cannot make temporary data directory unwritable on this platform.");
     }
+
+    ArgsManager args;
+    const bool should_show = QmlDataDir::ShouldShowDataDirChooser(args);
+
+    args.ForceSetArg("-datadir", QDir(temp_dir.path()).filePath("explicit-data-dir").toStdString());
+    const bool explicit_datadir_should_show = QmlDataDir::ShouldShowDataDirChooser(args);
+
+    QVERIFY(QFile(data_dir).setPermissions(original_permissions));
+    QVERIFY(should_show);
+    QVERIFY(!explicit_datadir_should_show);
+}
+
+void OptionsModelTests::resetGuiSettingsClearsQSettings()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    settings.setValue(SettingsKeys::DATA_DIR, QStringLiteral("/tmp/old-bitcoin-data"));
+    settings.setValue(SettingsKeys::LANGUAGE, QStringLiteral("de"));
+    settings.setValue(SettingsKeys::DISPLAY_UNIT, 1);
+    settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, QStringLiteral("https://example.com/%s"));
+    settings.setValue(SettingsKeys::MONEY_FONT_CHOICE, QStringLiteral("best_system"));
+    settings.setValue("fReset", true);
+
+    std::vector<std::string> argv = TestArgv();
+    argv.emplace_back("-settings=");
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+
+    QString reset_error;
+    QVERIFY2(QmlDataDir::ResetGuiSettings(args, &reset_error), qPrintable(reset_error));
+
+    QVERIFY(!settings.contains(SettingsKeys::DATA_DIR));
+    QVERIFY(!settings.contains(SettingsKeys::LANGUAGE));
+    QVERIFY(!settings.contains(SettingsKeys::DISPLAY_UNIT));
+    QVERIFY(!settings.contains(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS));
+    QVERIFY(!settings.contains(SettingsKeys::MONEY_FONT_CHOICE));
+    QCOMPARE(settings.value("fReset").toBool(), false);
+}
+
+void OptionsModelTests::resetGuiSettingsStartsOnboardingFromDefaultDataDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir old_data_dir;
+    QVERIFY(old_data_dir.isValid());
+    QSettings settings;
+    settings.setValue(SettingsKeys::DATA_DIR, old_data_dir.path());
+
+    std::vector<std::string> argv = TestArgv();
+    argv.emplace_back("-settings=");
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+
+    QString reset_error;
+    QVERIFY2(QmlDataDir::ResetGuiSettings(args, &reset_error), qPrintable(reset_error));
+
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QCOMPARE(model.dataDir(), QmlDataDir::DefaultDataDirString());
+    QVERIFY(model.getCustomDataDirString().isEmpty());
+}
+
+void OptionsModelTests::resetGuiSettingsClearsSettingsJson()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    const std::vector<std::string> argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+    };
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    SelectParams(args.GetChainType());
+    args.SelectConfigNetwork(args.GetChainTypeString());
+    args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["prune"] = MakeInt(2048);
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+        settings.rw_settings["onion"] = common::SettingsValue{std::string{"127.0.0.1:9150"}};
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    QString reset_error;
+    QVERIFY2(QmlDataDir::ResetGuiSettings(args, &reset_error), qPrintable(reset_error));
+
+    fs::path backup_path;
+    QVERIFY(args.GetSettingsPath(&backup_path, /*temp=*/false, /*backup=*/true));
+    QVERIFY(fs::exists(backup_path));
+
+    ArgsManager check_args;
+    QVERIFY2(PrepareTestArgs(check_args, argv, parse_error), parse_error.c_str());
+    SelectParams(check_args.GetChainType());
+    check_args.SelectConfigNetwork(check_args.GetChainTypeString());
+    QVERIFY2(check_args.ReadSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+    check_args.LockSettings([](common::Settings& settings) {
+        QVERIFY(settings.rw_settings.count("prune") == 0);
+        QVERIFY(settings.rw_settings.count("proxy") == 0);
+        QVERIFY(settings.rw_settings.count("onion") == 0);
+    });
+}
+
+void OptionsModelTests::resetGuiSettingsPreviewIgnoresSelectedCustomDataDirSettingsJson()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    const std::vector<std::string> write_argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+    };
+    ArgsManager write_args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(write_args, write_argv, parse_error), parse_error.c_str());
+    SelectParams(write_args.GetChainType());
+    write_args.SelectConfigNetwork(write_args.GetChainTypeString());
+    write_args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["listen"] = common::SettingsValue{false};
+        settings.rw_settings["natpmp"] = common::SettingsValue{true};
+        settings.rw_settings["server"] = common::SettingsValue{true};
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+        settings.rw_settings["onion"] = common::SettingsValue{std::string{"127.0.0.1:9150"}};
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(write_args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    std::vector<std::string> preview_argv = TestArgv();
+    preview_argv.emplace_back("-resetguisettings");
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(preview_argv, /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.listen);
+    QVERIFY(!preview.values.natpmp);
+    QVERIFY(!preview.values.server);
+    QVERIFY(!preview.values.proxy_enabled);
+    QVERIFY(!preview.values.tor_enabled);
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("proxy")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("default"));
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("server")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("default"));
+}
+
+void OptionsModelTests::resetGuiSettingsApplyClearsSelectedCustomDataDirSettingsJson()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    const std::vector<std::string> write_argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+    };
+    ArgsManager write_args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(write_args, write_argv, parse_error), parse_error.c_str());
+    SelectParams(write_args.GetChainType());
+    write_args.SelectConfigNetwork(write_args.GetChainTypeString());
+    write_args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["listen"] = common::SettingsValue{false};
+        settings.rw_settings["natpmp"] = common::SettingsValue{true};
+        settings.rw_settings["server"] = common::SettingsValue{true};
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(write_args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    std::vector<std::string> argv = TestArgv();
+    argv.emplace_back("-resetguisettings");
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QVERIFY(model.selectCustomDataDir(data_dir.path()));
+    QCOMPARE(model.previewError(), QString{});
+    QVERIFY(model.listen());
+    QVERIFY(!model.natpmp());
+    QVERIFY(!model.server());
+    QVERIFY(!model.proxyEnabled());
+
+    ArgsManager apply_args;
+    QVERIFY2(PrepareTestArgs(apply_args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(model.applyToArgs(apply_args, &apply_error), qPrintable(apply_error));
+
+    fs::path backup_path;
+    QVERIFY(apply_args.GetSettingsPath(&backup_path, /*temp=*/false, /*backup=*/true));
+    QVERIFY(fs::exists(backup_path));
+
+    ArgsManager check_args;
+    QVERIFY2(PrepareTestArgs(check_args, write_argv, parse_error), parse_error.c_str());
+    SelectParams(check_args.GetChainType());
+    check_args.SelectConfigNetwork(check_args.GetChainTypeString());
+    QVERIFY2(check_args.ReadSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+    check_args.LockSettings([](common::Settings& settings) {
+        QVERIFY(settings.rw_settings.count("listen") == 0);
+        QVERIFY(settings.rw_settings.count("natpmp") == 0);
+        QVERIFY(settings.rw_settings.count("server") == 0);
+        QVERIFY(settings.rw_settings.count("proxy") == 0);
+    });
+}
+
+void OptionsModelTests::resetGuiSettingsPreservesCommandLineOverrides()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    const std::vector<std::string> argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+        std::string{"-proxy=10.0.0.2:9050"},
+        std::string{"-prune=2048"},
+    };
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    SelectParams(args.GetChainType());
+    args.SelectConfigNetwork(args.GetChainTypeString());
+    args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+        settings.rw_settings["prune"] = MakeInt(4096);
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    QString reset_error;
+    QVERIFY2(QmlDataDir::ResetGuiSettings(args, &reset_error), qPrintable(reset_error));
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(argv, /*can_listen_ipc=*/false, QmlDataDir::DefaultDataDirString())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.proxy_enabled);
+    QCOMPARE(preview.values.proxy_address, QStringLiteral("10.0.0.2:9050"));
+    QVERIFY(preview.values.prune);
+    QCOMPARE(preview.values.prune_size_gb, QmlCoreSettings::PruneMiBToGB(2048));
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("proxy")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("command_line"));
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("prune")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("command_line"));
+}
+
+void OptionsModelTests::resetGuiSettingsPreservesBitcoinConfOverrides()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    QFile conf(QDir(data_dir.path()).filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("regtest=1\n[regtest]\nserver=1\nproxy=10.0.0.3:9050\n") > 0);
+    conf.close();
+
+    const std::vector<std::string> write_argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+    };
+    ArgsManager write_args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(write_args, write_argv, parse_error), parse_error.c_str());
+    SelectParams(write_args.GetChainType());
+    write_args.SelectConfigNetwork(write_args.GetChainTypeString());
+    write_args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["server"] = common::SettingsValue{false};
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(write_args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    std::vector<std::string> preview_argv = TestArgv();
+    preview_argv.emplace_back("-resetguisettings");
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(preview_argv, /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.server);
+    QVERIFY(preview.values.proxy_enabled);
+    QCOMPARE(preview.values.proxy_address, QStringLiteral("10.0.0.3:9050"));
+    QVERIFY(!preview.values.listen);
+    QVERIFY(!preview.values.natpmp);
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("server")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("proxy")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+}
+
+void OptionsModelTests::resetGuiSettingsExplicitDatadirClearsThatDatadirSettingsJson()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+
+    const std::vector<std::string> argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-datadir=" + data_dir.path().toStdString(),
+        std::string{"-resetguisettings"},
+    };
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    SelectParams(args.GetChainType());
+    args.SelectConfigNetwork(args.GetChainTypeString());
+    args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["server"] = common::SettingsValue{true};
+        settings.rw_settings["proxy"] = common::SettingsValue{std::string{"10.0.0.1:9050"}};
+    });
+    std::vector<std::string> settings_errors;
+    QVERIFY2(args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    QString reset_error;
+    QVERIFY2(QmlDataDir::ResetGuiSettings(args, &reset_error), qPrintable(reset_error));
+
+    ArgsManager check_args;
+    QVERIFY2(PrepareTestArgs(check_args, argv, parse_error), parse_error.c_str());
+    SelectParams(check_args.GetChainType());
+    check_args.SelectConfigNetwork(check_args.GetChainTypeString());
+    QVERIFY2(check_args.ReadSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+    check_args.LockSettings([](common::Settings& settings) {
+        QVERIFY(settings.rw_settings.count("server") == 0);
+        QVERIFY(settings.rw_settings.count("proxy") == 0);
+    });
+}
+
+void OptionsModelTests::onboardingPreviewAppliesParameterInteractions()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(QDir(data_dir.path()).filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("regtest=1\n[regtest]\nproxy=10.0.0.3:9050\n") > 0);
+    conf.close();
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgv(), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.proxy_enabled);
+    QCOMPARE(preview.values.proxy_address, QStringLiteral("10.0.0.3:9050"));
+    QVERIFY(!preview.values.listen);
+    QVERIFY(!preview.values.natpmp);
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("proxy")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+}
+
+void OptionsModelTests::storageSpaceCheckAcceptsExistingDirectory()
+{
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+
+    const QmlDataDir::StorageSpaceResult result = QmlDataDir::CheckStorageSpace(temp_dir.path());
+    QVERIFY(result.ok);
+    QVERIFY(result.path_exists);
+    QVERIFY(result.path_is_directory);
+    QVERIFY(!result.checked_path.isEmpty());
+    QVERIFY(result.capacity_bytes >= result.available_bytes);
+}
+
+void OptionsModelTests::storageSpaceCheckRejectsExistingFile()
+{
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString file_path = QDir(temp_dir.path()).filePath("not-a-directory");
+    QFile file(file_path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+
+    const QmlDataDir::StorageSpaceResult result = QmlDataDir::CheckStorageSpace(file_path);
+    QVERIFY(!result.ok);
+    QVERIFY(result.path_exists);
+    QVERIFY(!result.path_is_directory);
+    QVERIFY(!result.message.isEmpty());
 }
 
 void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
@@ -728,6 +1368,499 @@ void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
     } else {
         settings.remove(SettingsKeys::DISPLAY_UNIT);
     }
+}
+
+void OptionsModelTests::sharedCoreSettingHelpersDeduplicateOverrides()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.ro_config[""]["listen"].push_back(common::SettingsValue{false});
+    });
+
+    QVariantMap status = QmlCoreSettings::CoreSettingStatus(args, QStringLiteral("listen"));
+    QCOMPARE(status.value("source").toString(), QString("bitcoin_conf"));
+    QCOMPARE(status.value("canEdit").toBool(), true);
+
+    QVERIFY(QmlCoreSettings::WriteCoreSettingOverride(args, QStringLiteral("listen"), common::SettingsValue{false}));
+    bool has_listen_override{true};
+    args.LockSettings([&](common::Settings& settings) {
+        has_listen_override = settings.rw_settings.count("listen") > 0;
+    });
+    QVERIFY(!has_listen_override);
+
+    QVERIFY(QmlCoreSettings::WriteCoreSettingOverride(args, QStringLiteral("listen"), common::SettingsValue{true}));
+    common::SettingsValue listen_override;
+    args.LockSettings([&](common::Settings& settings) {
+        listen_override = settings.rw_settings.at("listen");
+    });
+    QVERIFY(listen_override.isBool());
+    QVERIFY(listen_override.get_bool());
+
+    QVERIFY(QmlCoreSettings::WriteCoreSettingOverride(args, QStringLiteral("maxmempool"), common::SettingsValue{DEFAULT_MAX_MEMPOOL_SIZE_MB}));
+    bool has_mempool_override{true};
+    args.LockSettings([&](common::Settings& settings) {
+        has_mempool_override = settings.rw_settings.count("maxmempool") > 0;
+    });
+    QVERIFY(!has_mempool_override);
+}
+
+void OptionsModelTests::coreSettingsModelEntryMutatesRuntimeModel()
+{
+    using ::testing::NiceMock;
+
+    ArgsManager args;
+    std::string error;
+    QVERIFY(PrepareTestArgs(args, TestArgv(), error));
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+    InstallRwSettingsWriter(node, args);
+
+    OptionsQmlModel model(node, args);
+    auto* core_settings = qobject_cast<CoreSettingsModel*>(model.coreSettings());
+    QVERIFY(core_settings);
+    auto* listen_entry = qobject_cast<CoreSettingEntryModel*>(core_settings->entry(QStringLiteral("listen")));
+    QVERIFY(listen_entry);
+
+    QVERIFY(model.listen());
+    QVERIFY(!model.connectionSettingsDirty());
+
+    listen_entry->setValue(false);
+
+    QVERIFY(!model.listen());
+    QVERIFY(model.connectionSettingsDirty());
+    QCOMPARE(SettingToBool(args.GetPersistentSetting("listen")), false);
+}
+
+void OptionsModelTests::coreSettingsSessionCommandLineSettingDoesNotWrite()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.command_line_options["listen"].push_back(common::SettingsValue{true});
+    });
+
+    QmlCoreSettings::Values values;
+    values.listen = false;
+    QmlCoreSettings::Session session{values, QmlCoreSettings::BuildCoreSettingStatuses(args, QmlCoreSettings::OnboardingCoreSettingNames())};
+
+    QVERIFY(!session.canEdit(QStringLiteral("listen")));
+    QVERIFY(!session.setListen(true));
+    session.markTouched(QStringLiteral("listen"));
+    QVERIFY(!session.writeTouchedToArgs(args));
+
+    bool has_listen_override{false};
+    args.LockSettings([&](common::Settings& settings) {
+        has_listen_override = settings.rw_settings.count("listen") > 0;
+    });
+    QVERIFY(!has_listen_override);
+}
+
+void OptionsModelTests::coreSettingsSessionDoesNotCopyUntouchedConfig()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.ro_config[""]["listen"].push_back(common::SettingsValue{false});
+    });
+
+    QmlCoreSettings::Session session{
+        QmlCoreSettings::Values{.listen = false},
+        QmlCoreSettings::BuildCoreSettingStatuses(args, QmlCoreSettings::OnboardingCoreSettingNames())
+    };
+    QVERIFY(session.writeTouchedToArgs(args));
+
+    bool has_listen_override{false};
+    args.LockSettings([&](common::Settings& settings) {
+        has_listen_override = settings.rw_settings.count("listen") > 0;
+    });
+    QVERIFY(!has_listen_override);
+}
+
+void OptionsModelTests::coreSettingsSessionWritesTouchedConfigOverride()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.ro_config[""]["listen"].push_back(common::SettingsValue{false});
+    });
+
+    QmlCoreSettings::Session session{
+        QmlCoreSettings::Values{.listen = true},
+        QmlCoreSettings::BuildCoreSettingStatuses(args, QmlCoreSettings::OnboardingCoreSettingNames())
+    };
+    session.markTouched(QStringLiteral("listen"));
+    QVERIFY(session.writeTouchedToArgs(args));
+
+    common::SettingsValue listen_override;
+    args.LockSettings([&](common::Settings& settings) {
+        listen_override = settings.rw_settings.at("listen");
+    });
+    QVERIFY(listen_override.isBool());
+    QVERIFY(listen_override.get_bool());
+}
+
+void OptionsModelTests::coreSettingsSessionRevertingToDefaultDeletesOverride()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["listen"] = common::SettingsValue{false};
+    });
+
+    QmlCoreSettings::Values values;
+    values.listen = DEFAULT_LISTEN;
+    QmlCoreSettings::Session session{values, QmlCoreSettings::BuildCoreSettingStatuses(args, QmlCoreSettings::OnboardingCoreSettingNames())};
+    session.markTouched(QStringLiteral("listen"));
+    QVERIFY(session.writeTouchedToArgs(args));
+
+    bool has_listen_override{true};
+    args.LockSettings([&](common::Settings& settings) {
+        has_listen_override = settings.rw_settings.count("listen") > 0;
+    });
+    QVERIFY(!has_listen_override);
+}
+
+void OptionsModelTests::coreSettingsSessionProxyDisabledPreservesPreviousValue()
+{
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+
+    QmlCoreSettings::Values values;
+    values.proxy_enabled = false;
+    values.proxy_address = QStringLiteral("10.0.0.2:9050");
+    QmlCoreSettings::Session session{values, QmlCoreSettings::BuildCoreSettingStatuses(args, QmlCoreSettings::OnboardingCoreSettingNames())};
+    session.markTouched(QStringLiteral("proxy"));
+    QVERIFY(session.writeTouchedToArgs(args));
+
+    common::SettingsValue proxy_prev;
+    bool has_proxy_override{true};
+    args.LockSettings([&](common::Settings& settings) {
+        proxy_prev = settings.rw_settings.at("proxy-prev");
+        has_proxy_override = settings.rw_settings.count("proxy") > 0;
+    });
+    QCOMPARE(QString::fromStdString(proxy_prev.get_str()), QStringLiteral("10.0.0.2:9050"));
+    QVERIFY(!has_proxy_override);
+}
+
+void OptionsModelTests::coreSettingsSessionPreviewRefreshPreservesTouchedValues()
+{
+    QmlCoreSettings::Values initial;
+    initial.listen = true;
+    initial.natpmp = false;
+    QmlCoreSettings::Session session{initial};
+
+    QVERIFY(session.setListen(false));
+
+    QmlCoreSettings::Values preview;
+    preview.listen = true;
+    preview.natpmp = true;
+    session.applyPreviewValuesPreservingTouched(preview, {});
+
+    QVERIFY(!session.values().listen);
+    QVERIFY(session.values().natpmp);
+    QVERIFY(session.isTouched(QStringLiteral("listen")));
+    QVERIFY(!session.isTouched(QStringLiteral("natpmp")));
+}
+
+void OptionsModelTests::coreSettingsSessionChangeReportsFieldDiffs()
+{
+    QmlCoreSettings::Session session;
+
+    const QmlCoreSettings::Change change = session.changeListen(false);
+
+    QVERIFY(change.accepted);
+    QCOMPARE(change.setting_name, QStringLiteral("listen"));
+    QVERIFY(QmlCoreSettings::ValuesChanged(change));
+    QVERIFY(QmlCoreSettings::ListenChanged(change));
+    QVERIFY(!QmlCoreSettings::NatpmpChanged(change));
+    QVERIFY(!QmlCoreSettings::StatusesChanged(change));
+    QVERIFY(session.isTouched(QStringLiteral("listen")));
+}
+
+void OptionsModelTests::coreSettingsSessionProxyCommitAcceptsUnchangedAddressWithoutValueChange()
+{
+    QmlCoreSettings::Session session;
+    const QString address = session.defaultProxyAddress();
+
+    const QmlCoreSettings::Change change = session.changeProxyLocation(address);
+
+    QVERIFY(change.accepted);
+    QCOMPARE(change.setting_name, QStringLiteral("proxy"));
+    QVERIFY(!QmlCoreSettings::ValuesChanged(change));
+    QVERIFY(!QmlCoreSettings::ProxyAddressChanged(change));
+    QVERIFY(!session.isTouched(QStringLiteral("proxy")));
+}
+
+void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
+{
+    using ::testing::NiceMock;
+
+    {
+        ArgsManager args;
+        args.SelectConfigNetwork("main");
+        args.LockSettings([](common::Settings& settings) {
+            settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
+        });
+
+        NiceMock<MockNode> node;
+        InstallPersistentSettings(node, args);
+
+        OptionsQmlModel model(node, args);
+        const QVariantMap status = model.coreSettingStatus(QStringLiteral("listen"));
+        QCOMPARE(status.value("source").toString(), QString("bitcoin_conf"));
+        QCOMPARE(status.value("canEdit").toBool(), true);
+        QCOMPARE(status.value("createsGuiOverride").toBool(), true);
+        QVERIFY(status.value("infoText").toString().contains("settings.json"));
+    }
+
+    {
+        ArgsManager args;
+        args.SelectConfigNetwork("main");
+        args.LockSettings([](common::Settings& settings) {
+            settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
+            settings.rw_settings["listen"] = common::SettingsValue{false};
+        });
+
+        NiceMock<MockNode> node;
+        InstallPersistentSettings(node, args);
+
+        OptionsQmlModel model(node, args);
+        const QVariantMap status = model.coreSettingStatus(QStringLiteral("listen"));
+        QCOMPARE(status.value("source").toString(), QString("settings_json"));
+        QCOMPARE(status.value("createsGuiOverride").toBool(), false);
+    }
+
+    {
+        ArgsManager args;
+        args.SelectConfigNetwork("main");
+        args.LockSettings([](common::Settings& settings) {
+            settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
+            settings.rw_settings["listen"] = common::SettingsValue{false};
+            settings.command_line_options["listen"].push_back(common::SettingsValue{true});
+        });
+
+        NiceMock<MockNode> node;
+        InstallPersistentSettings(node, args);
+
+        OptionsQmlModel model(node, args);
+        const QVariantMap status = model.coreSettingStatus(QStringLiteral("listen"));
+        QCOMPARE(status.value("source").toString(), QString("command_line"));
+        QCOMPARE(status.value("canEdit").toBool(), false);
+        QCOMPARE(status.value("commandLineOverridden").toBool(), true);
+        QVERIFY(status.value("infoText").toString().contains("-listen"));
+    }
+}
+
+void OptionsModelTests::commandLineOverriddenSettingDoesNotWrite()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.command_line_options["listen"].push_back(common::SettingsValue{false});
+        settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
+    });
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+
+    OptionsQmlModel model(node, args);
+    QVERIFY(!model.listen());
+    QCOMPARE(model.coreSettingStatus(QStringLiteral("listen")).value("source").toString(), QString("command_line"));
+    QCOMPARE(model.coreSettingStatus(QStringLiteral("listen")).value("canEdit").toBool(), false);
+
+    EXPECT_CALL(node, updateRwSetting(std::string{"listen"}, _)).Times(0);
+    model.setListen(true);
+
+    QVERIFY(!model.listen());
+}
+
+void OptionsModelTests::revertingToConfigValueDeletesRwOverride()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Truly;
+
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
+        settings.rw_settings["listen"] = common::SettingsValue{false};
+    });
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+    InstallRwSettingsWriter(node, args);
+
+    OptionsQmlModel model(node, args);
+    QVERIFY(!model.listen());
+
+    EXPECT_CALL(node, updateRwSetting(std::string{"listen"},
+        Truly([](const common::SettingsValue& value) { return value.isNull(); })));
+
+    model.setListen(true);
+}
+
+void OptionsModelTests::revertingToDefaultValueDeletesRwOverride()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Truly;
+
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["maxmempool"] = common::SettingsValue{456};
+    });
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+    InstallRwSettingsWriter(node, args);
+
+    OptionsQmlModel model(node, args);
+    QCOMPARE(model.maxMempoolSizeMB(), 456);
+
+    EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"},
+        Truly([](const common::SettingsValue& value) { return value.isNull(); })));
+
+    model.setMaxMempoolSizeMB(DEFAULT_MAX_MEMPOOL_SIZE_MB);
+}
+
+void OptionsModelTests::languageCommandLineOverrideDoesNotPersist()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+
+    QSettings settings;
+    const bool had_language_setting = settings.contains(SettingsKeys::LANGUAGE);
+    const QVariant previous_language_setting = settings.value(SettingsKeys::LANGUAGE);
+    settings.setValue(SettingsKeys::LANGUAGE, QStringLiteral("de"));
+
+    ArgsManager args;
+    args.SelectConfigNetwork("main");
+    args.LockSettings([](common::Settings& settings) {
+        settings.command_line_options["lang"].push_back(common::SettingsValue{std::string{"fr"}});
+    });
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+
+    OptionsQmlModel model(node, args);
+    QCOMPARE(model.language(), QString("fr"));
+    QCOMPARE(model.coreSettingStatus(QStringLiteral("lang")).value("canEdit").toBool(), false);
+
+    model.setLanguage(QStringLiteral("es"));
+    QCOMPARE(model.language(), QString("fr"));
+    QCOMPARE(settings.value(SettingsKeys::LANGUAGE).toString(), QString("de"));
+
+    if (had_language_setting) {
+        settings.setValue(SettingsKeys::LANGUAGE, previous_language_setting);
+    } else {
+        settings.remove(SettingsKeys::LANGUAGE);
+    }
+}
+
+void OptionsModelTests::onboardingPreviewHelperReadsSelectedDatadirConfig()
+{
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(data_dir.filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("listen=0\n") > 0);
+    conf.close();
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgv(), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("listen")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+    QVERIFY(!preview.values.listen);
+}
+
+void OptionsModelTests::onboardingPreviewReadsSelectedDatadirConfig()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(data_dir.filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("listen=0\n") > 0);
+    conf.close();
+
+    OnboardingOptionsModel model(TestArgv(), /*can_listen_ipc=*/false);
+    QVERIFY(model.selectCustomDataDir(data_dir.path()));
+    QCOMPARE(model.previewError(), QString{});
+    QCOMPARE(model.coreSettingStatuses().value(QStringLiteral("listen")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+    QVERIFY(!model.listen());
+}
+
+void OptionsModelTests::onboardingApplyDoesNotCopyUntouchedConfig()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(data_dir.filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("listen=0\n") > 0);
+    conf.close();
+
+    const std::vector<std::string> argv = TestArgv();
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QVERIFY(model.selectCustomDataDir(data_dir.path()));
+    QVERIFY(!model.listen());
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(model.applyToArgs(args, &apply_error), qPrintable(apply_error));
+
+    bool has_listen_override{false};
+    args.LockSettings([&](common::Settings& settings) {
+        has_listen_override = settings.rw_settings.count("listen") > 0;
+    });
+    QVERIFY(!has_listen_override);
+}
+
+void OptionsModelTests::onboardingApplyWritesTouchedConfigOverride()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QFile conf(data_dir.filePath(QStringLiteral("bitcoin.conf")));
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write("listen=0\n") > 0);
+    conf.close();
+
+    const std::vector<std::string> argv = TestArgv();
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QVERIFY(model.selectCustomDataDir(data_dir.path()));
+    QVERIFY(!model.listen());
+    model.setListen(true);
+    QVERIFY(model.listen());
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(model.applyToArgs(args, &apply_error), qPrintable(apply_error));
+
+    common::SettingsValue listen_override;
+    args.LockSettings([&](common::Settings& settings) {
+        if (const auto* value = common::FindKey(settings.rw_settings, "listen")) {
+            listen_override = *value;
+        }
+    });
+    QVERIFY(listen_override.isBool());
+    QVERIFY(listen_override.get_bool());
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN
