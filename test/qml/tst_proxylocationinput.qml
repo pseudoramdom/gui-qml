@@ -34,7 +34,7 @@ TestCase {
             header: "Proxy location"
             state: "FILLED"
             actionItem: ProxyLocationInput {
-                parentState: row.state
+                parentState: row.visualState
                 description: "127.0.0.1:9050"
                 filled: true
             }
@@ -52,7 +52,7 @@ TestCase {
             header: "Proxy location"
             state: "DISABLED"
             actionItem: ProxyLocationInput {
-                parentState: row.state
+                parentState: row.visualState
                 description: "127.0.0.1:9050"
                 filled: true
             }

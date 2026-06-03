@@ -71,7 +71,7 @@ ColumnLayout {
             .arg(optionsModel.maxMaxMempoolSizeMB)
         showErrorText: false
         actionItem: ValueInput {
-            parentState: mempoolLimitSetting.state
+            parentState: mempoolLimitSetting.visualState
             description: optionsModel.maxMempoolSizeMB
             validator: QtQuickBase.IntValidator {
                 bottom: optionsModel.minMaxMempoolSizeMB

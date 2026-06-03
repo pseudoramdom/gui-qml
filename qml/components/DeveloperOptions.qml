@@ -23,7 +23,7 @@ ColumnLayout {
         errorText: qsTr("This is not a valid cache size. Please choose a value between %1 and %2 MiB.").arg(optionsModel.minDbcacheSizeMiB).arg(optionsModel.maxDbcacheSizeMiB)
         showErrorText: false
         actionItem: ValueInput {
-            parentState: dbcacheSetting.state
+            parentState: dbcacheSetting.visualState
             description: optionsModel.dbcacheSizeMiB
             onEditingFinished: {
                 if (checkValidity(optionsModel.minDbcacheSizeMiB, optionsModel.maxDbcacheSizeMiB, parseInt(text))) {
@@ -48,7 +48,7 @@ ColumnLayout {
         errorText: qsTr("This is not a valid thread count. Please choose a value between %1 and %2 threads.").arg(optionsModel.minScriptThreads).arg(optionsModel.maxScriptThreads)
         showErrorText: !loadedItem.acceptableInput && loadedItem.length > 0
         actionItem: ValueInput {
-            parentState: parSetting.state
+            parentState: parSetting.visualState
             description: optionsModel.scriptThreads
             onEditingFinished: {
                 if (checkValidity(optionsModel.minScriptThreads, optionsModel.maxScriptThreads, parseInt(text))) {

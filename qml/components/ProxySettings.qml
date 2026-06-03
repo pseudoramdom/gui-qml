@@ -49,7 +49,7 @@ ColumnLayout {
         showErrorText: loadedItem && !loadedItem.validInput && optionsModel.proxyEnabled
         actionItem: ProxyLocationInput {
             objectName: "proxyAddressInput"
-            parentState: defaultProxy.state
+            parentState: defaultProxy.visualState
             accessibleName: qsTr("Default proxy location")
             description: optionsModel.proxyAddress.length > 0
                          ? optionsModel.proxyAddress
@@ -112,7 +112,7 @@ ColumnLayout {
         showErrorText: loadedItem && !loadedItem.validInput && optionsModel.torEnabled
         actionItem: ProxyLocationInput {
             objectName: "torAddressInput"
-            parentState: torProxy.state
+            parentState: torProxy.visualState
             accessibleName: qsTr("Tor proxy location")
             description: optionsModel.torAddress.length > 0
                          ? optionsModel.torAddress

@@ -16,7 +16,7 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("Website")
         actionItem: ExternalLink {
-            parentState: websiteLink.state
+            parentState: websiteLink.visualState
             description: "bitcoincore.org"
             link: "https://bitcoincore.org"
         }
@@ -28,7 +28,7 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("Source code")
         actionItem: ExternalLink {
-            parentState: sourceLink.state
+            parentState: sourceLink.visualState
             description: "github.com/bitcoin/bitcoin"
             link: "https://github.com/bitcoin/bitcoin"
         }
@@ -40,7 +40,7 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("License")
         actionItem: ExternalLink {
-            parentState: licenseLink.state
+            parentState: licenseLink.visualState
             description: "MIT"
             link: "https://opensource.org/licenses/MIT"
         }
@@ -52,7 +52,7 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("Version")
         actionItem: ExternalLink {
-            parentState: versionLink.state
+            parentState: versionLink.visualState
             description: nodeModel.fullClientVersion
             link: "https://bitcoin.org/en/download"
             iconSource: "image://images/caret-right"
