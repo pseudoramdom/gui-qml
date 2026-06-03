@@ -66,8 +66,9 @@ def test_default_proxy_toggle(gui):
     checked = gui.get_property("proxyEnableSwitch", "checked")
     assert not checked, f"Expected proxy disabled by default, got checked={checked}"
 
-    # During onboarding the node has not started yet, so no restart is needed
-    # and proxySettingsDirty must remain false regardless of user changes.
+    # The shared runtime model marks restart-scoped settings dirty as soon as
+    # they change. Runtime onboarding hides restart notices and resets the
+    # dirty baseline when onboarding completes.
     dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
     assert not dirty, "Expected proxySettingsDirty=False before any change"
 
@@ -78,10 +79,8 @@ def test_default_proxy_toggle(gui):
     assert checked, "Expected proxyEnableSwitch to be checked after click"
     print("  Default proxy toggled ON: OK")
 
-    # proxySettingsDirty stays false during onboarding.
-    dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
-    assert not dirty, "Expected proxySettingsDirty=False during onboarding"
-    print("  proxySettingsDirty=False during onboarding: OK")
+    gui.wait_for_property("settingsProxy", "proxySettingsDirty", True, timeout_ms=2000)
+    print("  proxySettingsDirty=True until onboarding completes: OK")
 
     # Disable proxy.
     gui.click("proxyEnableSwitch")

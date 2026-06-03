@@ -50,6 +50,14 @@ bool IsParameterInteractionSetting(const QString& name)
            name == QStringLiteral("maxmempool");
 }
 
+bool IsLegacyNumericRwSetting(const QString& name)
+{
+    return name == QStringLiteral("dbcache") ||
+           name == QStringLiteral("par") ||
+           name == QStringLiteral("prune") ||
+           name == QStringLiteral("prune-prev");
+}
+
 bool IsOptionalStringCoreSetting(const QString& name)
 {
     return name == QStringLiteral("proxy") ||
@@ -97,6 +105,11 @@ common::SettingsValue ForcedParameterInteractionValue(ArgsManager& args, const Q
         }
     });
     return value;
+}
+
+bool HasEffectiveSetting(ArgsManager& args, const QString& name)
+{
+    return !args.GetSetting(std::string{"-"} + name.toStdString()).isNull();
 }
 
 std::string TrimTrailingRootDot(std::string host)
@@ -191,6 +204,23 @@ int64_t PruneGBToMiB(int gb)
     return gb * GB_BYTES / 1024 / 1024;
 }
 
+bool PruneEnabled(const common::SettingsValue& setting)
+{
+    return SettingToInt(setting, 0) > 1;
+}
+
+int PruneSizeGBFromSetting(const common::SettingsValue& setting)
+{
+    const int64_t value = SettingToInt(setting, 0);
+    return value > 1 ? PruneMiBToGB(value) : DEFAULT_PRUNE_TARGET_GB;
+}
+
+common::SettingsValue PruneSetting(bool enabled, int prune_size_gb)
+{
+    return enabled ? common::SettingsValue{PruneGBToMiB(prune_size_gb < 1 ? 1 : prune_size_gb)}
+                   : common::SettingsValue{0};
+}
+
 QString DefaultProxyAddress()
 {
     return QStringLiteral("%1:%2").arg(DEFAULT_PROXY_HOST).arg(DEFAULT_PROXY_PORT);
@@ -245,9 +275,11 @@ Values LoadPersistentValues(interfaces::Node& node)
     values.natpmp = SettingToBool(node.getPersistentSetting("natpmp"), DEFAULT_NATPMP);
     values.server = SettingToBool(node.getPersistentSetting("server"), false);
 
-    const int64_t prune_value = SettingToInt(node.getPersistentSetting("prune"), 0);
-    values.prune = prune_value > 1;
-    values.prune_size_gb = values.prune ? PruneMiBToGB(prune_value) : DEFAULT_PRUNE_TARGET_GB;
+    const common::SettingsValue prune_setting = node.getPersistentSetting("prune");
+    values.prune = PruneEnabled(prune_setting);
+    values.prune_size_gb = values.prune
+        ? PruneSizeGBFromSetting(prune_setting)
+        : PruneSizeGBFromSetting(node.getPersistentSetting("prune-prev"));
 
     const QString proxy_setting = ProxyAddressFromSetting(node.getPersistentSetting("proxy"));
     values.proxy_enabled = !proxy_setting.isEmpty();
@@ -271,9 +303,11 @@ Values LoadEffectiveValues(ArgsManager& args)
     values.natpmp = SettingToBool(args.GetSetting("-natpmp"), DEFAULT_NATPMP);
     values.server = SettingToBool(args.GetSetting("-server"), false);
 
-    const int64_t prune_value = SettingToInt(args.GetSetting("-prune"), 0);
-    values.prune = prune_value > 1;
-    values.prune_size_gb = values.prune ? PruneMiBToGB(prune_value) : DEFAULT_PRUNE_TARGET_GB;
+    const common::SettingsValue prune_setting = args.GetSetting("-prune");
+    values.prune = PruneEnabled(prune_setting);
+    values.prune_size_gb = values.prune
+        ? PruneSizeGBFromSetting(prune_setting)
+        : PruneSizeGBFromSetting(args.GetPersistentSetting("prune-prev"));
 
     const QString proxy_setting = ProxyAddressFromSetting(args.GetSetting("-proxy"));
     values.proxy_enabled = !proxy_setting.isEmpty();
@@ -288,6 +322,48 @@ Values LoadEffectiveValues(ArgsManager& args)
         ? onion_setting
         : QString::fromStdString(SettingToString(args.GetPersistentSetting("onion-prev"), ""));
     if (values.tor_address.isEmpty()) values.tor_address = DefaultProxyAddress();
+
+    return values;
+}
+
+bool IsCommandLineOverridden(ArgsManager& args, const QString& name)
+{
+    const std::string key = name.toStdString();
+    bool overridden{false};
+    args.LockSettings([&](common::Settings& settings) {
+        if (auto* options = common::FindKey(settings.command_line_options, key)) {
+            overridden = !options->empty();
+        }
+    });
+    return overridden;
+}
+
+Values LoadDisplayValues(interfaces::Node& node, ArgsManager& args)
+{
+    Values values = LoadPersistentValues(node);
+    const Values effective_values = LoadEffectiveValues(args);
+
+    if (HasEffectiveSetting(args, QStringLiteral("listen"))) {
+        values.listen = effective_values.listen;
+    }
+    if (HasEffectiveSetting(args, QStringLiteral("natpmp"))) {
+        values.natpmp = effective_values.natpmp;
+    }
+    if (HasEffectiveSetting(args, QStringLiteral("server"))) {
+        values.server = effective_values.server;
+    }
+    if (HasEffectiveSetting(args, QStringLiteral("prune"))) {
+        values.prune = effective_values.prune;
+        values.prune_size_gb = effective_values.prune_size_gb;
+    }
+    if (HasEffectiveSetting(args, QStringLiteral("proxy"))) {
+        values.proxy_enabled = effective_values.proxy_enabled;
+        values.proxy_address = effective_values.proxy_address;
+    }
+    if (HasEffectiveSetting(args, QStringLiteral("onion"))) {
+        values.tor_enabled = effective_values.tor_enabled;
+        values.tor_address = effective_values.tor_address;
+    }
 
     return values;
 }
@@ -372,6 +448,13 @@ common::SettingsValue DefaultCoreSettingValue(const QString& name)
     return {};
 }
 
+common::SettingsValue DisplaySettingValue(interfaces::Node& node, ArgsManager& args, const QString& name)
+{
+    const common::SettingsValue effective_value = args.GetSetting(std::string{"-"} + name.toStdString());
+    if (!effective_value.isNull()) return effective_value;
+    return node.getPersistentSetting(name.toStdString());
+}
+
 common::SettingsValue ConfigCoreSettingValue(ArgsManager& args, const QString& name)
 {
     common::SettingsValue value;
@@ -415,16 +498,13 @@ bool CoreSettingValuesEqual(const QString& name, const common::SettingsValue& le
 QVariantMap CoreSettingStatus(ArgsManager& args, const QString& name)
 {
     const std::string key = name.toStdString();
-    bool command_line_overridden{false};
+    const bool command_line_overridden{IsCommandLineOverridden(args, name)};
     bool has_rw_setting{false};
     bool has_config_setting{false};
     common::SettingsValue config_value;
     const std::string chain = args.GetChainTypeString();
 
     args.LockSettings([&](common::Settings& settings) {
-        if (auto* options = common::FindKey(settings.command_line_options, key)) {
-            command_line_overridden = !options->empty();
-        }
         if (const common::SettingsValue* value = common::FindKey(settings.rw_settings, key)) {
             has_rw_setting = !value->isNull();
         }
@@ -509,22 +589,53 @@ common::SettingsValue GuiOverrideValue(ArgsManager& args, const QString& name, c
     return value;
 }
 
+common::SettingsValue LegacyCompatibleRwSettingValue(const QString& name, const common::SettingsValue& value)
+{
+    // Match Qt's settings.json downgrade workaround for numeric settings
+    // older GUI releases read through string-only argument paths.
+    if (value.isNum() && IsLegacyNumericRwSetting(name)) {
+        return common::SettingsValue{value.getValStr()};
+    }
+    return value;
+}
+
 void SetRwSetting(ArgsManager& args, const QString& name, const common::SettingsValue& value)
 {
     const std::string key = name.toStdString();
+    const common::SettingsValue stored_value = LegacyCompatibleRwSettingValue(name, value);
     args.LockSettings([&](common::Settings& settings) {
-        if (value.isNull()) {
+        if (stored_value.isNull()) {
             settings.rw_settings.erase(key);
         } else {
-            settings.rw_settings[key] = value;
+            settings.rw_settings[key] = stored_value;
         }
     });
+}
+
+void UpdateRwSetting(interfaces::Node& node, const QString& name, const common::SettingsValue& value)
+{
+    node.updateRwSetting(name.toStdString(), LegacyCompatibleRwSettingValue(name, value));
 }
 
 bool WriteCoreSettingOverride(ArgsManager& args, const QString& name, const common::SettingsValue& value)
 {
     if (!CanEditCoreSetting(args, name)) return false;
     SetRwSetting(args, name, GuiOverrideValue(args, name, value));
+    return true;
+}
+
+bool WritePruneSetting(ArgsManager& args, bool enabled, int prune_size_gb)
+{
+    const QString key{QStringLiteral("prune")};
+    if (!CanEditCoreSetting(args, key)) return false;
+
+    if (enabled) {
+        if (!WriteCoreSettingOverride(args, key, PruneSetting(true, prune_size_gb))) return false;
+        SetRwSetting(args, QStringLiteral("prune-prev"), {});
+    } else {
+        SetRwSetting(args, QStringLiteral("prune-prev"), PruneSetting(true, prune_size_gb));
+        if (!WriteCoreSettingOverride(args, key, PruneSetting(false, prune_size_gb))) return false;
+    }
     return true;
 }
 
@@ -570,7 +681,7 @@ common::SettingsValue Session::settingValue(const QString& name) const
     if (name == QStringLiteral("listen")) return m_values.listen;
     if (name == QStringLiteral("natpmp")) return m_values.natpmp;
     if (name == QStringLiteral("server")) return m_values.server;
-    if (name == QStringLiteral("prune")) return m_values.prune ? PruneGBToMiB(m_values.prune_size_gb) : 0;
+    if (name == QStringLiteral("prune")) return PruneSetting(m_values.prune, m_values.prune_size_gb);
     if (name == QStringLiteral("proxy")) return ProxySetting(m_values.proxy_enabled, m_values.proxy_address);
     if (name == QStringLiteral("onion")) return ProxySetting(m_values.tor_enabled, m_values.tor_address);
     return {};
@@ -802,6 +913,9 @@ bool Session::writeToArgs(ArgsManager& args, const QString& name) const
     if (name == QStringLiteral("onion")) {
         return WriteProxySetting(args, QStringLiteral("onion"), m_values.tor_enabled, m_values.tor_address);
     }
+    if (name == QStringLiteral("prune")) {
+        return WritePruneSetting(args, m_values.prune, m_values.prune_size_gb);
+    }
     return WriteCoreSettingOverride(args, name, settingValue(name));
 }
 
@@ -826,20 +940,31 @@ bool Session::writeToNode(interfaces::Node& node, ArgsManager& args, const QStri
         const QString trimmed = address.trimmed();
         if (enabled && !ProxyValidationError(trimmed).isEmpty()) return false;
 
-        const std::string prev_key = QString{name + QStringLiteral("-prev")}.toStdString();
+        const QString prev_key{name + QStringLiteral("-prev")};
         if (enabled) {
-            node.updateRwSetting(name.toStdString(), GuiOverrideValue(args, name, ProxySetting(true, trimmed)));
-            node.updateRwSetting(prev_key, common::SettingsValue{});
+            UpdateRwSetting(node, name, GuiOverrideValue(args, name, ProxySetting(true, trimmed)));
+            UpdateRwSetting(node, prev_key, common::SettingsValue{});
         } else {
             if (!trimmed.isEmpty()) {
-                node.updateRwSetting(prev_key, common::SettingsValue{trimmed.toStdString()});
+                UpdateRwSetting(node, prev_key, common::SettingsValue{trimmed.toStdString()});
             }
-            node.updateRwSetting(name.toStdString(), GuiOverrideValue(args, name, ProxySetting(false, trimmed)));
+            UpdateRwSetting(node, name, GuiOverrideValue(args, name, ProxySetting(false, trimmed)));
         }
         return true;
     }
 
-    node.updateRwSetting(name.toStdString(), GuiOverrideValue(args, name, settingValue(name)));
+    if (name == QStringLiteral("prune")) {
+        if (m_values.prune) {
+            UpdateRwSetting(node, name, GuiOverrideValue(args, name, PruneSetting(true, m_values.prune_size_gb)));
+            UpdateRwSetting(node, QStringLiteral("prune-prev"), common::SettingsValue{});
+        } else {
+            UpdateRwSetting(node, QStringLiteral("prune-prev"), PruneSetting(true, m_values.prune_size_gb));
+            UpdateRwSetting(node, name, GuiOverrideValue(args, name, PruneSetting(false, m_values.prune_size_gb)));
+        }
+        return true;
+    }
+
+    UpdateRwSetting(node, name, GuiOverrideValue(args, name, settingValue(name)));
     return true;
 }
 

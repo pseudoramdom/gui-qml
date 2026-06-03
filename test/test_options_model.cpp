@@ -40,25 +40,18 @@ private Q_SLOTS:
     void proxyDisabledRemovesKey();
     void torDisabledRemovesKey();
     void proxyEnabledWritesAddress();
-    void onboardWritesProxy();
-    void proxyDirtySetWhenOnboarded();
-    void proxyDirtyNotSetDuringOnboarding();
+    void proxyDirtySetAtRuntime();
     void proxyDirtyResetWhenReverted();
-    void proxyDirtyNotSetAfterOnboard();
     void mempoolSizeLoadedFromSettings();
     void mempoolSizeWritesSetting();
     void mempoolSizeDoesNotRewriteUnchangedSetting();
     void externalSignerPathWritesSigner();
     void externalSignerPathClearedRemovesKey();
-    void onboardWritesExternalSignerPath();
     void walletSettingsDirtyTracksExternalSignerPath();
-    void walletSettingsDirtyNotSetDuringOnboarding();
     void signerPathLoadedFromSettings();
     void signerPathWritesSetting();
-    void signerDirtySetWhenOnboarded();
-    void signerDirtyNotSetDuringOnboarding();
+    void signerDirtySetAtRuntime();
     void signerDirtyResetWhenReverted();
-    void signerDirtyNotSetAfterOnboard();
     void externalSignerPathValidationRejectsMissingPath();
     void externalSignerPathValidationAcceptsExecutablePath();
     void connectionDirtyTracksRestartSettings();
@@ -98,7 +91,7 @@ void OptionsModelTests::proxyDisabledRemovesKey()
     ON_CALL(node, getPersistentSetting(std::string{"proxy"}))
         .WillByDefault(Return(MakeAddress("127.0.0.1:9050")));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.proxyEnabled());
 
     // When proxy is disabled, updateRwSetting must be called with a null (not
@@ -123,7 +116,7 @@ void OptionsModelTests::torDisabledRemovesKey()
     ON_CALL(node, getPersistentSetting(std::string{"onion"}))
         .WillByDefault(Return(MakeAddress("127.0.0.1:9150")));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.torEnabled());
 
     EXPECT_CALL(node, updateRwSetting(std::string{"onion-prev"}, _));
@@ -146,7 +139,7 @@ void OptionsModelTests::proxyEnabledWritesAddress()
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
     // Construct with no saved proxy — m_proxy_enabled=false, m_proxy_address="".
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.proxyEnabled());
 
     // Pre-load an address into the model (as QML does before toggling the switch).
@@ -164,33 +157,7 @@ void OptionsModelTests::proxyEnabledWritesAddress()
     QVERIFY(model.proxyEnabled());
 }
 
-void OptionsModelTests::onboardWritesProxy()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, resetSettings()).WillByDefault(Return());
-
-    // Construct as not-yet-onboarded.
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setProxyEnabled(true);
-    model.setProxyAddress("10.0.0.1:9050");
-
-    EXPECT_CALL(node, updateRwSetting(_, _)).Times(::testing::AnyNumber());
-    // onboard() must write the proxy address to disk.
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "10.0.0.1:9050";
-        })));
-
-    model.onboard();
-}
-
-void OptionsModelTests::proxyDirtySetWhenOnboarded()
+void OptionsModelTests::proxyDirtySetAtRuntime()
 {
     using ::testing::_;
     using ::testing::NiceMock;
@@ -199,27 +166,11 @@ void OptionsModelTests::proxyDirtySetWhenOnboarded()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.proxySettingsDirty());
 
     model.setProxyEnabled(true);
     QVERIFY(model.proxySettingsDirty());
-}
-
-void OptionsModelTests::proxyDirtyNotSetDuringOnboarding()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-
-    // During onboarding the node has not started yet, so no restart is needed.
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setProxyEnabled(true);
-    model.setProxyAddress("127.0.0.1:9050");
-    QVERIFY(!model.proxySettingsDirty());
 }
 
 void OptionsModelTests::proxyDirtyResetWhenReverted()
@@ -231,8 +182,8 @@ void OptionsModelTests::proxyDirtyResetWhenReverted()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    // Start onboarded with proxy disabled (no saved proxy).
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    // Start with proxy disabled (no saved proxy).
+    OptionsQmlModel model(node);
     QVERIFY(!model.proxySettingsDirty());
 
     // Simulate what ProxySettings.qml does: set address before enabling.
@@ -251,28 +202,6 @@ void OptionsModelTests::proxyDirtyResetWhenReverted()
     QVERIFY(!model.proxySettingsDirty());
 }
 
-void OptionsModelTests::proxyDirtyNotSetAfterOnboard()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, resetSettings()).WillByDefault(Return());
-
-    // Configure proxy during onboarding.
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setProxyEnabled(true);
-    model.setProxyAddress("127.0.0.1:9050");
-    QVERIFY(!model.proxySettingsDirty());
-
-    // After onboard() the node starts with those settings applied —
-    // no restart is needed, so dirty must be false.
-    model.onboard();
-    QVERIFY(!model.proxySettingsDirty());
-}
-
 void OptionsModelTests::mempoolSizeLoadedFromSettings()
 {
     using ::testing::_;
@@ -284,7 +213,7 @@ void OptionsModelTests::mempoolSizeLoadedFromSettings()
     ON_CALL(node, getPersistentSetting(std::string{"maxmempool"}))
         .WillByDefault(Return(MakeInt(456)));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(model.maxMempoolSizeMB(), 456);
 }
 
@@ -298,7 +227,7 @@ void OptionsModelTests::mempoolSizeWritesSetting()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
 
     EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"},
         Truly([](const common::SettingsValue& v) {
@@ -320,7 +249,7 @@ void OptionsModelTests::mempoolSizeDoesNotRewriteUnchangedSetting()
     ON_CALL(node, getPersistentSetting(std::string{"maxmempool"}))
         .WillByDefault(Return(MakeInt(456)));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
 
     EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"}, _)).Times(0);
 
@@ -338,7 +267,7 @@ void OptionsModelTests::externalSignerPathWritesSigner()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
 
     EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
         Truly([](const common::SettingsValue& v) {
@@ -361,7 +290,7 @@ void OptionsModelTests::externalSignerPathClearedRemovesKey()
     ON_CALL(node, getPersistentSetting(std::string{"signer"}))
         .WillByDefault(Return(MakeAddress("/usr/local/bin/hwi")));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPath(), QString("/usr/local/bin/hwi"));
 
     EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
@@ -369,29 +298,6 @@ void OptionsModelTests::externalSignerPathClearedRemovesKey()
 
     model.setExternalSignerPath("");
     QVERIFY(model.externalSignerPath().isEmpty());
-}
-
-void OptionsModelTests::onboardWritesExternalSignerPath()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, resetSettings()).WillByDefault(Return());
-
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setExternalSignerPath("/usr/local/bin/hwi");
-
-    EXPECT_CALL(node, updateRwSetting(::testing::_, ::testing::_)).Times(::testing::AnyNumber());
-    EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "/usr/local/bin/hwi";
-        })));
-
-    model.onboard();
 }
 
 void OptionsModelTests::walletSettingsDirtyTracksExternalSignerPath()
@@ -403,27 +309,13 @@ void OptionsModelTests::walletSettingsDirtyTracksExternalSignerPath()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
 
     model.setExternalSignerPath("/usr/local/bin/hwi");
     QVERIFY(model.walletSettingsDirty());
 
     model.setExternalSignerPath("");
-    QVERIFY(!model.walletSettingsDirty());
-}
-
-void OptionsModelTests::walletSettingsDirtyNotSetDuringOnboarding()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setExternalSignerPath("/usr/local/bin/hwi");
     QVERIFY(!model.walletSettingsDirty());
 }
 
@@ -438,7 +330,7 @@ void OptionsModelTests::signerPathLoadedFromSettings()
     ON_CALL(node, getPersistentSetting(std::string{"signer"}))
         .WillByDefault(Return(MakeAddress("/opt/hwi/ledger.py")));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPath(), QString("/opt/hwi/ledger.py"));
 }
 
@@ -452,7 +344,7 @@ void OptionsModelTests::signerPathWritesSetting()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.externalSignerPath().isEmpty());
 
     EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
@@ -464,7 +356,7 @@ void OptionsModelTests::signerPathWritesSetting()
     QCOMPARE(model.externalSignerPath(), QString("/opt/hwi/ledger.py"));
 }
 
-void OptionsModelTests::signerDirtySetWhenOnboarded()
+void OptionsModelTests::signerDirtySetAtRuntime()
 {
     using ::testing::_;
     using ::testing::NiceMock;
@@ -473,25 +365,11 @@ void OptionsModelTests::signerDirtySetWhenOnboarded()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
 
     model.setExternalSignerPath("/opt/hwi/ledger.py");
     QVERIFY(model.walletSettingsDirty());
-}
-
-void OptionsModelTests::signerDirtyNotSetDuringOnboarding()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setExternalSignerPath("/opt/hwi/ledger.py");
-    QVERIFY(!model.walletSettingsDirty());
 }
 
 void OptionsModelTests::signerDirtyResetWhenReverted()
@@ -503,38 +381,13 @@ void OptionsModelTests::signerDirtyResetWhenReverted()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
 
     model.setExternalSignerPath("/opt/hwi/ledger.py");
     QVERIFY(model.walletSettingsDirty());
 
     model.setExternalSignerPath("");
-    QVERIFY(!model.walletSettingsDirty());
-}
-
-void OptionsModelTests::signerDirtyNotSetAfterOnboard()
-{
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, resetSettings()).WillByDefault(Return());
-
-    OptionsQmlModel model(node, /*is_onboarded=*/false);
-    model.setExternalSignerPath("/opt/hwi/ledger.py");
-    QVERIFY(!model.walletSettingsDirty());
-
-    EXPECT_CALL(node, updateRwSetting(::testing::_, ::testing::_)).Times(::testing::AnyNumber());
-    EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "/opt/hwi/ledger.py";
-        })));
-
-    model.onboard();
     QVERIFY(!model.walletSettingsDirty());
 }
 
@@ -547,7 +400,7 @@ void OptionsModelTests::externalSignerPathValidationRejectsMissingPath()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPathValidationError("/definitely/not/a/real/signer"),
         QString("The configured signer path does not exist."));
 }
@@ -571,7 +424,7 @@ void OptionsModelTests::externalSignerPathValidationAcceptsExecutablePath()
     script.close();
     QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.externalSignerPathValidationError(script_path).isEmpty());
 }
 
@@ -585,7 +438,7 @@ void OptionsModelTests::connectionDirtyTracksRestartSettings()
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
     ON_CALL(node, getPersistentSetting(std::string{"listen"})).WillByDefault(Return(common::SettingsValue{true}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.connectionSettingsDirty());
     QVERIFY(!model.restartRequired());
 
@@ -609,7 +462,7 @@ void OptionsModelTests::natpmpAppliesLiveWithoutRestartDirty()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     InSequence sequence;
     EXPECT_CALL(node, updateRwSetting(std::string{"natpmp"},
         Truly([](const common::SettingsValue& value) {
@@ -646,7 +499,7 @@ void OptionsModelTests::storageDirtyIgnoresDisabledPruneSize()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.prune());
     model.setPruneSizeGB(10);
     QVERIFY(!model.storageSettingsDirty());
@@ -665,7 +518,7 @@ void OptionsModelTests::developerDirtyTracksRestartSettings()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(!model.developerSettingsDirty());
 
     model.setScriptThreads(model.scriptThreads() + 1);
@@ -694,13 +547,13 @@ void OptionsModelTests::proxyValidationAndCommit()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.validateProxyLocation("127.0.0.1:9050").isEmpty());
     QVERIFY(model.validateProxyLocation("[::1]:9050").isEmpty());
-    QVERIFY(!model.validateProxyLocation("127.0.0.1").isEmpty());
-    QVERIFY(!model.validateProxyLocation("[::1]").isEmpty());
-    QVERIFY(!model.validateProxyLocation("proxy.example:9050").isEmpty());
-    QVERIFY(!model.validateProxyLocation("proxy.example").isEmpty());
+    QVERIFY(model.validateProxyLocation("127.0.0.1").isEmpty());
+    QVERIFY(model.validateProxyLocation("[::1]").isEmpty());
+    QVERIFY(model.validateProxyLocation("proxy.example:9050").isEmpty());
+    QVERIFY(model.validateProxyLocation("proxy.example").isEmpty());
 #ifdef HAVE_SOCKADDR_UN
     QVERIFY(model.validateProxyLocation("unix:/tmp/bitcoin-core-proxy.sock").isEmpty());
 #else
@@ -715,8 +568,8 @@ void OptionsModelTests::proxyValidationAndCommit()
     QVERIFY(!model.commitProxyLocation("999.999.999.999:9050"));
     QVERIFY(model.proxyAddress().isEmpty());
 
-    QVERIFY(model.commitProxyLocation("127.0.0.1:9050"));
-    QCOMPARE(model.proxyAddress(), QString("127.0.0.1:9050"));
+    QVERIFY(model.commitProxyLocation("proxy.example"));
+    QCOMPARE(model.proxyAddress(), QString("proxy.example"));
 }
 
 void OptionsModelTests::proxyDisabledPreservesPreviousValue()
@@ -731,7 +584,7 @@ void OptionsModelTests::proxyDisabledPreservesPreviousValue()
     ON_CALL(node, getPersistentSetting(std::string{"proxy"}))
         .WillByDefault(Return(MakeAddress("127.0.0.1:9050")));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"},
         Truly([](const common::SettingsValue& v) {
             return v.isStr() && v.get_str() == "127.0.0.1:9050";
@@ -762,7 +615,7 @@ void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QVERIFY(model.validateCustomDataDir(data_dir).isEmpty());
     QVERIFY(model.selectCustomDataDir(data_dir));
 
@@ -791,7 +644,7 @@ void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     model.setThirdPartyTransactionUrls("https://example.com/tx/%s|https://example.org/tx|not-a-url");
 
     const QVariantList links = model.thirdPartyTransactionLinks("abc");
@@ -821,7 +674,7 @@ void OptionsModelTests::moneyFontChoicePersists()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(model.moneyFontChoice(), QString("embedded"));
     model.setMoneyFontChoice("best_system");
     QCOMPARE(model.moneyFontChoice(), QString("best_system"));
@@ -848,7 +701,7 @@ void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
     NiceMock<MockNode> node;
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
-    OptionsQmlModel model(node, /*is_onboarded=*/true);
+    OptionsQmlModel model(node);
     QCOMPARE(QString::fromUtf8(SettingsKeys::DISPLAY_UNIT), QStringLiteral("DisplayBitcoinUnit"));
     QCOMPARE(model.displayUnit(), 3);
     QCOMPARE(model.displayUnitLabel(), QStringLiteral("sat"));

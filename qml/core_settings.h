@@ -76,6 +76,7 @@ const QStringList& OnboardingCoreSettingNames();
 
 int PruneMiBToGB(int64_t mib);
 int64_t PruneGBToMiB(int gb);
+common::SettingsValue PruneSetting(bool enabled, int prune_size_gb);
 
 QString DefaultProxyAddress();
 QString ProxyValidationError(const QString& location);
@@ -83,17 +84,21 @@ common::SettingsValue ProxySetting(bool enabled, const QString& address);
 
 Values LoadPersistentValues(interfaces::Node& node);
 Values LoadEffectiveValues(ArgsManager& args);
+Values LoadDisplayValues(interfaces::Node& node, ArgsManager& args);
 
 common::SettingsValue DefaultCoreSettingValue(const QString& name);
+common::SettingsValue DisplaySettingValue(interfaces::Node& node, ArgsManager& args, const QString& name);
 common::SettingsValue ConfigCoreSettingValue(ArgsManager& args, const QString& name);
 bool CoreSettingValuesEqual(const QString& name, const common::SettingsValue& left, const common::SettingsValue& right);
 
 QVariantMap CoreSettingStatus(ArgsManager& args, const QString& name);
 QVariantMap BuildCoreSettingStatuses(ArgsManager& args, const QStringList& names);
+bool IsCommandLineOverridden(ArgsManager& args, const QString& name);
 bool CanEditCoreSetting(ArgsManager& args, const QString& name);
 
 common::SettingsValue GuiOverrideValue(ArgsManager& args, const QString& name, const common::SettingsValue& value);
 void SetRwSetting(ArgsManager& args, const QString& name, const common::SettingsValue& value);
+void UpdateRwSetting(interfaces::Node& node, const QString& name, const common::SettingsValue& value);
 bool WriteCoreSettingOverride(ArgsManager& args, const QString& name, const common::SettingsValue& value);
 bool WriteProxySetting(ArgsManager& args, const QString& key, bool enabled, const QString& address);
 

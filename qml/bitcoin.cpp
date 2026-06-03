@@ -517,7 +517,7 @@ int QmlGuiMain(int argc, char* argv[])
     }
 #endif
 
-    OptionsQmlModel options_model(*node, !need_onboarding.toBool());
+    OptionsQmlModel options_model(*node);
     engine.rootContext()->setContextProperty("optionsModel", &options_model);
     engine.rootContext()->setContextProperty("needOnboarding", need_onboarding);
 #ifdef ENABLE_TEST_AUTOMATION
