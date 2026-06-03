@@ -12,6 +12,7 @@ import "../settings"
 Page {
     id: root
     objectName: "onboardingCover"
+    property bool preInit: false
     signal next
     background: null
     clip: true
@@ -24,6 +25,8 @@ Page {
             InformationPage {
                 buttonObjectName: "onboardingCoverButton"
                 navRightDetail: NavButton {
+                    visible: !root.preInit
+                    enabled: visible
                     iconSource: "image://images/info"
                     iconHeight: 24
                     iconWidth: 24

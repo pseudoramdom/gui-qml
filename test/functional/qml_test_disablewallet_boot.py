@@ -4,8 +4,8 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Smoke test for runtime -disablewallet node-only mode.
 
-This test walks onboarding with wallet support disabled at runtime and verifies
-that the app lands on the node screen, hides wallet settings, and can open each
+This test launches with wallet support disabled at runtime and verifies that the
+app lands directly on the node screen, hides wallet settings, and can open each
 node settings page.
 
 This test requires:
@@ -20,7 +20,6 @@ import sys
 
 from qml_test_harness import (
     QmlTestHarness,
-    complete_onboarding,
     dump_qml_tree,
 )
 
@@ -211,12 +210,11 @@ def run_tests():
         gui = harness.driver
         checkpoints.checkpoint("GUI launched", gui)
 
-        complete_onboarding(gui)
         gui.wait_for_page("nodeSettingsButton", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
 
         current_page = gui.get_current_page()
         assert current_page == "nodeRunner", (
-            f"Expected -disablewallet onboarding to exit to nodeRunner, got {current_page!r}"
+            f"Expected -disablewallet startup to show nodeRunner, got {current_page!r}"
         )
         print("Reached node-only main screen")
         checkpoints.checkpoint("node-only main screen reached", gui)

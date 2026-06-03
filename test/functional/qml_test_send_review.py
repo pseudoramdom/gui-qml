@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import datetime
 
+from qml_driver import QmlDriverError
 from qml_test_harness import dump_qml_tree
 from qml_wallet_test_lib import WalletFlowHarness, rpc_call
 
@@ -95,8 +96,11 @@ def wait_until(predicate, timeout=20, interval=0.1, description="condition"):
 
 
 def create_wallet(gui, wallet_name):
-    gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=20000)
-    gui.click("createWalletButton")
+    try:
+        gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletButton")
+    except QmlDriverError:
+        pass
     gui.wait_for_property("walletTypeRegular", "visible", True, timeout_ms=5000)
     gui.click("walletTypeRegular")
     gui.wait_for_page("createWalletIntroPage", timeout_ms=10000)

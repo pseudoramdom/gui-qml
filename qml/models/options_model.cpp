@@ -521,6 +521,7 @@ void OptionsQmlModel::setLanguage(const QString& new_language)
         m_language = new_language;
         QSettings settings;
         settings.setValue(SettingsKeys::LANGUAGE, m_language);
+        writeCoreSettingOverride(QStringLiteral("lang"), currentCoreSettingValue(QStringLiteral("lang")));
         Q_EMIT languageChanged();
     }
 }
@@ -621,13 +622,4 @@ QString OptionsQmlModel::displayUnitLabel() const
 QString OptionsQmlModel::displayUnitLabelForAmount(qint64 satoshi) const
 {
     return QmlBitcoinUnits::displayLabel(QmlBitcoinUnits::fromDisplayUnit(m_display_unit), satoshi);
-}
-
-void OptionsQmlModel::onboard()
-{
-    const DirtySnapshot before = dirtySnapshot();
-    m_core_settings.writeTouchedToNode(m_node, m_args);
-    m_core_settings.clearTouchedSettings();
-    resetDirtySnapshots();
-    emitDirtySignals(before);
 }

@@ -157,7 +157,6 @@ public:
     QString moneyFontChoice() const { return m_money_font_choice; }
     void setMoneyFontChoice(const QString& choice);
     QFont moneyFont() const;
-    Q_INVOKABLE void onboard();
 
 public Q_SLOTS:
     void setCustomDataDirString(const QString &new_custom_datadir_string) {

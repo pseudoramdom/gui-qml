@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-from qml_driver import QmlDriver
+from qml_driver import QmlDriver, QmlDriverError
 from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qsettings_sandbox_args
 
 
@@ -281,3 +281,39 @@ class WalletFlowHarness:
 
     def finish_onboarding(self):
         complete_onboarding(self.driver)
+        self.open_create_wallet_wizard()
+
+    def _wait_for_create_wallet_wizard_entry(self, timeout_ms=5000):
+        deadline = time.time() + timeout_ms / 1000
+        last_error = None
+        entry_points = (
+            "createWalletButton",
+            "walletTypeRegular",
+            "walletTypeExternalSigner",
+            "walletTypeImport",
+        )
+        while time.time() < deadline:
+            for object_name in entry_points:
+                try:
+                    if self.driver.get_property(object_name, "visible"):
+                        return object_name
+                except QmlDriverError as err:
+                    last_error = err
+            time.sleep(0.05)
+        raise QmlDriverError(
+            "No create-wallet wizard entry point became visible"
+            + (f": {last_error}" if last_error else "")
+        )
+
+    def open_create_wallet_wizard(self):
+        if self.driver.object_exists("createWalletWizard"):
+            self._wait_for_create_wallet_wizard_entry()
+            return
+        self.driver.wait_for_property("walletBadge", "loading", False, timeout_ms=30000)
+        self.driver.click("walletBadge")
+        try:
+            self._wait_for_create_wallet_wizard_entry(timeout_ms=2000)
+        except QmlDriverError:
+            self.driver.wait_for_property("walletSelectPopup", "opened", True, timeout_ms=5000)
+            self.driver.click("walletSelectAddWalletButton")
+            self._wait_for_create_wallet_wizard_entry()

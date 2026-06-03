@@ -14,6 +14,7 @@
 #include <qml/core_settings.h>
 #include <qml/datadir.h>
 #include <qml/guiargs.h>
+#include <qml/legacy_settings_migration.h>
 #include <univalue.h>
 #include <util/fs_helpers.h>
 
@@ -87,15 +88,32 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
             result.error = QString::fromStdString(e.what());
             return result;
         }
-        if (!preview_args.GetBoolArg("-resetguisettings", false)) {
+        const bool reset_gui_settings = preview_args.GetBoolArg("-resetguisettings", false);
+        if (!reset_gui_settings) {
             std::vector<std::string> settings_errors;
             if (!preview_args.ReadSettingsFile(&settings_errors)) {
                 result.error = QString::fromStdString(settings_errors.empty() ? std::string{"Settings file could not be read."} : settings_errors.front());
                 return result;
             }
+            const QmlLegacySettings::MigrationResult migration_result{
+                QmlLegacySettings::MigrateCoreSettings(preview_args, QmlLegacySettings::MigrationMode::Preview)
+            };
+            if (!migration_result.error.isEmpty()) {
+                result.error = migration_result.error;
+                return result;
+            }
         }
     } else {
         preview_args.SelectConfigNetwork(preview_args.GetChainTypeString());
+        if (!preview_args.GetBoolArg("-resetguisettings", false)) {
+            const QmlLegacySettings::MigrationResult migration_result{
+                QmlLegacySettings::MigrateCoreSettings(preview_args, QmlLegacySettings::MigrationMode::Preview)
+            };
+            if (!migration_result.error.isEmpty()) {
+                result.error = migration_result.error;
+                return result;
+            }
+        }
     }
 
     // Preview should show the settings the node will run with. In reset mode,
@@ -155,9 +173,17 @@ bool ApplyToArgs(ArgsManager& args, const QString& data_dir, const QSet<QString>
         args.LockSettings([](common::Settings& settings) {
             settings.rw_settings.clear();
         });
+        QmlLegacySettings::ClearLegacyGuiSettings(QString::fromStdString(args.GetChainTypeString()));
     } else {
         if (!args.ReadSettingsFile(&settings_errors)) {
             if (error) *error = QString::fromStdString(settings_errors.empty() ? std::string{"Settings file could not be read."} : settings_errors.front());
+            return false;
+        }
+        const QmlLegacySettings::MigrationResult migration_result{
+            QmlLegacySettings::MigrateCoreSettings(args, QmlLegacySettings::MigrationMode::Persist)
+        };
+        if (!migration_result.error.isEmpty()) {
+            if (error) *error = migration_result.error;
             return false;
         }
     }

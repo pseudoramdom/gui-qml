@@ -24,6 +24,7 @@
 #include <qml/clipboard.h>
 #include <qml/datadir.h>
 #include <qml/guiargs.h>
+#include <qml/legacy_settings_migration.h>
 #ifdef __ANDROID__
 #include <qml/androidnotifier.h>
 #endif
@@ -499,6 +500,13 @@ int QmlGuiMain(int argc, char* argv[])
 
     app.setQuitOnLastWindowClosed(false);
     setupChainQSettings(&app, QString::fromStdString(gArgs.GetChainTypeString()).toUpper());
+    if (gArgs.GetBoolArg("-resetguisettings", false)) {
+        QString reset_error;
+        if (!QmlDataDir::ResetGuiSettings(gArgs, &reset_error)) {
+            InitError(Untranslated(reset_error.toStdString()));
+            return EXIT_FAILURE;
+        }
+    }
 
     LoadFontResource(":/fonts/bitcoincoresans/regular");
     LoadFontResource(":/fonts/bitcoincoresans/semibold");
@@ -512,13 +520,30 @@ int QmlGuiMain(int argc, char* argv[])
 
     const QString cli_lang = QString::fromStdString(gArgs.GetArg("-lang", ""));
     const QString startup_language = cli_lang.isEmpty()
-        ? QSettings().value(SettingsKeys::LANGUAGE, "").toString()
+        ? QSettings().value(SettingsKeys::LANGUAGE, QmlLegacySettings::ReadLegacyGuiLanguage(QString::fromStdString(gArgs.GetChainTypeString()))).toString()
         : cli_lang;
     install_language(startup_language);
 
+    std::vector<std::string> command_line_args;
+    command_line_args.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        command_line_args.emplace_back(argv[i]);
+    }
+
     PreInitOnboardingContext pre_init_onboarding_context;
-    const PreInitOnboardingStatus pre_init_onboarding_status{PreInitOnboardingStatus::NOT_SHOWN};
-    QmlDataDir::ApplyGuiDataDirSetting(gArgs);
+    const PreInitOnboardingStatus pre_init_onboarding_status{
+        RunPreInitOnboarding(pre_init_onboarding_context, command_line_args, init->canListenIpc())
+    };
+    switch (pre_init_onboarding_status) {
+    case PreInitOnboardingStatus::COMPLETED:
+        break;
+    case PreInitOnboardingStatus::CANCELED:
+        return EXIT_SUCCESS;
+    case PreInitOnboardingStatus::FAILED:
+        return EXIT_FAILURE;
+    case PreInitOnboardingStatus::NOT_SHOWN:
+        break;
+    }
 
     if (auto error = common::InitConfig(
             gArgs,
@@ -528,23 +553,27 @@ int QmlGuiMain(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+    const QmlLegacySettings::MigrationResult legacy_migration{
+        QmlLegacySettings::MigrateCoreSettings(gArgs, QmlLegacySettings::MigrationMode::Persist)
+    };
+    if (!legacy_migration.error.isEmpty()) {
+        InitError(Untranslated(legacy_migration.error.toStdString()));
+        return EXIT_FAILURE;
+    }
+    if (legacy_migration.settings_changed) {
+        std::vector<std::string> settings_errors;
+        if (!gArgs.WriteSettingsFile(&settings_errors)) {
+            InitError(_("Settings file could not be written"), settings_errors);
+            return EXIT_FAILURE;
+        }
+    }
+
     // legacy GUI: parameterSetup()
     // Default printtoconsole to false for the GUI. GUI programs should not
     // print to the console unnecessarily.
     gArgs.SoftSetBoolArg("-printtoconsole", false);
     InitLogging(gArgs);
     InitParameterInteraction(gArgs);
-
-    QVariant need_onboarding(true);
-    if (gArgs.IsArgSet("-datadir") && !gArgs.GetPathArg("-datadir").empty()) {
-        need_onboarding.setValue(false);
-    } else if (ConfigurationFileExists(gArgs)) {
-        need_onboarding.setValue(false);
-    }
-
-    if (gArgs.IsArgSet("-resetguisettings")) {
-        need_onboarding.setValue(true);
-    }
 
     // legacy GUI: createNode()
     std::unique_ptr<interfaces::Node> node = init->makeNode();
@@ -696,7 +725,6 @@ int QmlGuiMain(int argc, char* argv[])
 
     OptionsQmlModel options_model(*node);
     engine.rootContext()->setContextProperty("optionsModel", &options_model);
-    engine.rootContext()->setContextProperty("needOnboarding", need_onboarding);
 #ifdef ENABLE_TEST_AUTOMATION
     engine.rootContext()->setContextProperty("testAutomationEnabled", true);
 #else

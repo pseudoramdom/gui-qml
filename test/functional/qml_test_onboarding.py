@@ -18,7 +18,11 @@ from qml_test_harness import QmlTestHarness, QmlDriverError, dump_qml_tree, pars
 
 def run_tests():
     args = parse_args()
-    harness = QmlTestHarness(socket_path=args.socket_path)
+    harness = QmlTestHarness(
+        socket_path=args.socket_path,
+        use_datadir_arg=bool(args.socket_path),
+        extra_args=[] if args.socket_path else ["-regtest"],
+    )
     gui = None
     try:
         harness.start()
@@ -26,10 +30,8 @@ def run_tests():
 
         # The app starts fresh (-resetguisettings), so we should land on
         # the onboarding cover page.
-        page = gui.get_current_page()
-        print(f"Initial page: {page}")
-        assert "onboardingCover" in page or "Cover" in page, \
-            f"Expected to start on onboardingCover, got: {page}"
+        gui.wait_for_page("onboardingCover", timeout_ms=10000)
+        print("Initial page: onboardingCover")
 
         # Define the expected progression through onboarding.
         # Each entry is (button_to_click, expected_next_page).
@@ -45,14 +47,14 @@ def run_tests():
             print(f"Click {button} ...")
             gui.click(button)
             gui.wait_for_page(expected_page, timeout_ms=5000)
-            current = gui.get_current_page()
-            assert expected_page in current, \
-                f"Expected {expected_page}, got: {current}"
-            print(f"  -> page: {current}")
+            print(f"  -> page: {expected_page}")
 
         # Click Next on the final connection page to finish onboarding.
         print("Click onboardingConnectionButton (finish onboarding) ...")
         gui.click("onboardingConnectionButton")
+
+        if not args.socket_path:
+            gui = harness.wait_for_main_window_reconnect()
 
         # Wait until onboarding has actually transitioned out of onboarding
         # pages; this avoids flaky fixed sleeps on slower machines.

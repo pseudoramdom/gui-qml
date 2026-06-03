@@ -14,6 +14,7 @@ Page {
     objectName: "onboardingConnection"
     signal back
     signal next
+    property var settingsModel: optionsModel
     background: null
     clip: true
     PageStack {
@@ -62,6 +63,7 @@ Page {
             id: connectionSettings
             SettingsConnection {
                 onboarding: true
+                settingsModel: root.settingsModel
                 onBack: connectionStack.pop()
             }
         }

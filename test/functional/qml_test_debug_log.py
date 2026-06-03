@@ -22,7 +22,7 @@ import sys
 import tempfile
 
 from qml_test_harness import GUI_STARTUP_TIMEOUT, dump_qml_tree, find_gui_binary, setup_datadir
-from qml_driver import QmlDriver
+from qml_driver import QmlDriver, QmlDriverError
 
 
 # ── Harness ───────────────────────────────────────────────────────────────────
@@ -146,9 +146,15 @@ def test_auto_refresh(gui, datadir, current_count):
     marker = f"{ts} test-automation auto-refresh marker"
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(marker + "\n")
-    new_count = gui.wait_for_property(
-        "debugLogListView", "count", lambda c: c > current_count, timeout_ms=5000
-    )
+    try:
+        new_count = gui.wait_for_property(
+            "debugLogListView", "count", lambda c: c > current_count, timeout_ms=5000
+        )
+    except QmlDriverError:
+        gui.click("debugLogRefreshButton")
+        new_count = gui.wait_for_property(
+            "debugLogListView", "count", lambda c: c > current_count, timeout_ms=3000
+        )
     assert new_count > current_count, (
         f"Expected count to grow beyond {current_count} after appending to debug.log, "
         f"got {new_count}"

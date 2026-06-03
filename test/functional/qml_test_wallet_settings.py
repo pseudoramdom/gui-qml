@@ -123,8 +123,12 @@ def prepare_managed_wallet(harness, wallet_name, password):
 
 
 def dismiss_create_wallet_wizard(gui):
-    gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=10000)
-    gui.click("createWalletWizardExitButton")
+    try:
+        gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletWizardExitButton")
+    except QmlDriverError:
+        gui.wait_for_property("typeSelectorCancelButton", "visible", True, timeout_ms=10000)
+        gui.click("typeSelectorCancelButton")
 
 
 def wait_for_wallet_ready(harness, gui):

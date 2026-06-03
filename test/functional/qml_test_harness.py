@@ -108,13 +108,17 @@ class QmlTestHarness:
     instead of launching a new one.
     """
 
-    def __init__(self, socket_path=None, extra_args=None, reset_settings=True, datadir=None):
+    def __init__(self, socket_path=None, extra_args=None, reset_settings=True, datadir=None, use_datadir_arg=True, tmpdir=None, no_listen_arg=True):
         self.external = socket_path is not None
         self.process = None
         self.driver = None
         self.extra_args = extra_args or []
         self.reset_settings = reset_settings
+        self.use_datadir_arg = use_datadir_arg
+        self.no_listen_arg = no_listen_arg
         self.config_home = None
+        self.home_dir = None
+        self._owns_tmpdir = tmpdir is None
 
         if self.external:
             self.socket_path = socket_path
@@ -123,19 +127,26 @@ class QmlTestHarness:
             self.rpc_port = None
         else:
             self.gui_binary = find_gui_binary()
+            if tmpdir is not None:
+                self.tmpdir = tmpdir
+            elif datadir is None:
+                self.tmpdir = tempfile.mkdtemp(prefix="qml_test_bridge_")
+            else:
+                self.tmpdir = None
+
             if datadir is not None:
                 # Reuse an existing datadir; don't create or delete a tmpdir.
-                self.tmpdir = None
                 self.datadir = datadir
                 self.socket_path = os.path.join(datadir, "test_bridge.sock")
                 self.config_home = os.path.join(os.path.dirname(datadir), "config")
                 self.rpc_port = None
+                self.home_dir = os.path.join(os.path.dirname(datadir), "home")
             else:
-                self.tmpdir = tempfile.mkdtemp(prefix="qml_test_bridge_")
                 self.rpc_port = pick_unused_port()
-                self.datadir = setup_datadir(self.tmpdir, rpc_port=self.rpc_port)
+                self.datadir = setup_datadir(self.tmpdir, rpc_port=self.rpc_port) if use_datadir_arg else None
                 self.socket_path = os.path.join(self.tmpdir, "test_bridge.sock")
                 self.config_home = os.path.join(self.tmpdir, "config")
+                self.home_dir = os.path.join(self.tmpdir, "home")
 
     def start(self):
         """Launch bitcoin-core-app or attach to an existing instance."""
@@ -150,20 +161,23 @@ class QmlTestHarness:
         settings_args = []
         if self.config_home:
             settings_args = qsettings_sandbox_args(env, self.config_home)
+        if self.home_dir:
+            os.makedirs(self.home_dir, exist_ok=True)
+            env["HOME"] = self.home_dir
 
         args = [
             self.gui_binary,
-            f"-datadir={self.datadir}",
             f"-test-automation={self.socket_path}",
         ] + settings_args + (["-resetguisettings"] if self.reset_settings else []) + [
             "-logtimemicros",
             "-debug",
             "-debugexclude=libevent",
             "-debugexclude=leveldb",
-            "-nolisten",
-            *self.extra_args,
-        ]
-        args.extend(self.extra_args)
+        ] + self.extra_args
+        if self.no_listen_arg:
+            args.append("-nolisten")
+        if self.use_datadir_arg:
+            args.insert(1, f"-datadir={self.datadir}")
 
         print(f"Starting GUI: {' '.join(args)}")
         self.process = subprocess.Popen(
@@ -217,7 +231,7 @@ class QmlTestHarness:
                 self.process.wait()
         if self.driver:
             self.driver.close()
-        if cleanup and self.tmpdir:
+        if cleanup and self.tmpdir and self._owns_tmpdir:
             shutil.rmtree(self.tmpdir, ignore_errors=True)
             self.tmpdir = None
 
@@ -265,13 +279,31 @@ class QmlTestHarness:
         else:
             print("\n--- debug.log not found ---", file=sys.stderr)
 
+    def reconnect(self, timeout=GUI_STARTUP_TIMEOUT):
+        """Reconnect the driver to a new bridge on the same socket path."""
+        if self.driver:
+            self.driver.reconnect(timeout=timeout)
+        else:
+            self.driver = QmlDriver(self.socket_path, timeout=timeout)
+        return self.driver
 
-def complete_onboarding(gui):
-    """Click through all onboarding pages to reach the main node/wallet screen.
+    def wait_for_main_window_reconnect(self, timeout=GUI_STARTUP_TIMEOUT):
+        """Reconnect after the pre-init bridge is destroyed and main bridge starts."""
+        deadline = time.time() + timeout
+        last_error = None
+        while time.time() < deadline:
+            try:
+                gui = self.reconnect(timeout=1)
+                gui.wait_for_object("mainPageStack", timeout_ms=1000)
+                return gui
+            except Exception as err:
+                last_error = err
+                time.sleep(0.25)
+        raise QmlDriverError(f"Could not reconnect to main QML window: {last_error}")
 
-    Assumes the app was started with -resetguisettings or a fresh datadir so
-    that onboarding is active.
-    """
+
+def walk_onboarding_to_connection(gui):
+    """Click through onboarding pages up to the connection page."""
     gui.wait_for_page("onboardingCover", timeout_ms=10000)
     steps = [
         ("onboardingCoverButton",           "onboardingStrengthen"),
@@ -283,8 +315,62 @@ def complete_onboarding(gui):
     for button, expected_page in steps:
         gui.click(button)
         gui.wait_for_page(expected_page, timeout_ms=5000)
+
+
+def complete_visible_onboarding(gui):
+    """Finish onboarding if it is visible on the current QML engine.
+
+    Runtime onboarding was removed; datadir-specified launches now start
+    directly in the main shell. Keep this helper as a compatibility no-op for
+    older smoke tests that only need to be past onboarding before continuing.
+    Full pre-init onboarding still destroys the first bridge and should use
+    complete_preinit_onboarding() followed by wait_for_main_window_reconnect().
+    """
+    if not gui.object_exists("onboardingCover"):
+        return
+    walk_onboarding_to_connection(gui)
     gui.click("onboardingConnectionButton")
     time.sleep(1)  # Allow navigation to the post-onboarding screen to settle.
+
+
+def complete_preinit_onboarding(gui):
+    """Finish full pre-init onboarding; caller must reconnect afterwards."""
+    walk_onboarding_to_connection(gui)
+    gui.click("onboardingConnectionButton")
+
+
+def complete_onboarding(gui):
+    """Backward-compatible alias for existing tests connected to one engine."""
+    complete_visible_onboarding(gui)
+
+
+def assert_wallet_shell_visible(gui, timeout_ms=30000):
+    """Assert the desktop wallet shell is the main post-onboarding UI."""
+    gui.wait_for_object("mainPageStack", timeout_ms=timeout_ms)
+    gui.wait_for_property("walletBadge", "visible", True, timeout_ms=timeout_ms)
+    gui.wait_for_property("walletBadge", "loading", False, timeout_ms=timeout_ms)
+    assert gui.object_exists("walletBadge"), "Expected walletBadge in wallet shell"
+    assert not gui.object_exists("nodeRunner"), "Expected wallet shell, but nodeRunner is present"
+
+
+def assert_onboarding_wallet_creation_visible(gui, timeout_ms=30000):
+    """Assert full onboarding landed in the wallet shell with create-wallet flow open."""
+    gui.wait_for_object("mainPageStack", timeout_ms=timeout_ms)
+    gui.wait_for_object("walletBadge", timeout_ms=timeout_ms)
+    gui.wait_for_object("createWalletWizard", timeout_ms=timeout_ms)
+    gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=timeout_ms)
+    gui.wait_for_property("createWalletButton", "enabled", True, timeout_ms=timeout_ms)
+    assert gui.object_exists("walletBadge"), "Expected wallet shell behind create wallet wizard"
+    assert gui.object_exists("createWalletWizard"), "Expected create wallet wizard after onboarding"
+    assert not gui.object_exists("nodeRunner"), "Expected wallet onboarding flow, but nodeRunner is present"
+
+
+def assert_node_shell_visible(gui, timeout_ms=30000):
+    """Assert the node-only shell is the main post-onboarding UI."""
+    gui.wait_for_object("mainPageStack", timeout_ms=timeout_ms)
+    gui.wait_for_property("nodeRunner", "visible", True, timeout_ms=timeout_ms)
+    assert gui.object_exists("nodeRunner"), "Expected nodeRunner in node shell"
+    assert not gui.object_exists("walletBadge"), "Did not expect walletBadge when wallet is disabled"
 
 
 def dump_qml_tree(driver):

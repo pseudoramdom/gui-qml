@@ -8,6 +8,7 @@
 #include <common/args.h>
 #include <common/settings.h>
 #include <common/system.h>
+#include <qml/legacy_settings_migration.h>
 #include <qml/models/settings_keys.h>
 #include <univalue.h>
 #include <util/fs_helpers.h>
@@ -64,6 +65,16 @@ QString ReadGuiDataDir()
 {
     QSettings settings;
     const QString default_dir = DefaultDataDirString();
+    if (settings.contains(SettingsKeys::DATA_DIR)) {
+        const QString data_dir = NormalizeLocalPath(settings.value(SettingsKeys::DATA_DIR, default_dir).toString());
+        return data_dir.isEmpty() ? default_dir : data_dir;
+    }
+
+    const QString legacy_data_dir = NormalizeLocalPath(QmlLegacySettings::ReadLegacyGuiDataDir());
+    if (!legacy_data_dir.isEmpty()) {
+        return legacy_data_dir;
+    }
+
     const QString data_dir = NormalizeLocalPath(settings.value(SettingsKeys::DATA_DIR, default_dir).toString());
     return data_dir.isEmpty() ? default_dir : data_dir;
 }
@@ -190,6 +201,7 @@ bool PersistGuiDataDirSelection(const QString& path, QString* error)
         settings.setValue(SettingsKeys::DATA_DIR, local_path);
     }
     settings.setValue(RESET_GUI_SETTINGS_KEY, false);
+    QmlLegacySettings::ClearLegacyGuiSettings(QString::fromStdString(Params().GetChainTypeString()));
     return true;
 }
 
@@ -198,6 +210,7 @@ void PersistDefaultDataDirSelection()
     QSettings settings;
     settings.remove(SettingsKeys::DATA_DIR);
     settings.setValue(RESET_GUI_SETTINGS_KEY, false);
+    QmlLegacySettings::ClearLegacyGuiSettings(QString::fromStdString(Params().GetChainTypeString()));
 }
 
 bool ResetGuiSettings(ArgsManager& args, QString* error)
@@ -211,6 +224,7 @@ bool ResetGuiSettings(ArgsManager& args, QString* error)
     try {
         SelectParams(args.GetChainType());
         args.SelectConfigNetwork(args.GetChainTypeString());
+        QmlLegacySettings::ClearLegacyGuiSettings(QString::fromStdString(args.GetChainTypeString()));
     } catch (const std::exception& e) {
         if (error) *error = QString::fromStdString(e.what());
         return false;

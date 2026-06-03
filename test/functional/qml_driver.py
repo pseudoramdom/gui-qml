@@ -60,6 +60,13 @@ class QmlDriver:
             self.sock.close()
             self.sock = None
 
+    def reconnect(self, timeout=None):
+        """Close the current socket and connect again to the same bridge path."""
+        self.close()
+        if timeout is not None:
+            self.timeout = timeout
+        self._connect()
+
     # ── High-level commands ──────────────────────────────────────────
 
     def get_current_page(self):
@@ -314,6 +321,10 @@ class QmlDriver:
         raise QmlDriverError(
             f"wait_for_object({object_name!r}) failed: Object not found before timeout"
         )
+
+    def object_exists(self, object_name):
+        """Return whether an object with the given name currently exists."""
+        return any(obj.get("objectName") == object_name for obj in self.list_objects())
 
     # ── Transport layer ──────────────────────────────────────────────
 

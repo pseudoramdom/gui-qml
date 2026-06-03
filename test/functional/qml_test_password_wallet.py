@@ -123,9 +123,12 @@ def create_recipient_wallet(harness, wallet_name="recipient"):
 
 
 def create_password_wallet(gui, wallet_name, password):
-    gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=10000)
-    gui.wait_for_property("createWalletButton", "enabled", True, timeout_ms=25000)
-    gui.click("createWalletButton")
+    try:
+        gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=1000)
+        gui.wait_for_property("createWalletButton", "enabled", True, timeout_ms=25000)
+        gui.click("createWalletButton")
+    except QmlDriverError:
+        pass
     gui.wait_for_property("walletTypeRegular", "visible", True, timeout_ms=5000)
     gui.click("walletTypeRegular")
     gui.click("createWalletIntroStartButton")
@@ -143,8 +146,12 @@ def create_password_wallet(gui, wallet_name, password):
 
 
 def dismiss_create_wallet_wizard(gui):
-    gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=10000)
-    gui.click("createWalletWizardExitButton")
+    try:
+        gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletWizardExitButton")
+    except QmlDriverError:
+        gui.wait_for_property("typeSelectorCancelButton", "visible", True, timeout_ms=10000)
+        gui.click("typeSelectorCancelButton")
 
 
 def wait_for_wallet_ready(harness, gui):
@@ -232,9 +239,13 @@ def open_wallet_settings_page(gui):
 
 
 def open_import_wallet_page(gui):
-    gui.wait_for_property("importWalletButton", "visible", True, timeout_ms=10000)
-    gui.wait_for_property("importWalletButton", "enabled", True, timeout_ms=25000)
-    gui.click("importWalletButton")
+    try:
+        gui.wait_for_property("importWalletButton", "visible", True, timeout_ms=1000)
+        gui.wait_for_property("importWalletButton", "enabled", True, timeout_ms=25000)
+        gui.click("importWalletButton")
+    except QmlDriverError:
+        gui.wait_for_property("walletTypeImport", "visible", True, timeout_ms=10000)
+        gui.click("walletTypeImport")
     gui.wait_for_page("importWalletOptions", timeout_ms=10000)
 
 

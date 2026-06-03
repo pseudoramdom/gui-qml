@@ -79,8 +79,9 @@ def test_default_proxy_toggle(gui):
     assert checked, "Expected proxyEnableSwitch to be checked after click"
     print("  Default proxy toggled ON: OK")
 
-    gui.wait_for_property("settingsProxy", "proxySettingsDirty", True, timeout_ms=2000)
-    print("  proxySettingsDirty=True until onboarding completes: OK")
+    dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
+    assert not dirty, "Expected proxySettingsDirty=False during pre-init onboarding"
+    print("  proxySettingsDirty=False during pre-init onboarding: OK")
 
     # Disable proxy.
     gui.click("proxyEnableSwitch")
@@ -188,7 +189,11 @@ def test_proxy_settings_persist(datadir, settings):
 
 def run_tests():
     args = parse_args()
-    harness = QmlTestHarness(socket_path=args.socket_path)
+    harness = QmlTestHarness(
+        socket_path=args.socket_path,
+        use_datadir_arg=False,
+        extra_args=[] if args.socket_path else ["-regtest"],
+    )
     gui = None
     try:
         harness.start()

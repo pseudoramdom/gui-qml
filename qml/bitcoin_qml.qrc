@@ -100,6 +100,7 @@
         <file>controls/WalletTypeListItem.qml</file>
         <file>pages/initerrormessage.qml</file>
         <file>pages/main.qml</file>
+        <file>pages/preinit.qml</file>
         <file>pages/node/BannedPeers.qml</file>
         <file>pages/node/CommandConsole.qml</file>
         <file>pages/node/NetworkTraffic.qml</file>
