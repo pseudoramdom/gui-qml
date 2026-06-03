@@ -156,6 +156,47 @@ class QmlDriver:
             )
         return resp["value"]
 
+    def set_property(self, object_name, prop, value):
+        """Set an arbitrary property on a named QML object."""
+        resp = self._send(
+            {"cmd": "set_property", "objectName": object_name, "prop": prop, "value": value}
+        )
+        if "error" in resp:
+            raise QmlDriverError(
+                f"set_property({object_name!r}, {prop!r}) failed: {resp['error']}"
+            )
+
+    def invoke(self, object_name, method, args=None):
+        """Invoke a method or signal on a named QML object.
+
+        Prefer user-like helpers such as click() for UI behavior. Invoking a
+        QML signal directly can bypass handlers or intermediate control logic.
+        """
+        resp = self._send(
+            {"cmd": "invoke", "objectName": object_name, "method": method, "args": args or []}
+        )
+        if "error" in resp:
+            raise QmlDriverError(
+                f"invoke({object_name!r}, {method!r}, {args!r}) failed: {resp['error']}"
+            )
+
+    def invoke_property_object(self, object_name, prop, method, args=None):
+        """Invoke a method on a QObject-valued property of a named QML object."""
+        resp = self._send(
+            {
+                "cmd": "invoke_property_object",
+                "objectName": object_name,
+                "prop": prop,
+                "method": method,
+                "args": args or [],
+            }
+        )
+        if "error" in resp:
+            raise QmlDriverError(
+                f"invoke_property_object({object_name!r}, {prop!r}, {method!r}) failed: {resp['error']}"
+            )
+        return resp.get("value")
+
     def wait_for_property(self, object_name, prop, predicate_or_value, timeout_ms=5000):
         """Poll get_property until the condition is met or timeout expires.
 

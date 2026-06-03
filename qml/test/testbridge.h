@@ -26,6 +26,9 @@
 ///   {"cmd": "get_current_page"}
 ///   {"cmd": "get_context_property", "name": "<contextPropertyName>"}
 ///   {"cmd": "get_property", "objectName": "<name>", "prop": "<property>"}
+///   {"cmd": "set_property", "objectName": "<name>", "prop": "<property>", "value": <json-value>}
+///   {"cmd": "invoke", "objectName": "<name>", "method": "<method-or-signal-name>"}
+///   {"cmd": "invoke_property_object", "objectName": "<name>", "prop": "<QObject-property>", "method": "<method>", "args": ["<arg>"]}
 ///   {"cmd": "click", "objectName": "<name>"}
 ///   {"cmd": "set_text", "objectName": "<name>", "text": "<value>"}
 ///   {"cmd": "type_text", "objectName": "<name>", "text": "<value>"}
@@ -79,6 +82,9 @@ private:
     QByteArray cmdGetCurrentPage();
     QByteArray cmdGetContextProperty(const QString& name);
     QByteArray cmdGetProperty(const QString& object_name, const QString& prop);
+    QByteArray cmdSetProperty(const QString& object_name, const QString& prop, const QJsonValue& value);
+    QByteArray cmdInvoke(const QString& object_name, const QString& method);
+    QByteArray cmdInvokePropertyObject(const QString& object_name, const QString& prop, const QString& method, const QJsonArray& args);
     QByteArray cmdClick(const QString& object_name);
     QByteArray cmdSetText(const QString& object_name, const QString& text);
     QByteArray cmdTypeText(const QString& object_name, const QString& text);

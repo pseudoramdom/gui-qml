@@ -102,12 +102,14 @@ Reads an arbitrary property from a named QML object.
 
 #### `click`
 
-Simulates a click on a named QML object. The bridge tries three strategies in
-order:
+Simulates a click on a named QML object. Tests should prefer this command over
+invoking control signals directly because it exercises the UI path more like a
+user action. The bridge tries these strategies in order:
 
-1. Invoke the `clicked()` signal directly.
-2. Invoke `toggle()` if available.
-3. Synthesize mouse press/release events at the item center.
+1. Invoke `click()` or `trigger()` if the control exposes either method.
+2. Synthesize mouse press/release events at the item center.
+3. As a last resort, invoke raw user-action methods/signals such as `toggle()`,
+   `toggled()`, or `clicked()`.
 
 ```json
 → {"cmd": "click", "objectName": "importButton"}
@@ -130,6 +132,20 @@ Reads the `text` property from a named QML object.
 ```json
 → {"cmd": "get_text", "objectName": "errorLabel"}
 ← {"text": "File not found"}
+```
+
+#### `invoke`
+
+Invokes a method or signal on a named QML object. Use this for explicit helper
+methods or non-UI actions. Do not use it as a substitute for user interaction:
+invoking a signal directly, such as `clicked()`, can bypass QML handlers or
+intermediate control behavior that would run during a real click. Prefer
+`click`, `set_text`, `key_click`, and other user-like commands when a test is
+asserting UI behavior.
+
+```json
+→ {"cmd": "invoke", "objectName": "testHelper", "method": "resetState"}
+← {"ok": true}
 ```
 
 #### `wait_for_page`

@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QMetaMethod>
 #include <QMetaObject>
+#include <QMetaProperty>
 #include <QEventLoop>
 #include <QFont>
 #include <QKeyEvent>
@@ -23,6 +24,7 @@
 #include <QQmlContext>
 #include <QScopedValueRollback>
 #include <QTimer>
+#include <QUrl>
 #include <QVariant>
 
 #include <algorithm>
@@ -452,6 +454,21 @@ QByteArray TestBridge::processCommand(const QByteArray& json_cmd)
         return cmdGetProperty(
             obj.value(QStringLiteral("objectName")).toString(),
             obj.value(QStringLiteral("prop")).toString());
+    } else if (cmd == QLatin1String("set_property")) {
+        return cmdSetProperty(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("prop")).toString(),
+            obj.value(QStringLiteral("value")));
+    } else if (cmd == QLatin1String("invoke")) {
+        return cmdInvoke(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("method")).toString());
+    } else if (cmd == QLatin1String("invoke_property_object")) {
+        return cmdInvokePropertyObject(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("prop")).toString(),
+            obj.value(QStringLiteral("method")).toString(),
+            obj.value(QStringLiteral("args")).toArray());
     } else if (cmd == QLatin1String("click")) {
         return cmdClick(obj.value(QStringLiteral("objectName")).toString());
     } else if (cmd == QLatin1String("set_text")) {
@@ -646,6 +663,114 @@ QByteArray TestBridge::cmdClick(const QString& object_name)
         return errorResponse(QStringLiteral("Cannot click object: %1").arg(object_name));
     }
     return response;
+}
+
+QByteArray TestBridge::cmdSetProperty(const QString& object_name, const QString& prop, const QJsonValue& value)
+{
+    if (object_name.isEmpty() || prop.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName and prop are required"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+    if (!obj->property(prop.toUtf8().constData()).isValid()) {
+        return errorResponse(QStringLiteral("Object %1 has no property %2").arg(object_name, prop));
+    }
+
+    QVariant variant = value.toVariant();
+    const int property_index = obj->metaObject()->indexOfProperty(prop.toUtf8().constData());
+    if (property_index >= 0 && obj->metaObject()->property(property_index).metaType() == QMetaType::fromType<QUrl>()) {
+        variant = QUrl{variant.toString()};
+    }
+
+    const bool ok = obj->setProperty(prop.toUtf8().constData(), variant);
+    if (!ok) {
+        return errorResponse(QStringLiteral("Could not set property %1 on %2").arg(prop, object_name));
+    }
+    return okResponse();
+}
+
+QByteArray TestBridge::cmdInvoke(const QString& object_name, const QString& method)
+{
+    if (object_name.isEmpty() || method.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName and method are required"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+
+    const QMetaObject* meta = obj->metaObject();
+    QByteArray signature = method.toUtf8();
+    if (!signature.contains('(')) {
+        signature += "()";
+    }
+    const int idx = meta->indexOfMethod(signature.constData());
+    if (idx < 0) {
+        return errorResponse(QStringLiteral("Method not found: %1 on %2").arg(QString::fromUtf8(signature), object_name));
+    }
+    if (!meta->method(idx).invoke(obj, Qt::DirectConnection)) {
+        return errorResponse(QStringLiteral("Could not invoke %1 on %2").arg(QString::fromUtf8(signature), object_name));
+    }
+    return okResponse();
+}
+
+QByteArray TestBridge::cmdInvokePropertyObject(const QString& object_name, const QString& prop, const QString& method, const QJsonArray& args)
+{
+    if (object_name.isEmpty() || prop.isEmpty() || method.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName, prop, and method are required"));
+    }
+    if (args.size() > 1) {
+        return errorResponse(QStringLiteral("Only zero or one string argument is supported"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+
+    QObject* property_object = obj->property(prop.toUtf8().constData()).value<QObject*>();
+    if (!property_object) {
+        return errorResponse(QStringLiteral("Property %1 on %2 is not a QObject").arg(prop, object_name));
+    }
+
+    QByteArray signature = method.toUtf8();
+    if (!signature.contains('(')) {
+        signature += args.isEmpty() ? "()" : "(QString)";
+    }
+
+    const QMetaObject* meta = property_object->metaObject();
+    const int idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+    if (idx < 0) {
+        return errorResponse(QStringLiteral("Method not found: %1 on %2.%3").arg(QString::fromUtf8(signature), object_name, prop));
+    }
+
+    const QMetaMethod meta_method = meta->method(idx);
+    const bool returns_bool = meta_method.returnMetaType() == QMetaType::fromType<bool>();
+    bool bool_result{false};
+    bool invoked{false};
+    if (args.isEmpty()) {
+        invoked = returns_bool
+            ? meta_method.invoke(property_object, Qt::DirectConnection, Q_RETURN_ARG(bool, bool_result))
+            : meta_method.invoke(property_object, Qt::DirectConnection);
+    } else {
+        const QString arg = args.at(0).toString();
+        invoked = returns_bool
+            ? meta_method.invoke(property_object, Qt::DirectConnection, Q_RETURN_ARG(bool, bool_result), Q_ARG(QString, arg))
+            : meta_method.invoke(property_object, Qt::DirectConnection, Q_ARG(QString, arg));
+    }
+    if (!invoked) {
+        return errorResponse(QStringLiteral("Could not invoke %1 on %2.%3").arg(QString::fromUtf8(signature), object_name, prop));
+    }
+
+    QJsonObject resp = QJsonDocument::fromJson(okResponse()).object();
+    if (returns_bool) {
+        resp[QStringLiteral("value")] = bool_result;
+    }
+    return QJsonDocument(resp).toJson(QJsonDocument::Compact);
 }
 
 QByteArray TestBridge::cmdSetText(const QString& object_name, const QString& text)
