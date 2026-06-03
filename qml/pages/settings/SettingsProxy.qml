@@ -14,7 +14,9 @@ Page {
     id: root
     objectName: "settingsProxy"
 
-    readonly property bool proxySettingsDirty: optionsModel.proxySettingsDirty
+    property var settingsModel: optionsModel
+    property bool onboarding: false
+    readonly property bool proxySettingsDirty: settingsModel.proxySettingsDirty
 
     background: null
 
@@ -38,10 +40,11 @@ Page {
                 Layout.fillWidth: true
                 Layout.topMargin: 10
                 Layout.bottomMargin: 20
-                visible: optionsModel.proxySettingsDirty
+                visible: !root.onboarding && root.settingsModel.proxySettingsDirty
             }
 
             ProxySettings {
+                settingsModel: root.settingsModel
                 Layout.fillWidth: true
             }
         }

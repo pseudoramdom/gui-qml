@@ -76,12 +76,16 @@ Item {
                 Setting {
                     id: gotoLanguage
                     objectName: "gotoLanguage"
+                    readonly property var settingStatus: (optionsModel.coreSettingStatuses || ({})).lang || ({})
                     Layout.fillWidth: true
                     header: qsTr("Language")
                     // Use qsTr() directly for the system-default label so engine.retranslate()
                     // refreshes it when switching back from a non-default language. C++ tr()
                     // calls in property getters are not re-evaluated by retranslate().
                     description: optionsModel.language === "" ? qsTr("System default") : optionsModel.languageSummary
+                    state: settingStatus.canEdit === false ? "DISABLED" : "FILLED"
+                    infoText: settingStatus.infoText || ""
+                    showInfoText: infoText.length > 0
                     actionItem: CaretRightIcon {
                         color: gotoLanguage.stateColor
                     }

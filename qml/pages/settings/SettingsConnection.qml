@@ -11,6 +11,7 @@ import "../../components"
 Page {
     id: root
     signal back
+    property var settingsModel: optionsModel
     property bool onboarding: false
     property bool showBackButton: true
     background: null
@@ -44,7 +45,8 @@ Page {
                     }
                 }
                 detailItem: ConnectionSettings {
-                    showRestartNotice: !root.onboarding && optionsModel.connectionSettingsDirty
+                    settingsModel: root.settingsModel
+                    showRestartNotice: !root.onboarding && root.settingsModel.connectionSettingsDirty
                     onNext: stack.push(proxySettings)
                 }
             }
@@ -52,6 +54,8 @@ Page {
         Component {
             id: proxySettings
             SettingsProxy {
+                onboarding: root.onboarding
+                settingsModel: root.settingsModel
                 onBack: stack.pop()
             }
         }

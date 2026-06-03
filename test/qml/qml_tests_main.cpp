@@ -7,6 +7,7 @@
 #include <QAbstractListModel>
 #include <QDateTime>
 #include <QFont>
+#include <QHash>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -19,6 +20,7 @@
 #include <qqml.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include <qml/components/blockclockdial.h>
@@ -1443,17 +1445,264 @@ Q_SIGNALS:
     void openSelectedWalletLocationCallsChanged();
 };
 
+class MockCoreSettingsModel;
+
+class MockCoreSettingEntryModel : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QString key READ key CONSTANT)
+    Q_PROPERTY(QVariant value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+    Q_PROPERTY(QString address READ address WRITE setAddress NOTIFY addressChanged)
+    Q_PROPERTY(QVariantMap status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool canEdit READ canEdit NOTIFY statusChanged)
+    Q_PROPERTY(QString infoText READ infoText NOTIFY statusChanged)
+
+public:
+    MockCoreSettingEntryModel(QString key, MockCoreSettingsModel& model, QObject* parent = nullptr);
+
+    QString key() const { return m_key; }
+    QVariant value() const;
+    void setValue(const QVariant& value);
+    bool enabled() const;
+    void setEnabled(bool enabled);
+    QString address() const;
+    void setAddress(const QString& address);
+    QVariantMap status() const;
+    bool canEdit() const;
+    QString infoText() const;
+
+    Q_INVOKABLE QString validate(const QString& value) const;
+    Q_INVOKABLE bool commitAddress(const QString& address);
+    Q_INVOKABLE QString defaultAddress() const;
+
+Q_SIGNALS:
+    void valueChanged();
+    void enabledChanged();
+    void addressChanged();
+    void statusChanged();
+
+private:
+    QString m_key;
+    MockCoreSettingsModel& m_model;
+};
+
+class MockCoreSettingsModel : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QVariantMap statuses READ statuses NOTIFY statusesChanged)
+
+public:
+    explicit MockCoreSettingsModel(QObject* parent = nullptr) : QObject{parent} {}
+
+    Q_INVOKABLE QObject* entry(const QString& key)
+    {
+        if (MockCoreSettingEntryModel* existing = m_entries.value(key)) return existing;
+        auto* entry = new MockCoreSettingEntryModel{key, *this, this};
+        m_entries.insert(key, entry);
+        return entry;
+    }
+
+    bool listen() const { return m_listen; }
+    bool natpmp() const { return m_natpmp; }
+    bool server() const { return m_server; }
+    bool prune() const { return m_prune; }
+    int pruneSizeGB() const { return m_prune_size_gb; }
+    bool proxyEnabled() const { return m_proxy_enabled; }
+    bool torEnabled() const { return m_tor_enabled; }
+    QString proxyAddress() const { return m_proxy_address; }
+    QString torAddress() const { return m_tor_address; }
+    QVariantMap statuses() const { return m_statuses; }
+    QVariantMap status(const QString& key) const { return m_statuses.value(key).toMap(); }
+    bool canEdit(const QString& key) const { return status(key).value(QStringLiteral("canEdit"), true).toBool(); }
+    QString defaultAddress() const { return QStringLiteral("127.0.0.1:9050"); }
+    QString validateAddress(const QString& value) const { return value.length() > 0 ? QString{} : QStringLiteral("Proxy location is required."); }
+
+    void setStatuses(const QVariantMap& statuses)
+    {
+        m_statuses = statuses;
+        Q_EMIT statusesChanged();
+        for (MockCoreSettingEntryModel* entry : std::as_const(m_entries)) {
+            Q_EMIT entry->statusChanged();
+        }
+    }
+
+    void setListen(bool value) { setBool(QStringLiteral("listen"), m_listen, value); }
+    void setNatpmp(bool value) { setBool(QStringLiteral("natpmp"), m_natpmp, value); }
+    void setServer(bool value) { setBool(QStringLiteral("server"), m_server, value); }
+    void setPrune(bool value) { setBool(QStringLiteral("prune"), m_prune, value); }
+    void setPruneSizeGB(int value)
+    {
+        if (!canEdit(QStringLiteral("prune")) || value == m_prune_size_gb || value < 1) return;
+        m_prune_size_gb = value;
+        Q_EMIT static_cast<MockCoreSettingEntryModel*>(entry(QStringLiteral("prune")))->valueChanged();
+        Q_EMIT changed();
+    }
+    void setProxyEnabled(bool value) { setBool(QStringLiteral("proxy"), m_proxy_enabled, value); }
+    void setTorEnabled(bool value) { setBool(QStringLiteral("onion"), m_tor_enabled, value); }
+    bool setProxyAddress(const QString& value) { return setAddress(QStringLiteral("proxy"), m_proxy_address, value); }
+    bool setTorAddress(const QString& value) { return setAddress(QStringLiteral("onion"), m_tor_address, value); }
+
+Q_SIGNALS:
+    void changed();
+    void statusesChanged();
+
+private:
+    friend class MockCoreSettingEntryModel;
+
+    void setBool(const QString& key, bool& field, bool value)
+    {
+        if (!canEdit(key) || value == field) return;
+        field = value;
+        auto* entry_model = static_cast<MockCoreSettingEntryModel*>(entry(key));
+        Q_EMIT entry_model->valueChanged();
+        Q_EMIT entry_model->enabledChanged();
+        Q_EMIT changed();
+    }
+
+    bool setAddress(const QString& key, QString& field, const QString& value)
+    {
+        if (!canEdit(key) || !validateAddress(value).isEmpty()) return false;
+        if (value == field) return true;
+        field = value;
+        auto* entry_model = static_cast<MockCoreSettingEntryModel*>(entry(key));
+        Q_EMIT entry_model->addressChanged();
+        Q_EMIT entry_model->valueChanged();
+        Q_EMIT changed();
+        return true;
+    }
+
+    bool m_listen{true};
+    bool m_natpmp{false};
+    bool m_server{false};
+    bool m_prune{true};
+    int m_prune_size_gb{2};
+    bool m_proxy_enabled{false};
+    bool m_tor_enabled{false};
+    QString m_proxy_address{QStringLiteral("127.0.0.1:9050")};
+    QString m_tor_address{QStringLiteral("127.0.0.1:9050")};
+    QVariantMap m_statuses;
+    QHash<QString, MockCoreSettingEntryModel*> m_entries;
+};
+
+MockCoreSettingEntryModel::MockCoreSettingEntryModel(QString key, MockCoreSettingsModel& model, QObject* parent)
+    : QObject{parent}
+    , m_key{std::move(key)}
+    , m_model{model}
+{
+}
+
+QVariant MockCoreSettingEntryModel::value() const
+{
+    if (m_key == QStringLiteral("listen")) return m_model.listen();
+    if (m_key == QStringLiteral("natpmp")) return m_model.natpmp();
+    if (m_key == QStringLiteral("server")) return m_model.server();
+    if (m_key == QStringLiteral("prune")) return m_model.pruneSizeGB();
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyAddress();
+    if (m_key == QStringLiteral("onion")) return m_model.torAddress();
+    return {};
+}
+
+void MockCoreSettingEntryModel::setValue(const QVariant& value)
+{
+    if (m_key == QStringLiteral("listen")) {
+        m_model.setListen(value.toBool());
+    } else if (m_key == QStringLiteral("natpmp")) {
+        m_model.setNatpmp(value.toBool());
+    } else if (m_key == QStringLiteral("server")) {
+        m_model.setServer(value.toBool());
+    } else if (m_key == QStringLiteral("prune")) {
+        m_model.setPruneSizeGB(value.toInt());
+    } else if (m_key == QStringLiteral("proxy")) {
+        m_model.setProxyAddress(value.toString());
+    } else if (m_key == QStringLiteral("onion")) {
+        m_model.setTorAddress(value.toString());
+    }
+}
+
+bool MockCoreSettingEntryModel::enabled() const
+{
+    if (m_key == QStringLiteral("listen")) return m_model.listen();
+    if (m_key == QStringLiteral("natpmp")) return m_model.natpmp();
+    if (m_key == QStringLiteral("server")) return m_model.server();
+    if (m_key == QStringLiteral("prune")) return m_model.prune();
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyEnabled();
+    if (m_key == QStringLiteral("onion")) return m_model.torEnabled();
+    return false;
+}
+
+void MockCoreSettingEntryModel::setEnabled(bool enabled)
+{
+    if (m_key == QStringLiteral("listen")) {
+        m_model.setListen(enabled);
+    } else if (m_key == QStringLiteral("natpmp")) {
+        m_model.setNatpmp(enabled);
+    } else if (m_key == QStringLiteral("server")) {
+        m_model.setServer(enabled);
+    } else if (m_key == QStringLiteral("prune")) {
+        m_model.setPrune(enabled);
+    } else if (m_key == QStringLiteral("proxy")) {
+        m_model.setProxyEnabled(enabled);
+    } else if (m_key == QStringLiteral("onion")) {
+        m_model.setTorEnabled(enabled);
+    }
+}
+
+QString MockCoreSettingEntryModel::address() const
+{
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyAddress();
+    if (m_key == QStringLiteral("onion")) return m_model.torAddress();
+    return {};
+}
+
+void MockCoreSettingEntryModel::setAddress(const QString& address)
+{
+    commitAddress(address);
+}
+
+QVariantMap MockCoreSettingEntryModel::status() const
+{
+    return m_model.status(m_key);
+}
+
+bool MockCoreSettingEntryModel::canEdit() const
+{
+    return status().value(QStringLiteral("canEdit"), true).toBool();
+}
+
+QString MockCoreSettingEntryModel::infoText() const
+{
+    return status().value(QStringLiteral("infoText")).toString();
+}
+
+QString MockCoreSettingEntryModel::validate(const QString& value) const
+{
+    return m_model.validateAddress(value);
+}
+
+bool MockCoreSettingEntryModel::commitAddress(const QString& address)
+{
+    if (m_key == QStringLiteral("proxy")) return m_model.setProxyAddress(address);
+    if (m_key == QStringLiteral("onion")) return m_model.setTorAddress(address);
+    return false;
+}
+
+QString MockCoreSettingEntryModel::defaultAddress() const
+{
+    return m_model.defaultAddress();
+}
+
 class MockOptionsModel : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool listen MEMBER m_listen NOTIFY listenChanged)
-    Q_PROPERTY(bool natpmp MEMBER m_natpmp NOTIFY natpmpChanged)
-    Q_PROPERTY(bool server MEMBER m_server NOTIFY serverChanged)
+    Q_PROPERTY(bool listen READ listen WRITE setListen NOTIFY listenChanged)
+    Q_PROPERTY(bool natpmp READ natpmp WRITE setNatpmp NOTIFY natpmpChanged)
+    Q_PROPERTY(bool server READ server WRITE setServer NOTIFY serverChanged)
     Q_PROPERTY(int maxMempoolSizeMB READ maxMempoolSizeMB WRITE setMaxMempoolSizeMB NOTIFY maxMempoolSizeMBChanged)
     Q_PROPERTY(int maxMaxMempoolSizeMB MEMBER m_max_max_mempool_size_mb CONSTANT)
     Q_PROPERTY(int minMaxMempoolSizeMB MEMBER m_min_max_mempool_size_mb CONSTANT)
-    Q_PROPERTY(bool prune MEMBER m_prune NOTIFY pruneChanged)
-    Q_PROPERTY(int pruneSizeGB MEMBER m_prune_size_gb NOTIFY pruneSizeGBChanged)
+    Q_PROPERTY(bool prune READ prune WRITE setPrune NOTIFY pruneChanged)
+    Q_PROPERTY(int pruneSizeGB READ pruneSizeGB WRITE setPruneSizeGB NOTIFY pruneSizeGBChanged)
     Q_PROPERTY(QString dataDir MEMBER m_data_dir NOTIFY dataDirChanged)
     Q_PROPERTY(QString getDefaultDataDirString READ getDefaultDataDirString CONSTANT)
     Q_PROPERTY(int displayUnit READ displayUnit WRITE setDisplayUnit NOTIFY displayUnitChanged)
@@ -1466,6 +1715,8 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(bool developerSettingsDirty MEMBER m_developer_settings_dirty NOTIFY developerSettingsDirtyChanged)
     Q_PROPERTY(bool proxySettingsDirty MEMBER m_proxy_settings_dirty NOTIFY proxySettingsDirtyChanged)
     Q_PROPERTY(bool restartRequired MEMBER m_restart_required NOTIFY restartRequiredChanged)
+    Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
+    Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
     Q_PROPERTY(QString thirdPartyTransactionUrls MEMBER m_third_party_transaction_urls NOTIFY thirdPartyTransactionUrlsChanged)
     Q_PROPERTY(QString moneyFontChoice MEMBER m_money_font_choice NOTIFY moneyFontChoiceChanged)
     Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
@@ -1488,7 +1739,25 @@ public:
     bool m_restart_required{false};
     QString m_third_party_transaction_urls;
     QString m_money_font_choice{QStringLiteral("embedded")};
+    QVariantMap m_core_setting_status_overrides;
+    MockCoreSettingsModel m_core_settings;
 
+    MockOptionsModel()
+    {
+        m_core_settings.setListen(m_listen);
+        m_core_settings.setNatpmp(m_natpmp);
+        m_core_settings.setServer(m_server);
+        m_core_settings.setPrune(m_prune);
+        m_core_settings.setPruneSizeGB(m_prune_size_gb);
+        m_core_settings.setStatuses(coreSettingStatuses());
+    }
+
+    bool listen() const { return m_core_settings.listen(); }
+    void setListen(bool value) { m_core_settings.setListen(value); }
+    bool natpmp() const { return m_core_settings.natpmp(); }
+    void setNatpmp(bool value) { m_core_settings.setNatpmp(value); }
+    bool server() const { return m_core_settings.server(); }
+    void setServer(bool value) { m_core_settings.setServer(value); }
     int maxMempoolSizeMB() const { return m_max_mempool_size_mb; }
     void setMaxMempoolSizeMB(int value)
     {
@@ -1497,6 +1766,10 @@ public:
         Q_EMIT maxMempoolSizeMBChanged(value);
     }
     QString getDefaultDataDirString() const { return QStringLiteral("/tmp/bitcoin-default"); }
+    bool prune() const { return m_core_settings.prune(); }
+    void setPrune(bool value) { m_core_settings.setPrune(value); }
+    int pruneSizeGB() const { return m_core_settings.pruneSizeGB(); }
+    void setPruneSizeGB(int value) { m_core_settings.setPruneSizeGB(value); }
     Q_INVOKABLE QString getCustomDataDirString() const { return m_custom_data_dir; }
     Q_INVOKABLE void setCustomDataDirString(const QString& dir) { m_custom_data_dir = dir; }
     Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { selectCustomDataDir(dir); }
@@ -1508,6 +1781,62 @@ public:
     Q_INVOKABLE bool commitProxyLocation(const QString&) { return true; }
     Q_INVOKABLE bool commitTorLocation(const QString&) { return true; }
     Q_INVOKABLE QString defaultProxyAddress() const { return QStringLiteral("127.0.0.1:9050"); }
+    QObject* coreSettings() { return &m_core_settings; }
+    QVariantMap coreSettingStatuses() const {
+        QVariantMap statuses;
+        const QStringList names{
+            QStringLiteral("listen"),
+            QStringLiteral("natpmp"),
+            QStringLiteral("server"),
+            QStringLiteral("prune"),
+            QStringLiteral("dbcache"),
+            QStringLiteral("par"),
+            QStringLiteral("maxmempool"),
+            QStringLiteral("proxy"),
+            QStringLiteral("onion"),
+            QStringLiteral("signer"),
+            QStringLiteral("lang"),
+        };
+        for (const QString& name : names) {
+            statuses.insert(name, coreSettingStatus(name));
+        }
+        return statuses;
+    }
+    Q_INVOKABLE QVariantMap coreSettingStatus(const QString& name) const {
+        if (m_core_setting_status_overrides.contains(name)) {
+            return m_core_setting_status_overrides.value(name).toMap();
+        }
+        return defaultCoreSettingStatus();
+    }
+    Q_INVOKABLE void setCoreSettingStatusForTest(const QString& name, bool can_edit, const QString& source, const QString& info_text, bool creates_gui_override) {
+        QVariantMap status = defaultCoreSettingStatus();
+        status.insert(QStringLiteral("source"), source);
+        status.insert(QStringLiteral("canEdit"), can_edit);
+        status.insert(QStringLiteral("commandLineOverridden"), !can_edit);
+        status.insert(QStringLiteral("hasRwSetting"), source == QStringLiteral("settings_json"));
+        status.insert(QStringLiteral("hasConfigSetting"), source == QStringLiteral("bitcoin_conf"));
+        status.insert(QStringLiteral("createsGuiOverride"), creates_gui_override);
+        status.insert(QStringLiteral("infoText"), info_text);
+        m_core_setting_status_overrides.insert(name, status);
+        m_core_settings.setStatuses(coreSettingStatuses());
+        Q_EMIT coreSettingStatusesChanged();
+    }
+    Q_INVOKABLE void clearCoreSettingStatusesForTest() {
+        m_core_setting_status_overrides.clear();
+        m_core_settings.setStatuses(coreSettingStatuses());
+        Q_EMIT coreSettingStatusesChanged();
+    }
+    QVariantMap defaultCoreSettingStatus() const {
+        QVariantMap status;
+        status.insert(QStringLiteral("source"), QStringLiteral("default"));
+        status.insert(QStringLiteral("canEdit"), true);
+        status.insert(QStringLiteral("commandLineOverridden"), false);
+        status.insert(QStringLiteral("hasRwSetting"), false);
+        status.insert(QStringLiteral("hasConfigSetting"), false);
+        status.insert(QStringLiteral("createsGuiOverride"), false);
+        status.insert(QStringLiteral("infoText"), QString{});
+        return status;
+    }
     Q_INVOKABLE QVariantList thirdPartyTransactionLinks(const QString& txid) const {
         QVariantList result;
         if (m_third_party_transaction_urls.isEmpty()) return result;
@@ -1565,6 +1894,7 @@ Q_SIGNALS:
     void developerSettingsDirtyChanged();
     void proxySettingsDirtyChanged();
     void restartRequiredChanged();
+    void coreSettingStatusesChanged();
     void thirdPartyTransactionUrlsChanged();
     void moneyFontChoiceChanged();
     void moneyFontChanged();

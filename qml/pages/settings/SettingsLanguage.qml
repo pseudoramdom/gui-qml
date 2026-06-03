@@ -17,6 +17,7 @@ Page {
     leftPadding: 20
     rightPadding: 20
     topPadding: 30
+    readonly property var languageStatus: (optionsModel.coreSettingStatuses || ({})).lang || ({})
 
     header: SettingsHeader {
         title: qsTr("Choose language")
@@ -66,6 +67,7 @@ Page {
                 objectName: "language_" + delegate.modelData
                 Accessible.role: Accessible.ListItem
                 Accessible.name: optionsModel.languageLabel(delegate.modelData)
+                enabled: root.languageStatus.canEdit !== false
                 leftPadding: 0
                 rightPadding: 0
                 topPadding: 0

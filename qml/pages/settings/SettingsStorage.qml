@@ -10,8 +10,9 @@ import "../../components"
 
 InformationPage {
     id: root
+    property var settingsModel: optionsModel
     property bool customStorage: false
-    property bool customStorageAmount
+    property int customStorageAmount
     property bool onboarding: false
     property bool showBackButton: true
     bannerActive: false
@@ -22,7 +23,8 @@ InformationPage {
     detailActive: true
     detailItem: StorageSettings {
         id: storageSettings
-        showRestartNotice: !root.onboarding && optionsModel.storageSettingsDirty
+        settingsModel: root.settingsModel
+        showRestartNotice: !root.onboarding && root.settingsModel.storageSettingsDirty
         onCustomStorageChanged: {
             root.customStorage = storageSettings.customStorage
         }

@@ -10,7 +10,12 @@ import "../controls"
 import org.bitcoincore.qt 1.0
 
 ColumnLayout {
+    id: root
+    property var settingsModel: optionsModel
+    property var coreSettingsModel: settingsModel.coreSettings
     property string proxyLocationHeader: qsTr("Proxy location")
+    readonly property var proxySetting: coreSettingsModel.entry("proxy")
+    readonly property var onionSetting: coreSettingsModel.entry("onion")
 
     spacing: 4
     Header {
@@ -27,11 +32,14 @@ ColumnLayout {
         id: defaultProxyEnable
         Layout.fillWidth: true
         header: qsTr("Enable")
+        state: root.proxySetting.canEdit ? "FILLED" : "DISABLED"
+        infoText: root.proxySetting.infoText
+        showInfoText: infoText.length > 0
         actionItem: OptionSwitch {
             objectName: "proxyEnableSwitch"
-            checked: optionsModel.proxyEnabled
+            checked: root.proxySetting.enabled
             onToggled: {
-                optionsModel.proxyEnabled = checked
+                root.proxySetting.enabled = checked
             }
         }
         onClicked: {
@@ -45,27 +53,29 @@ ColumnLayout {
         Layout.fillWidth: true
         header: proxyLocationHeader
         errorText: loadedItem ? loadedItem.validationError : ""
-        state: optionsModel.proxyEnabled ? "FILLED" : "DISABLED"
-        showErrorText: loadedItem && !loadedItem.validInput && optionsModel.proxyEnabled
+        state: root.proxySetting.enabled && root.proxySetting.canEdit ? "FILLED" : "DISABLED"
+        showErrorText: loadedItem && !loadedItem.validInput && root.proxySetting.enabled
+        infoText: root.proxySetting.infoText
+        showInfoText: !showErrorText && infoText.length > 0
         actionItem: ProxyLocationInput {
             objectName: "proxyAddressInput"
             parentState: defaultProxy.visualState
             accessibleName: qsTr("Default proxy location")
-            description: optionsModel.proxyAddress.length > 0
-                         ? optionsModel.proxyAddress
-                         : optionsModel.defaultProxyAddress()
+            description: root.proxySetting.address.length > 0
+                         ? root.proxySetting.address
+                         : root.proxySetting.defaultAddress()
             Component.onCompleted: {
                 if (text !== "") filled = true
-                validationError = optionsModel.validateProxyLocation(text)
+                validationError = root.proxySetting.validate(text)
                 validInput = validationError === ""
             }
             onTextChanged: {
-                validationError = optionsModel.validateProxyLocation(text)
+                validationError = root.proxySetting.validate(text)
                 validInput = validationError === ""
             }
             onEditingFinished: {
                 if (validInput) {
-                    optionsModel.commitProxyLocation(text)
+                    root.proxySetting.commitAddress(text)
                     filled = true
                 }
             }
@@ -90,11 +100,14 @@ ColumnLayout {
         id: torProxyEnable
         Layout.fillWidth: true
         header: qsTr("Enable")
+        state: root.onionSetting.canEdit ? "FILLED" : "DISABLED"
+        infoText: root.onionSetting.infoText
+        showInfoText: infoText.length > 0
         actionItem: OptionSwitch {
             objectName: "torEnableSwitch"
-            checked: optionsModel.torEnabled
+            checked: root.onionSetting.enabled
             onToggled: {
-                optionsModel.torEnabled = checked
+                root.onionSetting.enabled = checked
             }
         }
         onClicked: {
@@ -108,27 +121,29 @@ ColumnLayout {
         Layout.fillWidth: true
         header: proxyLocationHeader
         errorText: loadedItem ? loadedItem.validationError : ""
-        state: optionsModel.torEnabled ? "FILLED" : "DISABLED"
-        showErrorText: loadedItem && !loadedItem.validInput && optionsModel.torEnabled
+        state: root.onionSetting.enabled && root.onionSetting.canEdit ? "FILLED" : "DISABLED"
+        showErrorText: loadedItem && !loadedItem.validInput && root.onionSetting.enabled
+        infoText: root.onionSetting.infoText
+        showInfoText: !showErrorText && infoText.length > 0
         actionItem: ProxyLocationInput {
             objectName: "torAddressInput"
             parentState: torProxy.visualState
             accessibleName: qsTr("Tor proxy location")
-            description: optionsModel.torAddress.length > 0
-                         ? optionsModel.torAddress
-                         : optionsModel.defaultProxyAddress()
+            description: root.onionSetting.address.length > 0
+                         ? root.onionSetting.address
+                         : root.onionSetting.defaultAddress()
             Component.onCompleted: {
                 if (text !== "") filled = true
-                validationError = optionsModel.validateProxyLocation(text)
+                validationError = root.onionSetting.validate(text)
                 validInput = validationError === ""
             }
             onTextChanged: {
-                validationError = optionsModel.validateProxyLocation(text)
+                validationError = root.onionSetting.validate(text)
                 validInput = validationError === ""
             }
             onEditingFinished: {
                 if (validInput) {
-                    optionsModel.commitTorLocation(text)
+                    root.onionSetting.commitAddress(text)
                     filled = true
                 }
             }

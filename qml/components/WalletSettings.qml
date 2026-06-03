@@ -12,6 +12,7 @@ ColumnLayout {
     id: root
 
     spacing: 0
+    readonly property var signerStatus: (optionsModel.coreSettingStatuses || ({})).signer || ({})
     readonly property string signerPathError: optionsModel.externalSignerPathValidationError(signerPathInput.text)
 
     Component.onCompleted: walletController.refreshExternalSignerStatus()
@@ -42,6 +43,7 @@ ColumnLayout {
         Layout.fillWidth: true
         placeholderText: qsTr("Enter external signer path")
         text: optionsModel.externalSignerPath
+        enabled: root.signerStatus.canEdit !== false
         onEditingFinished: {
             if (root.commitSignerPath()) {
                 walletController.refreshExternalSignerStatus()
@@ -50,12 +52,12 @@ ColumnLayout {
     }
 
     CoreText {
-        visible: root.signerPathError.length > 0
+        visible: root.signerPathError.length > 0 || (root.signerStatus.infoText || "").length > 0
         Layout.topMargin: 10
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        color: Theme.color.red
-        text: root.signerPathError
+        color: root.signerPathError.length > 0 ? Theme.color.red : Theme.color.neutral7
+        text: root.signerPathError.length > 0 ? root.signerPathError : (root.signerStatus.infoText || "")
     }
 
     CoreText {
@@ -128,7 +130,7 @@ ColumnLayout {
         Layout.preferredWidth: Math.min(300, parent.width)
         Layout.alignment: Qt.AlignHCenter
         text: qsTr("Check device")
-        enabled: root.signerPathError.length === 0
+        enabled: root.signerPathError.length === 0 && root.signerStatus.canEdit !== false
         onClicked: {
             if (root.commitSignerPath()) {
                 walletController.refreshExternalSignerStatus()

@@ -12,6 +12,7 @@ import "../controls"
 ColumnLayout {
     id: root
     spacing: 4
+    readonly property var maxMempoolStatus: (optionsModel.coreSettingStatuses || ({})).maxmempool || ({})
 
     function formatMegabytes(valueMb) {
         const rounded = Math.round(valueMb)
@@ -66,10 +67,13 @@ ColumnLayout {
         header: qsTr("Mempool size limit")
         description: qsTr("Applies after restart")
         descriptionColor: Theme.color.neutral7
+        state: root.maxMempoolStatus.canEdit === false ? "DISABLED" : "FILLED"
         errorText: qsTr("This is not a valid mempool size. Please choose a value between %1 and %2 MB.")
             .arg(optionsModel.minMaxMempoolSizeMB)
             .arg(optionsModel.maxMaxMempoolSizeMB)
         showErrorText: false
+        infoText: root.maxMempoolStatus.infoText || ""
+        showInfoText: !showErrorText && infoText.length > 0
         actionItem: ValueInput {
             parentState: mempoolLimitSetting.visualState
             description: optionsModel.maxMempoolSizeMB
