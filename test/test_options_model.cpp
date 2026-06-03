@@ -905,7 +905,7 @@ void OptionsModelTests::resetGuiSettingsClearsQSettings()
     QSettings settings;
     settings.setValue(SettingsKeys::DATA_DIR, QStringLiteral("/tmp/old-bitcoin-data"));
     settings.setValue(SettingsKeys::LANGUAGE, QStringLiteral("de"));
-    settings.setValue(SettingsKeys::DISPLAY_UNIT, 1);
+    settings.setValue(SettingsKeys::DISPLAY_UNIT, 3);
     settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, QStringLiteral("https://example.com/%s"));
     settings.setValue(SettingsKeys::MONEY_FONT_CHOICE, QStringLiteral("best_system"));
     settings.setValue("fReset", true);
