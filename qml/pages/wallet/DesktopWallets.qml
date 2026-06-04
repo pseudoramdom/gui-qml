@@ -108,7 +108,7 @@ Page {
         id: navBar
         leftItem: WalletBadge {
             objectName: "walletBadge"
-            implicitWidth: 200
+            implicitWidth: 175
             implicitHeight: 46
             text: walletController.selectedWallet.displayName
             balance: walletController.selectedWallet.balance
@@ -162,17 +162,16 @@ Page {
             }
         }
         rightItem: RowLayout {
-            spacing: 5
+            spacing: 2
             NetworkIndicator {
                 textSize: 11
-                Layout.rightMargin: 5
+                Layout.rightMargin: 2
                 shorten: true
             }
             NavigationTab {
                 id: blockClockTabButton
                 checked: true
                 Layout.preferredWidth: 30
-                Layout.rightMargin: 10
                 property int index: 3
                 ButtonGroup.group: navigationTabs
                 customContent: MiniBlockClock {
@@ -214,13 +213,63 @@ Page {
                 }
             }
             NavigationTab {
+                id: peersTabButton
+                objectName: "peersTabButton"
+                iconSource: "image://images/node-1-connection"
+                iconColor: Theme.color.neutral7
+                Layout.preferredWidth: 30
+                property int index: 4
+                ButtonGroup.group: navigationTabs
+                onCheckedChanged: {
+                    if (checked) {
+                        peerTableModel.startAutoRefresh()
+                    } else {
+                        peerTableModel.stopAutoRefresh()
+                        if (peersStack.depth > 1) peersStack.pop(null)
+                    }
+                }
+
+                Tooltip {
+                    anchors.top: peersTabButton.bottom
+                    anchors.topMargin: -5
+                    anchors.horizontalCenter: peersTabButton.horizontalCenter
+                    visible: peersTabButton.hovered
+                    text: qsTr("Peers")
+                }
+            }
+            NavigationTab {
+                id: consoleTabButton
+                objectName: "consoleTabButton"
+                iconSource: "image://images/console"
+                iconColor: Theme.color.neutral7
+                Layout.preferredWidth: 30
+                property int index: 5
+                ButtonGroup.group: navigationTabs
+
+                Tooltip {
+                    anchors.top: consoleTabButton.bottom
+                    anchors.topMargin: -5
+                    anchors.horizontalCenter: consoleTabButton.horizontalCenter
+                    visible: consoleTabButton.hovered
+                    text: qsTr("Console")
+                }
+            }
+            NavigationTab {
                 id: settingsTabButton
                 objectName: "desktopWalletSettingsTabButton"
                 iconSource: "image://images/gear-outline"
                 iconColor: Theme.color.neutral7
                 Layout.preferredWidth: 30
-                property int index: 4
+                property int index: 6
                 ButtonGroup.group: navigationTabs
+
+                Tooltip {
+                    anchors.top: settingsTabButton.bottom
+                    anchors.topMargin: -5
+                    anchors.horizontalCenter: settingsTabButton.horizontalCenter
+                    visible: settingsTabButton.hovered
+                    text: qsTr("Settings")
+                }
             }
         }
         background: Rectangle {
@@ -268,6 +317,33 @@ Page {
                 anchors.centerIn: blockClockTab
                 showNetworkIndicator: false
             }
+        }
+        PageStack {
+            id: peersStack
+            initialItem: Peers {
+                showBackButton: false
+                onPeerSelected: (peerDetails) => {
+                    peersStack.push(peerDetailsComp, {"details": peerDetails})
+                }
+                onBannedPeers: {
+                    peersStack.push(bannedPeersComp)
+                }
+            }
+            Component {
+                id: peerDetailsComp
+                PeerDetails {
+                    onBack: peersStack.pop()
+                }
+            }
+            Component {
+                id: bannedPeersComp
+                BannedPeers {
+                    onBack: peersStack.pop()
+                }
+            }
+        }
+        CommandConsole {
+            showHeader: false
         }
         NodeSettings {
             id: nodeSettings

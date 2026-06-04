@@ -49,7 +49,10 @@ Page {
         property bool navigatingHistory: false
     }
 
+    property bool showHeader: true
+
     header: NavigationBar2 {
+        visible: root.showHeader
         leftItem: NavButton {
             objectName: "consoleBackButton"
             iconSource: "image://images/caret-left"

@@ -90,10 +90,13 @@ TestCase {
         verify(settingsTab !== null)
         compare(settingsTab.checked, true)
 
-        const settingsStack = findChild(page, "nodeSettingsStack")
-        verify(settingsStack !== null)
-        tryCompare(settingsStack, "depth", 3)
-        compare(settingsStack.currentItem.objectName, "addressListPage")
+        const settingsPage = findChild(page, "nodeSettingsStack")
+        verify(settingsPage !== null)
+
+        tryVerify(function() { return findChild(page, "walletSettingsStack") !== null })
+        const walletStack = findChild(page, "walletSettingsStack")
+        tryCompare(walletStack, "depth", 2)
+        compare(walletStack.currentItem.objectName, "addressListPage")
         verify(findChild(page, "walletSettingsPage") !== null)
     }
 }
