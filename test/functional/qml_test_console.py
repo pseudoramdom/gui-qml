@@ -36,32 +36,18 @@ from qml_driver import QmlDriver, QmlDriverError
 NODE_RUNNING_TIMEOUT_MS = 90_000
 
 
-def _wait_for_node_settings_idle(gui, timeout_ms=5000):
-    """Wait until the nested NodeSettings PageStack finishes animating."""
-    gui.wait_for_property("nodeSettingsStack", "busy", False, timeout_ms=timeout_ms)
-
-
 def navigate_to_console(gui):
     """From the NodeRunner main screen, navigate to the Console page.
 
     Waits for the node-runner screen (which only appears once the node is
-    running), then clicks through Settings → Console.
+    running), then clicks the console icon button in the header.
     """
-    # The nodeSettingsButton is on NodeRunner, which appears only once the
-    # node has initialised — hence the generous timeout.
     gui.wait_for_page(
-        "nodeSettingsButton",
+        "consoleTabButton",
         timeout_ms=NODE_RUNNING_TIMEOUT_MS,
     )
-    gui.click("nodeSettingsButton")
-
-    # Wait for the settingsConsole entry to appear in the NodeSettings page.
-    gui.wait_for_page("settingsConsole", timeout_ms=5000)
-    _wait_for_node_settings_idle(gui)
-
-    gui.click("settingsConsole")
+    gui.click("consoleTabButton")
     gui.wait_for_page("commandConsole", timeout_ms=5000)
-    _wait_for_node_settings_idle(gui)
     print("  Navigated to Console page.")
 
 
@@ -173,13 +159,12 @@ def test_autocomplete_help_variants(gui):
 
 
 def test_back_navigation(gui):
-    """Navigate back from the Console page and verify we return to Settings."""
+    """Navigate back from the Console page and verify we return to NodeRunner."""
     print("\n── test_back_navigation ────────────────────────────────────────")
 
     gui.click("consoleBackButton")
-    # After pressing Back we should land on the NodeSettings stack.
-    gui.wait_for_page("nodeSettingsStack", timeout_ms=5000)
-    print("  PASSED: back navigation returned to Settings")
+    gui.wait_for_page("nodeRunner", timeout_ms=5000)
+    print("  PASSED: back navigation returned to NodeRunner")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

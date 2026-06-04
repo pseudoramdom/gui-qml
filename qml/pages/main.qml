@@ -244,6 +244,13 @@ ApplicationWindow {
                     onSettingsClicked: {
                         nodeStack.push(nodeSettings)
                     }
+                    onPeersClicked: {
+                        peerTableModel.startAutoRefresh()
+                        nodeStack.push(peersPage)
+                    }
+                    onConsoleClicked: {
+                        nodeStack.push(consolePage)
+                    }
                 }
             }
             Component {
@@ -252,6 +259,39 @@ ApplicationWindow {
                     onDoneClicked: {
                         nodeStack.pop()
                     }
+                }
+            }
+            Component {
+                id: peersPage
+                Peers {
+                    onBack: {
+                        nodeStack.pop()
+                        peerTableModel.stopAutoRefresh()
+                    }
+                    onPeerSelected: (peerDetails) => {
+                        nodeStack.push(peerDetailsPage, {"details": peerDetails})
+                    }
+                    onBannedPeers: {
+                        nodeStack.push(bannedPeersPage)
+                    }
+                }
+            }
+            Component {
+                id: peerDetailsPage
+                PeerDetails {
+                    onBack: nodeStack.pop()
+                }
+            }
+            Component {
+                id: bannedPeersPage
+                BannedPeers {
+                    onBack: nodeStack.pop()
+                }
+            }
+            Component {
+                id: consolePage
+                CommandConsole {
+                    onBack: nodeStack.pop()
                 }
             }
         }

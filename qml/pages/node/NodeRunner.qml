@@ -10,6 +10,8 @@ import "../../components"
 
 Page {
     signal settingsClicked
+    signal peersClicked
+    signal consoleClicked
     id: root
     objectName: "nodeRunner"
     background: null
@@ -29,6 +31,26 @@ Page {
 
                 NodeStatusActions {
                     Layout.alignment: Qt.AlignVCenter
+                }
+                IconButton {
+                    objectName: "peersTabButton"
+                    iconSource: "image://images/node-1-connection"
+                    iconColor: Theme.color.neutral7
+                    hoverColor: Theme.color.neutral9
+                    size: 34
+                    iconSize: 24
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.peersClicked()
+                }
+                IconButton {
+                    objectName: "consoleTabButton"
+                    iconSource: "image://images/console"
+                    iconColor: Theme.color.neutral7
+                    hoverColor: Theme.color.neutral9
+                    size: 34
+                    iconSize: 24
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.consoleClicked()
                 }
                 IconButton {
                     objectName: "nodeSettingsButton"
