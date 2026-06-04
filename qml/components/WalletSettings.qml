@@ -92,7 +92,7 @@ ColumnLayout {
                     ? Theme.color.green
                     : Theme.color.neutral9
                 size: 16
-                Layout.alignment: Qt.AlignVerticalCenter
+                Layout.alignment: Qt.AlignVCenter
             }
 
             CoreText {
