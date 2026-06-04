@@ -88,7 +88,7 @@ Page {
         id: labelPopup
         objectName: "addressLabelPopup"
         anchors.centerIn: Overlay.overlay
-        width: 420
+        width: Math.min(420, root.width - 40)
         modal: true
         focus: true
         leftPadding: 40
@@ -137,7 +137,7 @@ Page {
     Popup {
         id: detailsPopup
         anchors.centerIn: Overlay.overlay
-        width: 560
+        width: Math.min(560, root.width - 40)
         modal: true
         focus: true
         leftPadding: 40
@@ -172,7 +172,7 @@ Page {
         contentWidth: width
 
         ColumnLayout {
-            width: 520
+            width: Math.min(520, parent.width)
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 26
 

@@ -45,8 +45,8 @@ def navigate_to_window_behavior(gui):
     """Open Settings then navigate to the Window Behavior page."""
     gui.click("nodeSettingsButton")
     # Wait for the settings list with the Window Behavior entry.
-    gui.wait_for_page("settingsWindowBehavior", timeout_ms=5000)
-    gui.click("settingsWindowBehavior")
+    gui.wait_for_page("settings_windowbehavior", timeout_ms=5000)
+    gui.click("settings_windowbehavior")
     gui.wait_for_page("windowBehaviorPage", timeout_ms=5000)
 
 
@@ -103,11 +103,7 @@ def run_tests():
         # ── Test 1: Navigation to Window Behavior page ────────────────────────
         print("Test 1: Navigate to Settings → Window Behavior ...")
         navigate_to_window_behavior(gui)
-        current = gui.get_current_page()
-        assert "windowBehaviorPage" in current, (
-            f"Expected windowBehaviorPage, got: {current}"
-        )
-        print(f"  -> current page: {current}  ✓")
+        print("  -> navigated to Window Behavior  ✓")
 
         # ── Test 2: Required controls are present ─────────────────────────────
         print("Test 2: Verify expected controls exist on the page ...")
@@ -162,22 +158,17 @@ def run_tests():
         gui.wait_for_property("showTrayIconSwitch", "checked", True, timeout_ms=2000)
         print("  -> showTrayIconSwitch restored to on  ✓")
 
-        # ── Test 6: Back navigation ───────────────────────────────────────────
-        print("Test 6: Back button returns to settings list ...")
-        gui.click("windowBehaviorBack")
-        gui.wait_for_page("settingsWindowBehavior", timeout_ms=5000)
-        current = gui.get_current_page()
-        print(f"  -> current page after back: {current}  ✓")
+        # ── Test 6: Sidebar navigation after interaction ──────────────────────
+        print("Test 6: Sidebar navigation still works after interacting with Window Behavior ...")
+        gui.click("settings_about")
+        gui.wait_for_page("settingsAbout", timeout_ms=5000)
+        print("  -> switched to About section  ✓")
 
         # ── Test 7: Re-open page (round-trip) ─────────────────────────────────
         print("Test 7: Re-open Window Behavior page (round-trip) ...")
-        gui.click("settingsWindowBehavior")
+        gui.click("settings_windowbehavior")
         gui.wait_for_page("windowBehaviorPage", timeout_ms=5000)
-        current = gui.get_current_page()
-        assert "windowBehaviorPage" in current, (
-            f"Could not re-open windowBehaviorPage, got: {current}"
-        )
-        print(f"  -> current page: {current}  ✓")
+        print("  -> re-opened Window Behavior  ✓")
 
         print("\n" + "=" * 50)
         print("All tests PASSED")

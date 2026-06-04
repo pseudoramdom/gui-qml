@@ -5,6 +5,7 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtTest 1.2
+import org.bitcoincore.qt 1.0
 import "../../qml/pages/node"
 
 TestCase {
@@ -31,6 +32,8 @@ TestCase {
 
     function init() {
         nodeModel.mempoolInformationAvailable = true
+        AppMode.walletEnabled = true
+        AppMode.isDesktop = true
     }
 
     function createNodeSettingsPage() {
@@ -42,7 +45,7 @@ TestCase {
 
     function test_mempool_information_row_visible_when_available() {
         const page = createNodeSettingsPage()
-        const row = findChild(page, "settingsMempoolInformation")
+        const row = findChild(page, "settings_mempool")
         verify(row !== null)
         compare(row.visible, true)
     }
@@ -51,8 +54,46 @@ TestCase {
         nodeModel.mempoolInformationAvailable = false
 
         const page = createNodeSettingsPage()
-        const row = findChild(page, "settingsMempoolInformation")
+        const row = findChild(page, "settings_mempool")
         verify(row !== null)
         compare(row.visible, false)
+    }
+
+    function test_sidebar_section_switching() {
+        const page = createNodeSettingsPage()
+
+        compare(page.currentSection, 0)
+
+        const displayItem = findChild(page, "settings_display")
+        verify(displayItem !== null)
+        mouseClick(displayItem, displayItem.width / 2, displayItem.height / 2)
+        compare(page.currentSection, 1)
+
+        const connectionItem = findChild(page, "settings_connection")
+        verify(connectionItem !== null)
+        mouseClick(connectionItem, connectionItem.width / 2, connectionItem.height / 2)
+        compare(page.currentSection, 5)
+    }
+
+    function test_wallet_section_hidden_when_disabled() {
+        AppMode.walletEnabled = false
+
+        const page = createNodeSettingsPage()
+        const walletItem = findChild(page, "settings_wallet")
+        verify(walletItem !== null)
+        compare(walletItem.visible, false)
+
+        const signerItem = findChild(page, "settings_externalsigner")
+        verify(signerItem !== null)
+        compare(signerItem.visible, false)
+    }
+
+    function test_window_behavior_hidden_on_non_desktop() {
+        AppMode.isDesktop = false
+
+        const page = createNodeSettingsPage()
+        const windowItem = findChild(page, "settings_windowbehavior")
+        verify(windowItem !== null)
+        compare(windowItem.visible, false)
     }
 }
