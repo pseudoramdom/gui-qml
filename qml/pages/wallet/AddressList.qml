@@ -52,19 +52,10 @@ Page {
         root.errorText = qsTr("This address is no longer available.");
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "addressListBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            objectName: "addressListHeader"
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Addresses")
-        }
+    header: SettingsHeader {
+        title: qsTr("Addresses")
+        backButtonObjectName: "addressListBackButton"
+        onBack: root.back()
         rightItem: IconButton {
             objectName: "addressesMenuButton"
             iconSource: "image://images/ellipsis"

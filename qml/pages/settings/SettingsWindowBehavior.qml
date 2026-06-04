@@ -12,29 +12,22 @@ Item {
     id: root
     objectName: "windowBehaviorPage"
     signal back
+    property bool showBackButton: true
 
     property var windowBehaviorModel: desktopWindowBehaviorModel
 
     Page {
         anchors.fill: parent
         background: null
-        implicitWidth: 450
         leftPadding: 20
         rightPadding: 20
         topPadding: 30
 
-        header: NavigationBar2 {
-            leftItem: NavButton {
-                objectName: "windowBehaviorBack"
-                iconSource: "image://images/caret-left"
-                text: qsTr("Back")
-                onClicked: root.back()
-            }
-            centerItem: Header {
-                headerBold: true
-                headerSize: 18
-                header: qsTr("Window behavior")
-            }
+        header: SettingsHeader {
+            title: qsTr("Window behavior")
+            showBackButton: root.showBackButton
+            backButtonObjectName: "windowBehaviorBack"
+            onBack: root.back()
         }
 
         ColumnLayout {

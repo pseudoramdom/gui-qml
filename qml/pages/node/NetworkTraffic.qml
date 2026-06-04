@@ -14,21 +14,18 @@ import org.bitcoincore.qt 1.0
 InformationPage {
     id: root
     property int trafficGraphScale: 300
+    property bool showBackButton: true
 
     Settings {
         id: settings
         property alias trafficGraphScale: root.trafficGraphScale
     }
-    navLeftDetail: NavButton {
-        objectName: "networkTrafficBackButton"
-        iconSource: "image://images/caret-left"
-        text: qsTr("Back")
-        onClicked: root.back()
-    }
-    navMiddleDetail: Header {
-        headerBold: true
-        headerSize: 18
-        header: qsTr("Network traffic")
+    showNavBar: false
+    header: SettingsHeader {
+        title: qsTr("Network traffic")
+        showBackButton: root.showBackButton
+        backButtonObjectName: "networkTrafficBackButton"
+        onBack: root.back()
     }
     bannerActive: false
     bold: true

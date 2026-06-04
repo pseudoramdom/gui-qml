@@ -14,23 +14,14 @@ Page {
 
     objectName: "settingsLanguagePage"
     background: null
-    implicitWidth: 450
     leftPadding: 20
     rightPadding: 20
     topPadding: 30
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "settingsLanguageBack"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Choose language")
-        }
+    header: SettingsHeader {
+        title: qsTr("Choose language")
+        backButtonObjectName: "settingsLanguageBack"
+        onBack: root.back()
     }
 
     ColumnLayout {

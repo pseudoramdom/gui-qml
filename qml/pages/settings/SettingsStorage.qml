@@ -13,6 +13,7 @@ InformationPage {
     property bool customStorage: false
     property bool customStorageAmount
     property bool onboarding: false
+    property bool showBackButton: true
     bannerActive: false
     bold: true
     showHeader: root.onboarding
@@ -28,47 +29,14 @@ InformationPage {
             root.customStorageAmount = storageSettings.customStorageAmount
         }
     }
-    states: [
-        State {
-            when: root.onboarding
-            PropertyChanges {
-                target: root
-                navLeftDetail: null
-                navMiddleDetail: null
-                navRightDetail: doneButton
-            }
-        },
-        State {
-            when: !root.onboarding
-            PropertyChanges {
-                target: root
-                navLeftDetail: backButton
-                navMiddleDetail: header
-                navRightDetail: null
-            }
-        }
-    ]
-
-    Component {
-        id: backButton
-        NavButton {
-            objectName: "settingsStorageBack"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-    }
-    Component {
-        id: header
-        Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Storage Settings")
-        }
-    }
-    Component {
-        id: doneButton
-        NavButton {
+    showNavBar: false
+    header: SettingsHeader {
+        title: root.onboarding ? "" : qsTr("Storage Settings")
+        showBackButton: !root.onboarding && root.showBackButton
+        backButtonObjectName: "settingsStorageBack"
+        onBack: root.back()
+        rightItem: NavButton {
+            visible: root.onboarding
             text: qsTr("Done")
             onClicked: root.back()
         }

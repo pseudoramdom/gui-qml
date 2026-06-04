@@ -14,21 +14,15 @@ Page {
     objectName: "settingsWallet"
 
     signal back
+    property bool showBackButton: true
 
     background: null
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "settingsWalletBack"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("External Signer")
-        }
+    header: SettingsHeader {
+        title: qsTr("External Signer")
+        showBackButton: root.showBackButton
+        backButtonObjectName: "settingsWalletBack"
+        onBack: root.back()
     }
 
     ScrollView {

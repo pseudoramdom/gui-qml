@@ -13,7 +13,6 @@ Page {
 
     id: root
     background: null
-    implicitWidth: 450
     leftPadding: 20
     rightPadding: 20
     topPadding: 30
@@ -46,17 +45,9 @@ Page {
         "neutral5", "neutral6", "neutral7", "neutral8", "neutral9"
     ]
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Design system")
-        }
+    header: SettingsHeader {
+        title: qsTr("Design system")
+        onBack: root.back()
     }
 
     Flickable {

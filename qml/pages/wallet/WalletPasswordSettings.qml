@@ -45,19 +45,10 @@ Page {
         }
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "walletPasswordBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            objectName: "walletPasswordHeader"
-            headerBold: true
-            headerSize: 18
-            header: root.updating ? qsTr("Update password") : qsTr("Set password")
-        }
+    header: SettingsHeader {
+        title: root.updating ? qsTr("Update password") : qsTr("Set password")
+        backButtonObjectName: "walletPasswordBackButton"
+        onBack: root.back()
     }
 
     Component.onCompleted: {

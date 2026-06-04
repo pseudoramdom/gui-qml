@@ -45,18 +45,13 @@ Page {
         onTriggered: debugLogModel.updateRelativeTimes()
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "debugLogBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: "debug.log"
-        }
+    property bool showBackButton: true
+
+    header: SettingsHeader {
+        title: "debug.log"
+        showBackButton: root.showBackButton
+        backButtonObjectName: "debugLogBackButton"
+        onBack: root.back()
         rightItem: RowLayout {
             spacing: 0
             // Both buttons use a bare Item + centred Icon (not NavButton).

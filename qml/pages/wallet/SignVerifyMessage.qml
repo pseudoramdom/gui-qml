@@ -71,18 +71,10 @@ Page {
         root.verifyResultText = verified ? qsTr("Message verified successfully.") : qsTr("Message verification failed.");
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "signVerifyMessageBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Sign or Verify Message")
-        }
+    header: SettingsHeader {
+        title: qsTr("Sign or Verify Message")
+        backButtonObjectName: "signVerifyMessageBackButton"
+        onBack: root.back()
     }
 
     ScrollView {
