@@ -136,8 +136,8 @@ PageStack {
                 sendOptionsPopup.multipleRecipientsEnabled = multipleRecipientsEnabled
                 root.transactionPrepared(multipleRecipientsEnabled)
             } else if (mode === "unsupported") {
-                unsupportedPsbtPopup.message = root.wallet.importedPsbtError.length > 0
-                    ? root.wallet.importedPsbtError
+                unsupportedPsbtPopup.message = root.wallet.importedPsbt.error.length > 0
+                    ? root.wallet.importedPsbt.error
                     : qsTr("This PSBT is not supported yet.")
                 unsupportedPsbtPopup.open()
             }
@@ -169,7 +169,7 @@ PageStack {
 
             property string message: ""
 
-            onClosed: root.wallet.clearImportedPsbt()
+            onClosed: root.wallet.importedPsbt.clear()
 
             background: Rectangle {
                 color: Theme.color.background

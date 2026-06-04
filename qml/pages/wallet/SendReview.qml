@@ -24,6 +24,19 @@ Page {
     signal back()
     signal transactionSent()
 
+    function commitSend() {
+        if (root.sending) {
+            return
+        }
+        if (root.wallet && root.wallet.sendTransaction()) {
+            root.sending = true
+            root.transactionSent()
+        } else if (root.wallet && root.wallet.transactionNeedsUnlock) {
+            sendPassphrasePopup.errorText = ""
+            sendPassphrasePopup.open()
+        }
+    }
+
     onVisibleChanged: {
         if (!visible) {
             externalSignerActions.reset()
@@ -162,6 +175,33 @@ Page {
                 font.pixelSize: 15
                 wrapMode: Text.WordWrap
             }
+        }
+    }
+
+    WalletPassphrasePopup {
+        id: sendPassphrasePopup
+        parent: Overlay.overlay
+        width: Math.min(420, root.width - 40)
+        popupObjectName: "sendReviewPassphrasePopup"
+        passphraseFieldObjectName: "sendReviewPassphraseField"
+        errorTextObjectName: "sendReviewPassphraseErrorText"
+        cancelButtonObjectName: "sendReviewPassphraseCancelButton"
+        confirmButtonObjectName: "sendReviewPassphraseConfirmButton"
+        titleText: qsTr("Enter wallet password")
+        descriptionText: qsTr("Enter your wallet password to send this transaction.")
+        confirmText: qsTr("Unlock and send")
+        busyConfirmText: qsTr("Unlocking...")
+        onSubmitted: (passphrase) => {
+            sendPassphrasePopup.busy = true
+            if (root.wallet.sendTransactionWithPassphrase(passphrase)) {
+                sendPassphrasePopup.busy = false
+                sendPassphrasePopup.close()
+                root.sending = true
+                root.transactionSent()
+                return
+            }
+            sendPassphrasePopup.busy = false
+            sendPassphrasePopup.errorText = root.wallet.transactionError
         }
     }
 }
