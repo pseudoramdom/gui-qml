@@ -19,6 +19,8 @@ Rectangle {
     property color backgroundColor: Theme.color.neutral2
     property bool showsCloseButton: false
     property string actionText: ""
+    // When > 0, auto-emits dismissed() after this many seconds while visible.
+    property int dismissAfter: 0
 
     signal actionTriggered()
     signal dismissed()
@@ -26,6 +28,52 @@ Rectangle {
     color: backgroundColor
     radius: 5
     implicitHeight: Math.max(50, contentRow.implicitHeight + 20)
+    opacity: 0
+
+    onVisibleChanged: {
+        if (visible) {
+            fadeOutAnim.stop()
+            dismissTimer.stop()
+            fadeInAnim.restart()
+        } else {
+            fadeInAnim.stop()
+            fadeOutAnim.stop()
+            dismissTimer.stop()
+            opacity = 0
+        }
+    }
+
+    NumberAnimation {
+        id: fadeInAnim
+        target: root
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: 150
+        easing.type: Easing.OutCubic
+        onStopped: {
+            if (root.dismissAfter > 0) {
+                dismissTimer.start()
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: fadeOutAnim
+        target: root
+        property: "opacity"
+        from: 1
+        to: 0
+        duration: 150
+        easing.type: Easing.InCubic
+        onStopped: root.dismissed()
+    }
+
+    Timer {
+        id: dismissTimer
+        interval: root.dismissAfter * 1000
+        onTriggered: fadeOutAnim.start()
+    }
 
     RowLayout {
         id: contentRow

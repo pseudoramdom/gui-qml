@@ -224,16 +224,20 @@ Page {
                 onClicked: root.startSavePsbt()
             }
 
-            CoreText {
-                objectName: "sendReviewSavePsbtStatus"
+            ToastBanner {
+                objectName: "sendReviewSavePsbtBanner"
                 Layout.fillWidth: true
+                Layout.topMargin: 10
                 visible: root.savePsbtStatus.length > 0
+                backgroundColor: root.savePsbtError ? Theme.color.red : Theme.color.green
+                iconSource: root.savePsbtError ? "image://images/info-filled" : "image://images/check"
                 text: root.savePsbtStatus
-                color: root.savePsbtError ? Theme.color.red : Theme.color.green
-                font: Theme.text.caption.font
-                lineHeight: Theme.text.caption.lineHeight
-                lineHeightMode: Text.FixedHeight
-                wrapMode: Text.WordWrap
+                textObjectName: "sendReviewSavePsbtStatus"
+                dismissAfter: 3
+                onDismissed: {
+                    root.savePsbtStatus = ""
+                    root.savePsbtError = false
+                }
             }
 
             CoreText {

@@ -501,7 +501,7 @@ PageStack {
                     id: titleRow
                     Layout.fillWidth: true
                     Layout.preferredHeight: title.implicitHeight
-                    Layout.topMargin: 48
+                    Layout.topMargin: 36
                     Layout.bottomMargin: root.externalSignerWallet ? 24 : 36
 
                     CoreText {
