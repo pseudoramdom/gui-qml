@@ -191,12 +191,13 @@ def run_test():
 
         import_psbt(gui, fixtures["multiple_review_path"])
         checkpoints.checkpoint("multi-recipient PSBT submitted", gui)
-        gui.wait_for_page("multipleSendReviewPage", timeout_ms=20000)
-        assert gui.get_current_page() == "multipleSendReviewPage", (
-            "Expected multi-recipient PSBT to open MultipleSendReview"
+        gui.wait_for_page("sendReviewPage", timeout_ms=20000)
+        gui.wait_for_property("multipleRecipientsSummary", "visible", True, timeout_ms=10000)
+        assert gui.get_current_page() == "sendReviewPage", (
+            "Expected multi-recipient PSBT to open the review page"
         )
         checkpoints.checkpoint("multiple-recipient review displayed", gui)
-        gui.click("multipleSendReviewBackButton")
+        gui.click("sendReviewBackButton")
         gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
         checkpoints.checkpoint("returned from multiple review to send page", gui)
 

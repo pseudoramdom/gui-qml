@@ -45,6 +45,8 @@
         <file>components/ReceiveOptionsPopup.qml</file>
         <file>components/Tooltip.qml</file>
         <file>components/LabeledValueField.qml</file>
+        <file>components/MultipleRecipientsSummary.qml</file>
+        <file>components/SingleRecipientSummary.qml</file>
         <file>components/WalletSettings.qml</file>
         <file>components/WalletMigrationPopup.qml</file>
         <file>components/WalletPassphrasePopup.qml</file>
@@ -144,7 +146,6 @@
         <file>pages/wallet/WatchOnlyIntro.qml</file>
         <file>pages/wallet/WatchOnlyXpub.qml</file>
         <file>pages/wallet/DesktopWallets.qml</file>
-        <file>pages/wallet/MultipleSendReview.qml</file>
         <file>pages/wallet/PaymentRequestDetail.qml</file>
         <file>pages/wallet/RequestPayment.qml</file>
         <file>pages/wallet/Send.qml</file>

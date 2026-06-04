@@ -96,12 +96,8 @@ ApplicationWindow {
             onAddWallet: {
                 main.push(createWalletWizard, { "launchContext": CreateWalletWizard.Context.Main })
             }
-            onSendTransaction: (multipleRecipientsEnabled) => {
-                if (multipleRecipientsEnabled) {
-                    main.push(multipleSendReviewPage)
-                } else {
-                    main.push(sendReviewPage)
-                }
+            onSendTransaction: {
+                main.push(sendReviewPage)
             }
         }
     }
@@ -118,27 +114,6 @@ ApplicationWindow {
     Component {
         id: sendReviewPage
         SendReview {
-            onBack: {
-                main.pop()
-            }
-            onTransactionSent: {
-                const externalSignerWallet = walletController.selectedWallet.hasExternalSigner
-                const descriptionText = externalSignerWallet
-                    ? qsTr("Approved on external signer. It should be confirmed within the next 10 minutes.")
-                    : qsTr("Based on your selected fee, it should be confirmed within the next 10 minutes.")
-                const actionText = externalSignerWallet ? qsTr("Done") : qsTr("Close window")
-                walletController.selectedWallet.recipients.clear()
-                main.push(sendResultPage, {
-                    "descriptionText": descriptionText,
-                    "actionText": actionText
-                })
-            }
-        }
-    }
-
-    Component {
-        id: multipleSendReviewPage
-        MultipleSendReview {
             onBack: {
                 main.pop()
             }
