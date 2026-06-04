@@ -13,7 +13,9 @@
 
 #include <string>
 
+#ifndef BITCOINQML_NO_TEST_MAIN
 const TranslateFn G_TRANSLATION_FUN{nullptr};
+#endif
 
 class RpcCommandExecutorTests : public QObject
 {
@@ -125,5 +127,10 @@ void RpcCommandExecutorTests::sensitiveCmdNonSensitiveUnredacted()
     QCOMPARE(QString::fromStdString(filtered), QString("getblockcount"));
 }
 
+#ifdef BITCOINQML_NO_TEST_MAIN
+#include <test/qt_test_registry.h>
+BITCOINQML_REGISTER_QT_TEST(RpcCommandExecutorTests)
+#else
 QTEST_MAIN(RpcCommandExecutorTests)
+#endif
 #include "test_rpccommandexecutor.moc"

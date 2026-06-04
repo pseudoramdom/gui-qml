@@ -8,7 +8,7 @@
 // append logic in submitCommand() do not use the node interface at all.  The
 // worker-thread dispatch in submitCommand() is a QueuedConnection invoke, so
 // with no Qt event loop running the worker's execute() slot is never called
-// and executeRpc() is never reached.  A minimal MockNode that compiles is
+// and executeRpc() is never reached.  A minimal RpcTestStubNode that compiles is
 // therefore sufficient.
 
 #include <QtTest/QtTest>
@@ -30,7 +30,7 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// Minimal mock for interfaces::WalletLoader (required by MockNode::walletLoader)
+// Minimal mock for interfaces::WalletLoader (required by RpcTestStubNode::walletLoader)
 // ---------------------------------------------------------------------------
 class MockWalletLoader : public interfaces::WalletLoader
 {
@@ -76,7 +76,7 @@ public:
 // ---------------------------------------------------------------------------
 // Minimal mock for interfaces::Node
 // ---------------------------------------------------------------------------
-class MockNode : public interfaces::Node
+class RpcTestStubNode : public interfaces::Node
 {
 public:
     // Trivial stubs — none are called during history tests.
@@ -147,9 +147,9 @@ private:
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-// MockNode subclass that returns a large result from executeRpc, used to test
+// RpcTestStubNode subclass that returns a large result from executeRpc, used to test
 // the output-truncation logic in RpcConsoleWorker::execute().
-class LargeResultNode : public MockNode
+class LargeResultNode : public RpcTestStubNode
 {
 public:
     UniValue executeRpc(const std::string&, const UniValue&, const std::string&) override
@@ -159,9 +159,9 @@ public:
     }
 };
 
-// MockNode that returns a JSON object with a string value containing ": ",
+// RpcTestStubNode that returns a JSON object with a string value containing ": ",
 // used to exercise the JSON reply formatter's structural key detection.
-class JsonReplyNode : public MockNode
+class JsonReplyNode : public RpcTestStubNode
 {
 public:
     UniValue executeRpc(const std::string&, const UniValue&, const std::string&) override
@@ -174,8 +174,8 @@ public:
     }
 };
 
-// MockNode that provides a known command list for autocomplete tests.
-class CommandListNode : public MockNode
+// RpcTestStubNode that provides a known command list for autocomplete tests.
+class CommandListNode : public RpcTestStubNode
 {
 public:
     std::vector<std::string> listRpcCommands() override
@@ -201,7 +201,7 @@ private Q_SLOTS:
 
 void RpcConsoleModelTests::historyNavigationOldestToNewest()
 {
-    MockNode mock;
+    RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
     // submitCommand dispatches to the worker via QueuedConnection — with no
@@ -229,7 +229,7 @@ void RpcConsoleModelTests::historyNavigationOldestToNewest()
 
 void RpcConsoleModelTests::historyNavigationRestoresPendingText()
 {
-    MockNode mock;
+    RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
     model.submitCommand("getblockcount");
@@ -245,7 +245,7 @@ void RpcConsoleModelTests::historyNavigationRestoresPendingText()
 
 void RpcConsoleModelTests::historyDeduplicatesConsecutiveDuplicates()
 {
-    MockNode mock;
+    RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
     model.submitCommand("getblockcount");
@@ -262,7 +262,7 @@ void RpcConsoleModelTests::historyDeduplicatesConsecutiveDuplicates()
 
 void RpcConsoleModelTests::historyTruncatesAtMax()
 {
-    MockNode mock;
+    RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
     // Submit 51 unique commands — only the last 50 should be kept.
@@ -281,7 +281,7 @@ void RpcConsoleModelTests::historyTruncatesAtMax()
 
 void RpcConsoleModelTests::resetHistoryNavigationClearsState()
 {
-    MockNode mock;
+    RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
     model.submitCommand("getblockcount");
@@ -407,5 +407,10 @@ void RpcConsoleModelTests::availableCommandsIncludesHelpVariants()
     QCOMPARE(cmds.size(), deduped.size());
 }
 
+#ifdef BITCOINQML_NO_TEST_MAIN
+#include <test/qt_test_registry.h>
+BITCOINQML_REGISTER_QT_TEST(RpcConsoleModelTests)
+#else
 QTEST_MAIN(RpcConsoleModelTests)
+#endif
 #include "test_rpcconsolemodel.moc"

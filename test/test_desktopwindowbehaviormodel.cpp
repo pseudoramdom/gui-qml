@@ -197,13 +197,10 @@ void DesktopWindowBehaviorModelTests::settings_persistAcrossInstances()
     }
 }
 
-int RunDesktopWindowBehaviorModelTests(int argc, char* argv[])
-{
-    DesktopWindowBehaviorModelTests tests;
-    return QTest::qExec(&tests, argc, argv);
-}
-
-#ifndef BITCOINQML_NO_TEST_MAIN
+#ifdef BITCOINQML_NO_TEST_MAIN
+#include <test/qt_test_registry.h>
+BITCOINQML_REGISTER_QT_TEST(DesktopWindowBehaviorModelTests)
+#else
 QTEST_MAIN(DesktopWindowBehaviorModelTests)
 #endif
 #include "test_desktopwindowbehaviormodel.moc"

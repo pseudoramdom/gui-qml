@@ -40,6 +40,8 @@ add_executable(bitcoinqml_unit_tests
   test_transaction.cpp
   test_activityfilterproxymodel.cpp
   test_qtmessagefilter.cpp
+  test_rpccommandexecutor.cpp
+  test_rpcconsolemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../bitcoin/src/util/chaintype.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../qml/models/bitcoinuri.cpp
 )
@@ -102,54 +104,3 @@ target_include_directories(bitcoinqml_qmltests
 )
 
 add_test(NAME bitcoinqml_qmltests COMMAND bitcoinqml_qmltests -platform offscreen)
-
-add_executable(rpc_console_tests
-  test_rpccommandexecutor.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../qml/models/rpccommandexecutor.cpp
-)
-
-target_include_directories(rpc_console_tests
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../bitcoin/src
-    ${CMAKE_CURRENT_BINARY_DIR}/../bitcoin/src
-)
-
-target_link_libraries(rpc_console_tests
-  PRIVATE
-    core_interface
-    bitcoin_cli
-    bitcoin_node
-    univalue
-    Qt6::Core
-    Qt6::Test
-)
-
-add_test(NAME rpc_console_tests COMMAND rpc_console_tests)
-
-add_executable(rpc_console_model_tests
-  test_rpcconsolemodel.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../qml/models/rpccommandexecutor.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../qml/models/rpcconsolemodel.cpp
-)
-
-target_include_directories(rpc_console_model_tests
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../bitcoin/src
-    ${CMAKE_CURRENT_BINARY_DIR}/../bitcoin/src
-)
-
-target_link_libraries(rpc_console_model_tests
-  PRIVATE
-    core_interface
-    bitcoin_cli
-    bitcoin_node
-    univalue
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Qml
-    Qt6::Test
-)
-
-add_test(NAME rpc_console_model_tests COMMAND rpc_console_model_tests -platform offscreen)
