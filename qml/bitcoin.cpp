@@ -568,6 +568,7 @@ int QmlGuiMain(int argc, char* argv[])
     if (!window) {
         return EXIT_FAILURE;
     }
+    desktop_tray_icon_controller.setMainWindow(window);
 
 #ifdef ENABLE_TEST_AUTOMATION
     std::unique_ptr<TestBridge> test_bridge;

@@ -4,18 +4,58 @@
 
 #include <qml/models/desktoptrayiconcontroller.h>
 
+#include <QGuiApplication>
 #include <QImage>
 #include <QMenu>
+#include <QSettings>
+#include <QWindow>
+
+#if defined(Q_OS_MACOS)
+#include <qml/models/macdockiconhandler.h>
+#endif
+
+// Synchronous hit-test for whether another window covers @w, ported from
+// Bitcoin Core's GUIUtil::isObscured(). QGuiApplication::topLevelAt() only
+// reports windows owned by this application, so a corner covered by another
+// application reads as "not ours" and the window is treated as obscured.
+// This works under X11 only: on Wayland the compositor forbids cross-app
+// window queries, so topLevelAt() always returns our own window and obscured
+// detection is unavailable (the Qt Widgets GUI has the same limitation via
+// QApplication::widgetAt()). See bitcoin/bitcoin#19950.
+static bool checkPoint(const QPoint &p, const QWindow *w)
+{
+    QWindow *atW = QGuiApplication::topLevelAt(w->mapToGlobal(p));
+    return atW == w;
+}
+
+static bool isObscured(const QWindow *w)
+{
+    return !(checkPoint(QPoint(0, 0), w)
+        && checkPoint(QPoint(w->width() - 1, 0), w)
+        && checkPoint(QPoint(0, w->height() - 1), w)
+        && checkPoint(QPoint(w->width() - 1, w->height() - 1), w)
+        && checkPoint(QPoint(w->width() / 2, w->height() / 2), w));
+}
 
 DesktopTrayIconController::DesktopTrayIconController(QObject* parent)
     : QObject(parent)
     , m_tray_icon(new QSystemTrayIcon(this))
+    , m_is_dark(QSettings().value("dark", true).toBool())
 {
     m_tray_icon->setToolTip(QStringLiteral("Bitcoin Core"));
 
+    // Linux SNI/AppIndicator hosts require a native QMenu registered via
+    // setContextMenu() — the menu is exported over D-Bus and displayed by
+    // the DE natively. Without this, right-click does nothing on GNOME/KDE.
     auto* menu = new QMenu();
-    auto* showAction = menu->addAction(tr("Show"));
-    connect(showAction, &QAction::triggered, this, [this] { Q_EMIT restoreRequested(); });
+    m_show_action = menu->addAction(tr("Show"));
+    connect(m_show_action, &QAction::triggered, this, [this] {
+        if (m_window_visible) {
+            Q_EMIT hideRequested();
+        } else {
+            Q_EMIT showRequested();
+        }
+    });
     menu->addSeparator();
     auto* quitAction = menu->addAction(tr("Quit"));
     connect(quitAction, &QAction::triggered, this, [this] { Q_EMIT quitRequested(); });
@@ -23,13 +63,49 @@ DesktopTrayIconController::DesktopTrayIconController(QObject* parent)
 
     connect(m_tray_icon, &QSystemTrayIcon::activated, this,
         [this](QSystemTrayIcon::ActivationReason reason) {
-            if (reason == QSystemTrayIcon::Trigger ||
-                    reason == QSystemTrayIcon::DoubleClick) {
-                Q_EMIT restoreRequested();
-            } else if (reason == QSystemTrayIcon::Context) {
-                Q_EMIT contextMenuRequested();
+            if (reason == QSystemTrayIcon::Trigger) {
+                toggleWindow();
             }
         });
+
+#if defined(Q_OS_MACOS)
+    MacDockIconHandler* dockHandler = MacDockIconHandler::instance();
+    connect(dockHandler, &MacDockIconHandler::dockIconClicked, this,
+        [this] { Q_EMIT showRequested(); });
+#endif
+}
+
+void DesktopTrayIconController::toggleWindow()
+{
+    if (!m_main_window) return;
+
+    bool hidden = !m_main_window->isVisible();
+    bool minimized = m_main_window->windowStates() & Qt::WindowMinimized;
+
+    if (!hidden && !minimized && !isObscured(m_main_window)) {
+        Q_EMIT hideRequested();
+    } else {
+        Q_EMIT showRequested();
+    }
+}
+
+void DesktopTrayIconController::setMainWindow(QWindow* window)
+{
+    m_main_window = window;
+}
+
+void DesktopTrayIconController::hideMainWindow()
+{
+    if (!m_main_window) return;
+    m_main_window->hide();
+}
+
+void DesktopTrayIconController::showMainWindow()
+{
+    if (!m_main_window) return;
+    m_main_window->show();
+    m_main_window->raise();
+    m_main_window->requestActivate();
 }
 
 bool DesktopTrayIconController::supported() const
@@ -75,6 +151,21 @@ void DesktopTrayIconController::setBasePixmap(const QPixmap& pixmap)
 {
     m_base_pixmap = pixmap;
     updateIcon();
+}
+
+bool DesktopTrayIconController::windowVisible() const
+{
+    return m_window_visible;
+}
+
+void DesktopTrayIconController::setWindowVisible(bool visible)
+{
+    if (m_window_visible == visible) return;
+    m_window_visible = visible;
+    if (m_show_action) {
+        m_show_action->setText(visible ? tr("Hide") : tr("Show"));
+    }
+    Q_EMIT windowVisibleChanged(visible);
 }
 
 void DesktopTrayIconController::updateIcon()

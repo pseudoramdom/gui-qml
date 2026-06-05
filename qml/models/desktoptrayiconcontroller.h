@@ -10,12 +10,16 @@
 #include <QString>
 #include <QSystemTrayIcon>
 
+class QAction;
+class QWindow;
+
 class DesktopTrayIconController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool supported READ supported NOTIFY supportedChanged)
     Q_PROPERTY(bool visible READ visible WRITE setVisible NOTIFY visibleChanged)
     Q_PROPERTY(bool isDark READ isDark WRITE setIsDark NOTIFY isDarkChanged)
+    Q_PROPERTY(bool windowVisible READ windowVisible WRITE setWindowVisible NOTIFY windowVisibleChanged)
 
 public:
     explicit DesktopTrayIconController(QObject* parent = nullptr);
@@ -26,20 +30,32 @@ public:
     void setBasePixmap(const QPixmap& pixmap);
     bool isDark() const;
     void setIsDark(bool dark);
+    bool windowVisible() const;
+    void setWindowVisible(bool visible);
+
+    void setMainWindow(QWindow* window);
+
+    Q_INVOKABLE void hideMainWindow();
+    Q_INVOKABLE void showMainWindow();
 
 Q_SIGNALS:
     void visibleChanged(bool visible);
     void supportedChanged(bool supported);
-    void restoreRequested();
-    void contextMenuRequested();
+    void showRequested();
+    void hideRequested();
     void quitRequested();
     void isDarkChanged(bool dark);
+    void windowVisibleChanged(bool visible);
 
 private:
     void updateIcon();
+    void toggleWindow();
 
     QSystemTrayIcon* m_tray_icon{nullptr};
+    QAction* m_show_action{nullptr};
+    QWindow* m_main_window{nullptr};
     bool m_is_dark{true};
+    bool m_window_visible{true};
     QPixmap m_base_pixmap;
 };
 

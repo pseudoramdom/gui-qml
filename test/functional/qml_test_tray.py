@@ -170,6 +170,17 @@ def run_tests():
         gui.wait_for_page("windowBehaviorPage", timeout_ms=5000)
         print("  -> re-opened Window Behavior  ✓")
 
+        # ── Test 8: Close with minimizeOnClose keeps app alive ────────────────
+        print("Test 8: Enable minimizeOnClose, close window, verify app survives ...")
+        gui.click("minimizeOnCloseSwitch")
+        gui.wait_for_property("minimizeOnCloseSwitch", "checked", True, timeout_ms=2000)
+        gui.close_window()
+        # If minimizeOnClose works, the close event is intercepted and the
+        # app stays alive. Verify we can still communicate with the bridge.
+        ctx = gui.get_context_property("nodeModel")
+        assert ctx is not None, "App shut down after close_window despite minimizeOnClose"
+        print("  -> app survived close_window with minimizeOnClose  ✓")
+
         print("\n" + "=" * 50)
         print("All tests PASSED")
         print("=" * 50)

@@ -22,11 +22,18 @@ ApplicationWindow {
     visible: true
 
     Settings {
-        property alias x: appWindow.x
-        property alias y: appWindow.y
-        property alias width: appWindow.width
-        property alias height: appWindow.height
+        id: windowSettings
+        property real windowX
+        property real windowY
+        property real windowWidth
+        property real windowHeight
     }
+
+    onXChanged: if (visibility === Window.Windowed) windowSettings.windowX = x
+    onYChanged: if (visibility === Window.Windowed) windowSettings.windowY = y
+    onWidthChanged: if (visibility === Window.Windowed) windowSettings.windowWidth = width
+    onHeightChanged: if (visibility === Window.Windowed) windowSettings.windowHeight = height
+
 
     Behavior on color {
         ColorAnimation { duration: 150 }
@@ -42,7 +49,7 @@ ApplicationWindow {
     onClosing: (close) => {
         close.accepted = false
         if (desktopWindowBehaviorModel.shouldMinimizeWindowOnClose()) {
-            hide()
+            showMinimized()
         } else {
             nodeModel.requestShutdown()
         }
@@ -51,10 +58,11 @@ ApplicationWindow {
     onVisibilityChanged: function(visibility) {
         const prev = m_prevVisibility
         m_prevVisibility = visibility
+
         if (visibility === Window.Minimized &&
                 prev !== Window.Hidden &&
                 desktopWindowBehaviorModel.shouldHideToTrayOnMinimize()) {
-            hide()
+            desktopTrayIconController.hideMainWindow()
         }
     }
 
@@ -65,47 +73,30 @@ ApplicationWindow {
         }
     }
 
-    // Keeps the tray icon in sync with the app theme on Linux/Windows.
-    // On macOS, updateIcon() uses setIsMask(true) so isDark has no effect.
     Binding {
         target: desktopTrayIconController
         property: "isDark"
         value: Theme.dark
     }
 
+    Binding {
+        target: desktopTrayIconController
+        property: "windowVisible"
+        value: appWindow.visible &&
+               appWindow.visibility !== Window.Hidden &&
+               appWindow.visibility !== Window.Minimized
+    }
+
     Connections {
         target: desktopTrayIconController
-        function onRestoreRequested() {
-            appWindow.showNormal()
-            appWindow.raise()
-            appWindow.requestActivate()
+        function onShowRequested() {
+            desktopTrayIconController.showMainWindow()
+        }
+        function onHideRequested() {
+            desktopTrayIconController.hideMainWindow()
         }
         function onQuitRequested() {
             nodeModel.requestShutdown()
-        }
-        function onContextMenuRequested() {
-            trayContextMenu.popup()
-        }
-    }
-
-    Menu {
-        id: trayContextMenu
-        MenuItem {
-            text: appWindow.visibility !== Window.Hidden ? qsTr("&Hide") : qsTr("S&how")
-            onTriggered: {
-                if (appWindow.visibility !== Window.Hidden) {
-                    appWindow.hide()
-                } else {
-                    appWindow.showNormal()
-                    appWindow.raise()
-                    appWindow.requestActivate()
-                }
-            }
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: qsTr("&Quit")
-            onTriggered: nodeModel.requestShutdown()
         }
     }
 
@@ -227,6 +218,12 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        if (windowSettings.windowWidth > 0 && windowSettings.windowHeight > 0) {
+            x = windowSettings.windowX
+            y = windowSettings.windowY
+            width = windowSettings.windowWidth
+            height = windowSettings.windowHeight
+        }
         if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
             nodeModel.startNodeInitializionThread()
         }

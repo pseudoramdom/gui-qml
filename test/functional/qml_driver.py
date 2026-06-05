@@ -256,7 +256,7 @@ class QmlDriver:
             raise QmlDriverError(f"answer_runtime_dialog({button!r}) failed: {resp['error']}")
 
     def close_window(self):
-        """Send a close event to the QML application window."""
+        """Send a QCloseEvent to the main application window."""
         resp = self._send({"cmd": "close_window"})
         if "error" in resp:
             raise QmlDriverError(f"close_window failed: {resp['error']}")
@@ -288,7 +288,10 @@ class QmlDriver:
                 try:
                     busy = self.get_property(object_name, "busy")
                 except QmlDriverError as err:
-                    if f"Object not found: {object_name}" in str(err):
+                    msg = str(err)
+                    if f"Object not found: {object_name}" in msg:
+                        continue
+                    if "Property not found:" in msg:
                         continue
                     raise
                 last_busy[object_name] = busy
