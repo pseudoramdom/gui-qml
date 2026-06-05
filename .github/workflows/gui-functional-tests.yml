@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       LEGACY_BITCOIND_VERSION: "28.0"
+      QT_COMPAT_VERSION: "31.0"
 
     steps:
       - name: Checkout
@@ -30,6 +31,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake curl pkgconf python3 \
+            xvfb xauth \
             libevent-dev libboost-dev libsqlite3-dev libgl-dev libqrencode-dev \
             qt6-qpa-plugins \
             qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-tools-dev-tools \
@@ -80,6 +82,47 @@ jobs:
           path: releases/v${{ env.LEGACY_BITCOIND_VERSION }}
           key: ${{ runner.os }}-legacy-bitcoind-v${{ env.LEGACY_BITCOIND_VERSION }}
 
+      - name: Restore bitcoin-qt compatibility cache
+        uses: actions/cache/restore@v4
+        id: bitcoin-qt-compat-cache
+        with:
+          path: releases/v${{ env.QT_COMPAT_VERSION }}
+          key: ${{ runner.os }}-bitcoin-qt-v${{ env.QT_COMPAT_VERSION }}
+
+      - name: Install bitcoin-qt compatibility binary
+        run: |
+          archive="bitcoin-${QT_COMPAT_VERSION}-x86_64-linux-gnu.tar.gz"
+          base_url="https://bitcoincore.org/bin/bitcoin-core-${QT_COMPAT_VERSION}"
+          compat_dir="${GITHUB_WORKSPACE}/releases/v${QT_COMPAT_VERSION}"
+
+          mkdir -p "${compat_dir}"
+
+          if [ ! -x "${compat_dir}/bin/bitcoin-qt" ]; then
+            workdir="$(mktemp -d)"
+            trap 'rm -rf "${workdir}"' EXIT
+
+            curl -fsSLo "${workdir}/${archive}" "${base_url}/${archive}"
+            curl -fsSLo "${workdir}/SHA256SUMS" "${base_url}/SHA256SUMS"
+            (
+              cd "${workdir}"
+              grep " ${archive}$" "SHA256SUMS" | sha256sum -c -
+            )
+
+            tar -xzf "${workdir}/${archive}" \
+              --strip-components=1 \
+              -C "${compat_dir}" \
+              "bitcoin-${QT_COMPAT_VERSION}/bin"
+          fi
+
+          "${compat_dir}/bin/bitcoin-qt" --version | head -n 1
+
+      - name: Save bitcoin-qt compatibility cache
+        uses: actions/cache/save@v4
+        if: github.event_name != 'pull_request' && steps.bitcoin-qt-compat-cache.outputs.cache-hit != 'true'
+        with:
+          path: releases/v${{ env.QT_COMPAT_VERSION }}
+          key: ${{ runner.os }}-bitcoin-qt-v${{ env.QT_COMPAT_VERSION }}
+
       - name: Configure
         run: |
           cmake -B build \
@@ -97,6 +140,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           export BITCOIND_LEGACY="${GITHUB_WORKSPACE}/releases/v${LEGACY_BITCOIND_VERSION}/bin/bitcoind"
+          export BITCOIN_QT_COMPAT="${GITHUB_WORKSPACE}/releases/v${QT_COMPAT_VERSION}/bin/bitcoin-qt"
+          export BITCOIN_QT_RUNNER="xvfb-run -a"
           python3 test/functional/qml_test_bridge_sanity.py
           python3 test/functional/qml_test_onboarding.py
           python3 test/functional/qml_test_disablewallet_boot.py
@@ -106,6 +151,7 @@ jobs:
           python3 test/functional/qml_test_peers.py
           python3 test/functional/qml_test_proxy.py
           python3 test/functional/qml_test_debug_log.py
+          python3 test/functional/qml_test_node_runtime_dialogs.py
           python3 test/functional/qml_test_settings_display.py
           python3 test/functional/qml_test_receive.py
           python3 test/functional/qml_test_activity_filter_export.py
@@ -114,9 +160,12 @@ jobs:
           python3 test/functional/qml_test_addresses.py
           python3 test/functional/qml_test_send_review.py
           python3 test/functional/qml_test_wallet_migration.py
+          python3 test/functional/qml_test_wallet_qt_compat.py
           python3 test/functional/qml_test_wallet_rbf.py
           python3 test/functional/qml_test_wallet_restore.py
+          python3 test/functional/qml_test_uri_import.py
           python3 test/functional/qml_test_wallet_settings.py
           python3 test/functional/qml_test_watchonly_wallet.py
           python3 test/functional/qml_test_create_wallet_name.py
           python3 test/functional/qml_test_wallet_selector_load.py
+          python3 test/functional/qml_test_shutdown.py
