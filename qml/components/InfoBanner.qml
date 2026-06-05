@@ -22,6 +22,7 @@ Rectangle {
     property string message: ""
     property string primaryButtonText: ""
     property string dismissButtonText: ""
+    property bool showsCloseButton: false
     property int bannerLayout: InfoBanner.Layout.Horizontal
     property int contentMargin: 30
     property int contentSpacing: 15
@@ -36,11 +37,27 @@ Rectangle {
     Loader {
         id: contentLoader
         anchors.left: parent.left
-        anchors.right: parent.right
+        anchors.right: root.showsCloseButton ? closeButton.left : parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.margins: root.contentMargin
+        anchors.leftMargin: root.contentMargin
+        anchors.rightMargin: root.showsCloseButton ? 8 : root.contentMargin
         sourceComponent: root.bannerLayout === InfoBanner.Layout.Vertical
             ? verticalContent : horizontalContent
+    }
+
+    IconButton {
+        id: closeButton
+        objectName: root.objectName !== "" ? root.objectName + "CloseButton" : ""
+        visible: root.showsCloseButton
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 8
+        anchors.rightMargin: 8
+        size: 24
+        iconSource: "image://images/cross"
+        Accessible.name: qsTr("Dismiss")
+        Accessible.role: Accessible.Button
+        onClicked: root.dismissClicked()
     }
 
     Component {

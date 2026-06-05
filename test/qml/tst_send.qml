@@ -473,7 +473,7 @@ TestCase {
         compare(testSendRecipient.address.address, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9")
         compare(testSendRecipient.amount.display, "0.02000000")
         compare(testSendRecipient.label, "uri-label")
-        compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard.")
+        compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard")
         compare(sendPage.paymentRequestIsError, false)
     }
 }

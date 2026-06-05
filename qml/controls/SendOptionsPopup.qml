@@ -24,6 +24,7 @@ ContextMenu {
     ContextMenuButton {
         objectName: "sendOptionsOpenPaymentRequestButton"
         text: qsTr("Open payment request")
+        autoClose: true
         onTriggered: root.openPaymentRequest()
     }
 

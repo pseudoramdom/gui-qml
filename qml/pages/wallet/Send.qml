@@ -186,8 +186,7 @@ PageStack {
                     objectName: "unsupportedPsbtPopupTitle"
                     Layout.fillWidth: true
                     text: qsTr("Not supported")
-                    bold: true
-                    font.pixelSize: 18
+                    font: Theme.text.heading.font
                     color: Theme.color.neutral9
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -196,7 +195,7 @@ PageStack {
                     objectName: "unsupportedPsbtPopupMessage"
                     Layout.fillWidth: true
                     text: unsupportedPsbtPopup.message
-                    font.pixelSize: 15
+                    font: Theme.text.description.font
                     color: Theme.color.neutral7
                     wrapMode: Text.WordWrap
                     horizontalAlignment: Text.AlignHCenter
@@ -301,7 +300,7 @@ PageStack {
             m_applyingUri = false
             root.scheduleFeeEstimates()
             paymentRequestMessage = result.hasMessage ? result.uriMessage : ""
-            paymentRequestStatus = qsTr("Payment request imported from %1.").arg(source)
+            paymentRequestStatus = qsTr("Payment request imported from %1").arg(source)
             paymentRequestIsError = false
         }
 
@@ -395,8 +394,7 @@ PageStack {
 
                 CoreText {
                     text: qsTr("Open payment request")
-                    font.pixelSize: 16
-                    bold: true
+                    font: Theme.text.subheading.font
                     color: Theme.color.neutral9
                     Layout.fillWidth: true
                 }
@@ -591,7 +589,7 @@ PageStack {
 
                             CoreText {
                                 text: qsTr("You have a Bitcoin invoice in your clipboard.")
-                                font.pixelSize: 14
+                                font: Theme.text.description.font
                                 color: Theme.color.neutral9
                                 horizontalAlignment: Text.AlignLeft
                                 Layout.fillWidth: true
@@ -635,65 +633,36 @@ PageStack {
                     }
                 }
 
-                // Payment request message (from URI "message=" field)
-                RowLayout {
+                // Payment request status (title) + URI "message=" field (body)
+                InfoBanner {
+                    objectName: "sendPaymentRequestMessageBanner"
                     Layout.fillWidth: true
                     visible: sendPage.paymentRequestMessage.length > 0
-                    spacing: 8
-
-                    Icon {
-                        source: "image://images/check"
-                        size: 18
-                        color: Theme.color.neutral7
-                    }
-
-                    CoreText {
-                        objectName: "sendPaymentRequestMessageText"
-                        text: sendPage.paymentRequestMessage
-                        font.pixelSize: 14
-                        color: Theme.color.neutral7
-                        horizontalAlignment: Text.AlignLeft
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
+                        || (!sendPage.paymentRequestIsError && sendPage.paymentRequestStatus.length > 0)
+                    title: sendPage.paymentRequestIsError ? "" : sendPage.paymentRequestStatus
+                    message: sendPage.paymentRequestMessage
+                    showsCloseButton: true
+                    contentMargin: 16
+                    onDismissClicked: {
+                        sendPage.paymentRequestMessage = ""
+                        if (!sendPage.paymentRequestIsError) {
+                            sendPage.paymentRequestStatus = ""
+                        }
                     }
                 }
 
-                // Payment request import status (success or error)
-                RowLayout {
+                // Payment request import error (success is shown in the InfoBanner above)
+                ToastBanner {
                     Layout.fillWidth: true
-                    visible: sendPage.paymentRequestStatus.length > 0
-                    spacing: 8
-
-                    Icon {
-                        source: sendPage.paymentRequestIsError
-                            ? "image://images/alert-filled"
-                            : "image://images/circle-green-check"
-                        size: 18
-                        color: sendPage.paymentRequestIsError ? Theme.color.red : Theme.color.green
-                    }
-
-                    CoreText {
-                        objectName: "sendPaymentRequestStatusText"
-                        text: sendPage.paymentRequestStatus
-                        font.pixelSize: 14
-                        color: sendPage.paymentRequestIsError ? Theme.color.red : Theme.color.neutral7
-                        horizontalAlignment: Text.AlignLeft
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    IconButton {
-                        objectName: "clearPaymentRequestStatusButton"
-                        size: 22
-                        iconSource: "image://images/cross"
-                        Accessible.name: qsTr("Clear status")
-                        Accessible.role: Accessible.Button
-                        onClicked: {
-                            sendPage.paymentRequestStatus = ""
-                            sendPage.paymentRequestIsError = false
-                        }
+                    visible: sendPage.paymentRequestIsError && sendPage.paymentRequestStatus.length > 0
+                    backgroundColor: Theme.color.red
+                    iconSource: "image://images/alert-filled"
+                    text: sendPage.paymentRequestStatus
+                    textObjectName: "sendPaymentRequestStatusText"
+                    showsCloseButton: true
+                    onDismissed: {
+                        sendPage.paymentRequestStatus = ""
+                        sendPage.paymentRequestIsError = false
                     }
                 }
 
@@ -817,9 +786,7 @@ PageStack {
                         root.clearPrepareTransactionError()
                         root.scheduleFeeEstimates()
                     }
-                    onTextEdited: {
-                        root.clearPrepareTransactionError()
-                    }
+                    onTextEdited: root.clearPrepareTransactionError()
                     onEditingFinished: root.scheduleFeeEstimates()
                 }
 
