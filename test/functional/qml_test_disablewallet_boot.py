@@ -86,28 +86,9 @@ class CheckpointRecorder:
         )
 
 
-def wait_for_node_settings_idle(gui):
-    gui.wait_for_property(
-        "nodeSettingsStack",
-        "busy",
-        False,
-        timeout_ms=SETTINGS_TIMEOUT_MS,
-    )
-
-
-def wait_for_node_settings_root(gui):
-    gui.wait_for_page("gotoAboutSetting", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
-
-
-def back_to_node_settings_root(gui, back_button):
-    gui.click(back_button)
-    wait_for_node_settings_root(gui)
-
-
 def open_node_settings(gui):
     gui.click("nodeSettingsButton")
-    wait_for_node_settings_root(gui)
+    gui.wait_for_page("settings_about", timeout_ms=SETTINGS_TIMEOUT_MS)
 
 
 def assert_wallet_ui_absent(gui):
@@ -131,7 +112,7 @@ def assert_wallet_ui_absent(gui):
         f"{sorted(unexpected)}"
     )
 
-    wallet_settings_visible = gui.get_property("settingsWallet", "visible")
+    wallet_settings_visible = gui.get_property("settings_wallet", "visible")
     assert wallet_settings_visible is False, (
         "Wallet settings row should be hidden in -disablewallet mode, "
         f"got {wallet_settings_visible!r}"
@@ -139,108 +120,82 @@ def assert_wallet_ui_absent(gui):
 
 
 def walk_about_settings(gui, checkpoints):
-    print("  Opening About settings")
-    gui.click("gotoAboutSetting")
+    print("  Opening About settings (sidebar)")
+    gui.click("settings_about")
     gui.wait_for_page("settingsAbout", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("about settings opened", gui)
 
     gui.click("gotoDeveloperSetting")
     gui.wait_for_page("settingsDeveloper", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("developer settings opened", gui)
     gui.click("settingsDeveloperBack")
     gui.wait_for_page("settingsAbout", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
-
-    back_to_node_settings_root(gui, "settingsAboutBack")
-    checkpoints.checkpoint("returned from about settings", gui)
+    checkpoints.checkpoint("returned from developer settings", gui)
 
 
 def walk_display_settings(gui, checkpoints):
-    print("  Opening Display settings")
-    gui.click("gotoDisplay")
+    print("  Opening Display settings (sidebar)")
+    gui.click("settings_display")
     gui.wait_for_page("gotoDisplayUnit", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("display settings opened", gui)
 
     gui.click("gotoDisplayUnit")
     gui.wait_for_page("settingsDisplayUnitPage", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("display unit settings opened", gui)
     gui.click("settingsDisplayUnitBack")
     gui.wait_for_page("gotoDisplayUnit", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
 
     gui.click("gotoLanguage")
     gui.wait_for_page("settingsLanguagePage", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("language settings opened", gui)
     gui.click("settingsLanguageBack")
     gui.wait_for_page("gotoLanguage", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
-
-    back_to_node_settings_root(gui, "settingsDisplayBack")
-    checkpoints.checkpoint("returned from display settings", gui)
+    checkpoints.checkpoint("returned from display sub-pages", gui)
 
 
 def walk_storage_settings(gui, checkpoints):
-    print("  Opening Storage settings")
-    gui.click("gotoStorage")
-    gui.wait_for_page("settingsStorageBack", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
+    print("  Opening Storage settings (sidebar)")
+    gui.click("settings_storage")
+    gui.wait_for_property("nodeSettingsStack", "currentSection", 3, timeout_ms=SETTINGS_TIMEOUT_MS)
     checkpoints.checkpoint("storage settings opened", gui)
-    back_to_node_settings_root(gui, "settingsStorageBack")
-    checkpoints.checkpoint("returned from storage settings", gui)
 
 
 def walk_connection_settings(gui, checkpoints):
-    print("  Opening Connection settings")
-    gui.click("settingsConnection")
+    print("  Opening Connection settings (sidebar)")
+    gui.click("settings_connection")
     gui.wait_for_page("gotoProxy", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("connection settings opened", gui)
 
     gui.click("gotoProxy")
     gui.wait_for_page("settingsProxy", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("proxy settings opened", gui)
     gui.click("settingsProxyBack")
     gui.wait_for_page("gotoProxy", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
-
-    back_to_node_settings_root(gui, "settingsConnectionBack")
-    checkpoints.checkpoint("returned from connection settings", gui)
+    checkpoints.checkpoint("returned from proxy settings", gui)
 
 
-def walk_peers_settings(gui, checkpoints):
-    print("  Opening Peers settings")
-    gui.click("settingsPeers")
+def walk_peers(gui, checkpoints):
+    print("  Opening Peers (header icon)")
+    gui.click("peersTabButton")
     gui.wait_for_page("peers", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
-    checkpoints.checkpoint("peers settings opened", gui)
-    back_to_node_settings_root(gui, "peersBackButton")
-    checkpoints.checkpoint("returned from peers settings", gui)
+    checkpoints.checkpoint("peers opened", gui)
+    gui.click("peersBackButton")
+    gui.wait_for_page("nodeRunner", timeout_ms=SETTINGS_TIMEOUT_MS)
+    checkpoints.checkpoint("returned from peers", gui)
 
 
 def walk_network_traffic_settings(gui, checkpoints):
-    print("  Opening Network Traffic settings")
-    gui.click("settingsNetworkTraffic")
-    gui.wait_for_page("networkTrafficBackButton", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
+    print("  Opening Network Traffic settings (sidebar)")
+    gui.click("settings_networktraffic")
+    gui.wait_for_property("nodeSettingsStack", "currentSection", 6, timeout_ms=SETTINGS_TIMEOUT_MS)
     checkpoints.checkpoint("network traffic settings opened", gui)
-    back_to_node_settings_root(gui, "networkTrafficBackButton")
-    checkpoints.checkpoint("returned from network traffic settings", gui)
 
 
 def walk_debug_log_settings(gui, checkpoints):
-    print("  Opening Debug Log settings")
-    gui.click("settingsDebugLog")
+    print("  Opening Debug Log settings (sidebar)")
+    gui.click("settings_debuglog")
     gui.wait_for_page("debugLogSearchField", timeout_ms=SETTINGS_TIMEOUT_MS)
-    wait_for_node_settings_idle(gui)
     checkpoints.checkpoint("debug log settings opened", gui)
-    back_to_node_settings_root(gui, "debugLogBackButton")
-    checkpoints.checkpoint("returned from debug log settings", gui)
 
 
 def run_tests():
@@ -263,6 +218,8 @@ def run_tests():
         print("Reached node-only main screen")
         checkpoints.checkpoint("node-only main screen reached", gui)
 
+        walk_peers(gui, checkpoints)
+
         open_node_settings(gui)
         assert_wallet_ui_absent(gui)
         checkpoints.checkpoint("node settings opened without wallet UI", gui)
@@ -271,7 +228,6 @@ def run_tests():
         walk_display_settings(gui, checkpoints)
         walk_storage_settings(gui, checkpoints)
         walk_connection_settings(gui, checkpoints)
-        walk_peers_settings(gui, checkpoints)
         walk_network_traffic_settings(gui, checkpoints)
         walk_debug_log_settings(gui, checkpoints)
 
