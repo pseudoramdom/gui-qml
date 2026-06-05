@@ -57,12 +57,8 @@ void DesktopWindowBehaviorModel::setShowTrayIcon(bool show)
     QSettings settings;
     settings.setValue(KEY_HIDE_TRAY_ICON, !show);
 
-    // Cascade: cannot minimize to tray or on close without a tray icon
     if (!show && m_minimize_to_tray) {
         setMinimizeToTray(false);
-    }
-    if (!show && m_minimize_on_close) {
-        setMinimizeOnClose(false);
     }
 
     Q_EMIT showTrayIconChanged(m_show_tray_icon);
@@ -92,7 +88,6 @@ bool DesktopWindowBehaviorModel::minimizeOnClose() const
 
 void DesktopWindowBehaviorModel::setMinimizeOnClose(bool minimize)
 {
-    if (!m_show_tray_icon && minimize) return;
     if (m_minimize_on_close == minimize) return;
 
     m_minimize_on_close = minimize;

@@ -75,13 +75,11 @@ Item {
                 Layout.fillWidth: true
                 header: qsTr("Minimize on close")
                 description: qsTr("Keep node running when the window is closed")
-                disabled: !windowBehaviorModel.desktopPlatform ||
-                          !windowBehaviorModel.showTrayIcon
+                disabled: !windowBehaviorModel.desktopPlatform
                 actionItem: OptionSwitch {
                     objectName: "minimizeOnCloseSwitch"
                     checked: windowBehaviorModel.minimizeOnClose
-                    enabled: windowBehaviorModel.desktopPlatform &&
-                             windowBehaviorModel.showTrayIcon
+                    enabled: windowBehaviorModel.desktopPlatform
                     onToggled: windowBehaviorModel.minimizeOnClose = checked
                 }
                 onClicked: windowBehaviorModel.minimizeOnClose = !windowBehaviorModel.minimizeOnClose

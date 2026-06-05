@@ -24,8 +24,9 @@ private Q_SLOTS:
 
     // Cascade logic
     void setShowTrayIconFalse_cascadesToMinimizeToTrayFalse();
-    void setShowTrayIconFalse_cascadesToMinimizeOnCloseFalse();
+    void setShowTrayIconFalse_doesNotCascadeMinimizeOnClose();
     void setMinimizeToTray_noopWhenTrayIconDisabled();
+    void setMinimizeOnClose_worksWithoutTrayIcon();
 
     // Composite helpers
     void shouldHideToTrayOnMinimize_allConditionsRequired();
@@ -110,20 +111,20 @@ void DesktopWindowBehaviorModelTests::setShowTrayIconFalse_cascadesToMinimizeToT
     QVERIFY(spyMinimize.count() >= 1);
 }
 
-void DesktopWindowBehaviorModelTests::setShowTrayIconFalse_cascadesToMinimizeOnCloseFalse()
+void DesktopWindowBehaviorModelTests::setShowTrayIconFalse_doesNotCascadeMinimizeOnClose()
 {
     DesktopWindowBehaviorModel model(/*desktop_platform=*/true);
 
-    // Enable minimize-on-close first (requires showTrayIcon=true default)
     model.setMinimizeOnClose(true);
     QCOMPARE(model.minimizeOnClose(), true);
 
-    // Disable the tray icon — minimizeOnClose must cascade to false
+    // Disabling tray icon should NOT affect minimizeOnClose — it works
+    // independently (minimizes to taskbar, not tray).
     QSignalSpy spy(&model, &DesktopWindowBehaviorModel::minimizeOnCloseChanged);
     model.setShowTrayIcon(false);
     QCOMPARE(model.showTrayIcon(), false);
-    QCOMPARE(model.minimizeOnClose(), false);
-    QVERIFY(spy.count() >= 1);
+    QCOMPARE(model.minimizeOnClose(), true);
+    QCOMPARE(spy.count(), 0);
 }
 
 void DesktopWindowBehaviorModelTests::setMinimizeToTray_noopWhenTrayIconDisabled()
@@ -135,6 +136,18 @@ void DesktopWindowBehaviorModelTests::setMinimizeToTray_noopWhenTrayIconDisabled
     // Trying to enable minimizeToTray without a tray icon must be a no-op
     model.setMinimizeToTray(true);
     QCOMPARE(model.minimizeToTray(), false);
+}
+
+void DesktopWindowBehaviorModelTests::setMinimizeOnClose_worksWithoutTrayIcon()
+{
+    DesktopWindowBehaviorModel model(/*desktop_platform=*/true);
+    model.setShowTrayIcon(false);
+    QCOMPARE(model.showTrayIcon(), false);
+
+    // minimizeOnClose works without a tray icon — window minimizes to taskbar
+    model.setMinimizeOnClose(true);
+    QCOMPARE(model.minimizeOnClose(), true);
+    QCOMPARE(model.shouldMinimizeWindowOnClose(), true);
 }
 
 void DesktopWindowBehaviorModelTests::shouldHideToTrayOnMinimize_allConditionsRequired()
@@ -184,15 +197,15 @@ void DesktopWindowBehaviorModelTests::settings_persistAcrossInstances()
         QCOMPARE(model.showTrayIcon(), true);
     }
 
-    // Disabling tray icon cascades minimizeOnClose=false and persists that
+    // Disabling tray icon does NOT cascade to minimizeOnClose
     {
         DesktopWindowBehaviorModel model(/*desktop_platform=*/true);
         QCOMPARE(model.minimizeOnClose(), true);
-        model.setShowTrayIcon(false); // cascade: minimizeOnClose → false
+        model.setShowTrayIcon(false);
     }
     {
         DesktopWindowBehaviorModel model(/*desktop_platform=*/true);
-        QCOMPARE(model.minimizeOnClose(), false);
+        QCOMPARE(model.minimizeOnClose(), true);
         QCOMPARE(model.showTrayIcon(), false);
     }
 }

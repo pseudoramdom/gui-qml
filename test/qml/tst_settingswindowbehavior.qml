@@ -8,65 +8,65 @@ import QtTest 1.2
 TestCase {
     name: "SettingsWindowBehavior"
 
-    // ── Test 1: showTrayIconSwitch enabled iff desktopPlatform ───────────────
-    function test_showTrayIcon_enabled_on_desktop() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: true;' +
-            '  property bool enabled: desktopPlatform }', this)
-        compare(m.enabled, true)
+    function init() {
+        desktopWindowBehaviorModel.showTrayIcon = true
+        desktopWindowBehaviorModel.minimizeToTray = false
+        desktopWindowBehaviorModel.minimizeOnClose = false
     }
 
-    function test_showTrayIcon_disabled_on_non_desktop() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: false;' +
-            '  property bool enabled: desktopPlatform }', this)
-        compare(m.enabled, false)
+    function test_desktopPlatform_isTrue() {
+        compare(desktopWindowBehaviorModel.desktopPlatform, true)
     }
 
-    // ── Test 2: minimizeToTraySwitch requires desktopPlatform && showTrayIcon ─
-    function test_minimizeToTray_enabled_when_desktop_and_tray_visible() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: true;' +
-            '  property bool showTrayIcon: true;' +
-            '  property bool enabled: desktopPlatform && showTrayIcon }', this)
-        compare(m.enabled, true)
+    function test_showTrayIcon_defaultsTrue() {
+        compare(desktopWindowBehaviorModel.showTrayIcon, true)
     }
 
-    function test_minimizeToTray_disabled_when_trayIcon_hidden() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: true;' +
-            '  property bool showTrayIcon: false;' +
-            '  property bool enabled: desktopPlatform && showTrayIcon }', this)
-        compare(m.enabled, false)
+    function test_minimizeToTray_defaultsFalse() {
+        compare(desktopWindowBehaviorModel.minimizeToTray, false)
     }
 
-    function test_minimizeToTray_disabled_on_non_desktop() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: false;' +
-            '  property bool showTrayIcon: true;' +
-            '  property bool enabled: desktopPlatform && showTrayIcon }', this)
-        compare(m.enabled, false)
+    function test_minimizeOnClose_defaultsFalse() {
+        compare(desktopWindowBehaviorModel.minimizeOnClose, false)
     }
 
-    // ── Test 3: minimizeOnCloseSwitch enabled iff desktopPlatform ────────────
-    function test_minimizeOnClose_enabled_on_desktop() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: true;' +
-            '  property bool enabled: desktopPlatform }', this)
-        compare(m.enabled, true)
+    function test_showTrayIcon_toggleRoundTrip() {
+        desktopWindowBehaviorModel.showTrayIcon = false
+        compare(desktopWindowBehaviorModel.showTrayIcon, false)
+        desktopWindowBehaviorModel.showTrayIcon = true
+        compare(desktopWindowBehaviorModel.showTrayIcon, true)
     }
 
-    function test_minimizeOnClose_disabled_on_non_desktop() {
-        const m = Qt.createQmlObject(
-            'import QtQuick 2.15; QtObject {' +
-            '  property bool desktopPlatform: false;' +
-            '  property bool enabled: desktopPlatform }', this)
-        compare(m.enabled, false)
+    function test_minimizeToTray_cascadesWhenTrayDisabled() {
+        desktopWindowBehaviorModel.minimizeToTray = true
+        compare(desktopWindowBehaviorModel.minimizeToTray, true)
+        desktopWindowBehaviorModel.showTrayIcon = false
+        compare(desktopWindowBehaviorModel.minimizeToTray, false)
+    }
+
+    function test_minimizeToTray_blockedWithoutTray() {
+        desktopWindowBehaviorModel.showTrayIcon = false
+        desktopWindowBehaviorModel.minimizeToTray = true
+        compare(desktopWindowBehaviorModel.minimizeToTray, false)
+    }
+
+    function test_minimizeOnClose_independentOfTray() {
+        desktopWindowBehaviorModel.showTrayIcon = false
+        desktopWindowBehaviorModel.minimizeOnClose = true
+        compare(desktopWindowBehaviorModel.minimizeOnClose, true)
+    }
+
+    function test_shouldHideToTrayOnMinimize_requiresAllConditions() {
+        compare(desktopWindowBehaviorModel.shouldHideToTrayOnMinimize(), false)
+        desktopWindowBehaviorModel.minimizeToTray = true
+        compare(desktopWindowBehaviorModel.shouldHideToTrayOnMinimize(), true)
+        desktopWindowBehaviorModel.showTrayIcon = false
+        compare(desktopWindowBehaviorModel.shouldHideToTrayOnMinimize(), false)
+    }
+
+    function test_shouldMinimizeWindowOnClose() {
+        compare(desktopWindowBehaviorModel.shouldMinimizeWindowOnClose(), false)
+        desktopWindowBehaviorModel.minimizeOnClose = true
+        compare(desktopWindowBehaviorModel.shouldMinimizeWindowOnClose(), true)
     }
 }
