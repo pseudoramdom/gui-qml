@@ -38,6 +38,7 @@ TestCase {
         testWalletModel.prepareTransactionResult = true
         testWalletModel.sendAmountExhaustsBalance = false
         testWalletModel.currentTransactionCanSend = true
+        testWalletModel.currentTransactionCanBroadcast = false
         testWalletModel.currentTransactionReviewMessage = ""
         testSendRecipient.address.setAddress("bcrt1qsendtoaddress")
         testSendRecipient.amount.display = "0.00000000"
@@ -74,6 +75,39 @@ TestCase {
 
         tryCompare(popup, "opened", false)
         tryCompare(testWalletModel, "discardCurrentTransactionCalls", discardCallsBefore + 1)
+    }
+
+    function test_successful_psbt_broadcast_shows_confirmation() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const reviewPopup = findChild(page, "reviewOnlyPsbtPopup")
+        const successPopup = findChild(page, "psbtBroadcastSuccessPopup")
+        verify(reviewPopup !== null)
+        verify(successPopup !== null)
+
+        testWalletModel.currentTransactionCanSend = false
+        testWalletModel.currentTransactionCanBroadcast = true
+        reviewPopup.reviewWallet = testWalletModel
+        reviewPopup.open()
+        tryCompare(reviewPopup, "opened", true)
+
+        const broadcastButton = findChild(reviewPopup, "sendReviewBroadcastButton")
+        verify(broadcastButton !== null)
+        tryCompare(broadcastButton, "visible", true)
+        const broadcastCallsBefore = testWalletModel.broadcastCurrentTransactionCalls
+        const discardCallsBefore = testWalletModel.discardCurrentTransactionCalls
+
+        broadcastButton.clicked()
+
+        tryCompare(reviewPopup, "opened", false)
+        tryCompare(testWalletModel, "broadcastCurrentTransactionCalls", broadcastCallsBefore + 1)
+        tryCompare(testWalletModel, "discardCurrentTransactionCalls", discardCallsBefore + 1)
+        tryCompare(successPopup, "opened", true)
+        successPopup.close()
     }
 
     function test_send_has_stable_selectors() {

@@ -1607,6 +1607,7 @@ bool WalletQmlModel::prepareTransactionInternal(std::optional<SecureString> pass
         m_current_transaction = new WalletQmlModelTransaction(m_send_recipients, this);
         m_current_psbt.reset();
         m_current_transaction_can_send = true;
+        m_current_transaction_can_broadcast = false;
         m_current_transaction_review_message.clear();
         m_current_transaction->setWtx(newTx);
         m_current_transaction->setTransactionFee(nFeeRequired);
@@ -1705,6 +1706,51 @@ bool WalletQmlModel::sendTransactionWithPassphrase(const QString& passphrase)
     return sendTransactionInternal(std::optional<SecureString>{QmlUtil::SecureStringFromQString(passphrase)});
 }
 
+bool WalletQmlModel::broadcastCurrentTransaction()
+{
+    clearTransactionStatus();
+    if (!m_node || !m_current_transaction || !m_current_psbt || !m_current_transaction_can_broadcast) {
+        setTransactionStatus(tr("This transaction is not ready to broadcast."));
+        return false;
+    }
+
+    PartiallySignedTransaction psbt{*m_current_psbt};
+    const node::PSBTAnalysis analysis{node::AnalyzePSBT(psbt)};
+    if (!analysis.fee || *analysis.fee < 0) {
+        setTransactionStatus(tr("The transaction fee is missing or invalid."));
+        return false;
+    }
+
+    CMutableTransaction mutable_tx;
+    if (!FinalizeAndExtractPSBT(psbt, mutable_tx)) {
+        setTransactionStatus(tr("This transaction is not fully signed."));
+        return false;
+    }
+
+    const CTransactionRef tx{MakeTransactionRef(std::move(mutable_tx))};
+    std::string error_string;
+    const node::TransactionError error{
+        m_node->broadcastTransaction(tx, node::DEFAULT_MAX_RAW_TX_FEE_RATE.GetFeePerK(), error_string)};
+    if (error != node::TransactionError::OK) {
+        QString message{QString::fromStdString(common::TransactionErrorString(error).translated)};
+        if (!error_string.empty()) {
+            message += QStringLiteral(": ") + QString::fromStdString(error_string);
+        }
+        setTransactionStatus(tr("Transaction broadcast failed: %1").arg(message));
+        return false;
+    }
+
+    m_current_transaction->setWtx(tx);
+    m_current_psbt.reset();
+    m_current_transaction_can_send = false;
+    m_current_transaction_can_broadcast = false;
+    m_current_transaction_review_message.clear();
+    clearTransactionStatus();
+    clearSelectedCoins();
+    Q_EMIT currentTransactionChanged();
+    return true;
+}
+
 bool WalletQmlModel::sendTransactionInternal(std::optional<SecureString> passphrase)
 {
     clearTransactionStatus();
@@ -1778,6 +1824,7 @@ bool WalletQmlModel::sendTransactionInternal(std::optional<SecureString> passphr
         m_current_transaction->setWtx(signed_tx);
         m_current_psbt.reset();
         m_current_transaction_can_send = true;
+        m_current_transaction_can_broadcast = false;
         m_current_transaction_review_message.clear();
         clearTransactionStatus();
         clearSelectedCoins();
@@ -1811,6 +1858,7 @@ bool WalletQmlModel::sendTransactionInternal(std::optional<SecureString> passphr
 
 WalletQmlModel::PsbtImportResult WalletQmlModel::importPsbtFromFile(const QString& path)
 {
+    clearTransactionStatus();
     if (!m_imported_psbt_model) {
         return PsbtImportResult::PsbtUnsupported;
     }
@@ -1901,17 +1949,26 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
         reason = PsbtQmlModel::PsbtErrorText(*fill_error);
         return false;
     }
+    complete = FinalizePSBT(analysis_psbt);
     for (size_t i{0}; i < analysis_psbt.inputs.size(); ++i) {
-        if (PsbtQmlModel::IsMultisigPsbtInput(analysis_psbt, i)) {
+        if (!complete && PsbtQmlModel::IsMultisigPsbtInput(analysis_psbt, i)) {
             reason = tr("Multisignature PSBTs are not supported yet.");
             return false;
         }
     }
 
+    const node::PSBTAnalysis analysis{node::AnalyzePSBT(analysis_psbt)};
+    const bool fee_is_known{analysis.fee && *analysis.fee >= 0};
     const size_t unsigned_inputs{CountPSBTUnsignedInputs(analysis_psbt)};
     const bool wallet_has_signer{!m_wallet->privateKeysDisabled() || m_wallet->hasExternalSigner()};
-    const bool can_send{spends_only_wallet_inputs && (complete || (wallet_has_signer && unsigned_inputs > 0 && could_sign >= unsigned_inputs))};
-    const QString review_message{can_send ? QString{} : tr("This wallet does not have the keys to sign this transaction.")};
+    const bool can_send{fee_is_known && spends_only_wallet_inputs && (complete || (wallet_has_signer && unsigned_inputs > 0 && could_sign >= unsigned_inputs))};
+    const bool can_broadcast{fee_is_known && complete};
+    const QString review_message{
+        !fee_is_known
+            ? tr("The transaction fee is missing or invalid. Add valid input information before broadcasting.")
+            : can_send || can_broadcast
+                ? QString{}
+                : tr("This wallet does not have the keys to sign this transaction.")};
 
     struct DraftRecipient {
         QString address;
@@ -1947,8 +2004,6 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
         return false;
     }
 
-    const node::PSBTAnalysis analysis{node::AnalyzePSBT(analysis_psbt)};
-
     m_send_recipients->clear();
     for (size_t i{0}; i < draft_recipients.size(); ++i) {
         if (i > 0) {
@@ -1970,12 +2025,13 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
     if (analysis.fee) {
         m_current_transaction->setTransactionFee(*analysis.fee);
     }
-    if (can_send) {
+    if (can_send || can_broadcast) {
         m_current_psbt = std::make_unique<PartiallySignedTransaction>(std::move(analysis_psbt));
     } else {
         m_current_psbt = std::make_unique<PartiallySignedTransaction>(psbt);
     }
     m_current_transaction_can_send = can_send;
+    m_current_transaction_can_broadcast = can_broadcast;
     m_current_transaction_review_message = review_message;
     Q_EMIT currentTransactionChanged();
 
@@ -1989,12 +2045,14 @@ void WalletQmlModel::discardCurrentTransaction()
         m_current_transaction ||
         m_current_psbt ||
         m_current_transaction_can_send ||
+        m_current_transaction_can_broadcast ||
         !m_current_transaction_review_message.isEmpty()};
 
     delete m_current_transaction;
     m_current_transaction = nullptr;
     m_current_psbt.reset();
     m_current_transaction_can_send = false;
+    m_current_transaction_can_broadcast = false;
     m_current_transaction_review_message.clear();
     clearTransactionStatus();
     m_send_recipients->clear();

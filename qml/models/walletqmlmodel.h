@@ -99,6 +99,7 @@ private:
     Q_PROPERTY(QString transactionError READ transactionError NOTIFY transactionErrorChanged)
     Q_PROPERTY(bool transactionNeedsUnlock READ transactionNeedsUnlock NOTIFY transactionNeedsUnlockChanged)
     Q_PROPERTY(bool currentTransactionCanSend READ currentTransactionCanSend NOTIFY currentTransactionChanged)
+    Q_PROPERTY(bool currentTransactionCanBroadcast READ currentTransactionCanBroadcast NOTIFY currentTransactionChanged)
     Q_PROPERTY(QString currentTransactionReviewMessage READ currentTransactionReviewMessage NOTIFY currentTransactionChanged)
     Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
     Q_PROPERTY(PsbtQmlModel* importedPsbt READ importedPsbt CONSTANT)
@@ -146,6 +147,7 @@ public:
     Q_INVOKABLE bool prepareTransactionWithPassphrase(const QString& passphrase);
     Q_INVOKABLE bool sendTransaction();
     Q_INVOKABLE bool sendTransactionWithPassphrase(const QString& passphrase);
+    Q_INVOKABLE bool broadcastCurrentTransaction();
     Q_INVOKABLE QVariantList availableReceiveAddressTypes() const;
     Q_INVOKABLE QString defaultReceiveAddressType() const;
     Q_INVOKABLE QString estimatedFeeForTarget(unsigned int target_blocks) const;
@@ -219,6 +221,7 @@ public:
     QString transactionError() const { return m_transaction_error; }
     bool transactionNeedsUnlock() const { return m_transaction_needs_unlock; }
     bool currentTransactionCanSend() const { return m_current_transaction && m_current_transaction_can_send; }
+    bool currentTransactionCanBroadcast() const { return m_current_transaction && m_current_transaction_can_broadcast; }
     QString currentTransactionReviewMessage() const { return m_current_transaction_review_message; }
     QString settingsError() const { return m_settings_error; }
     void setNode(interfaces::Node* node);
@@ -285,6 +288,7 @@ private:
     wallet::CCoinControl m_coin_control;
     std::unique_ptr<PartiallySignedTransaction> m_current_psbt;
     bool m_current_transaction_can_send{false};
+    bool m_current_transaction_can_broadcast{false};
     QString m_current_transaction_review_message;
     QObject* m_fee_estimation_worker{nullptr};
     QThread* m_fee_estimation_thread{nullptr};

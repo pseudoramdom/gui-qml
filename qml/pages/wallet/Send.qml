@@ -162,12 +162,18 @@ PageStack {
             height: Overlay.overlay.height
 
             property WalletQmlModel reviewWallet: null
+            property bool broadcastSucceeded: false
 
             onClosed: {
                 const wallet = reviewWallet
+                const showBroadcastSuccess = broadcastSucceeded
                 reviewWallet = null
+                broadcastSucceeded = false
                 if (wallet) {
                     wallet.discardCurrentTransaction()
+                }
+                if (showBroadcastSuccess) {
+                    broadcastSuccessPopup.open()
                 }
             }
 
@@ -176,10 +182,28 @@ PageStack {
             }
 
             contentItem: SendReview {
+                inspectionMode: true
                 width: reviewOnlyPsbtPopup.availableWidth
                 height: reviewOnlyPsbtPopup.availableHeight
                 wallet: reviewOnlyPsbtPopup.reviewWallet
                 onBack: reviewOnlyPsbtPopup.close()
+                onTransactionSent: {
+                    reviewOnlyPsbtPopup.broadcastSucceeded = true
+                    reviewOnlyPsbtPopup.close()
+                }
+            }
+        }
+
+        AlertPopup {
+            id: broadcastSuccessPopup
+            objectName: "psbtBroadcastSuccessPopup"
+            title: qsTr("Transaction broadcast")
+            message: qsTr("The transaction was submitted to the Bitcoin network.")
+            messageObjectName: "psbtBroadcastSuccessMessage"
+
+            AlertAction {
+                text: qsTr("OK")
+                buttonObjectName: "psbtBroadcastSuccessOkButton"
             }
         }
 
@@ -199,54 +223,17 @@ PageStack {
             visible: false
         }
 
-        Popup {
+        AlertPopup {
             id: unsupportedPsbtPopup
             objectName: "unsupportedPsbtPopup"
-            anchors.centerIn: parent
-            modal: true
-            padding: 20
-            width: Math.min(parent.width - 40, 360)
-
-            property string message: ""
+            title: qsTr("Not supported")
+            messageObjectName: "unsupportedPsbtPopupMessage"
 
             onClosed: root.wallet.importedPsbt.clear()
 
-            background: Rectangle {
-                color: Theme.color.background
-                radius: 8
-                border.color: Theme.color.neutral3
-                border.width: 1
-            }
-
-            ColumnLayout {
-                width: parent.width
-                spacing: 16
-
-                CoreText {
-                    objectName: "unsupportedPsbtPopupTitle"
-                    Layout.fillWidth: true
-                    text: qsTr("Not supported")
-                    font: Theme.text.heading.font
-                    color: Theme.color.neutral9
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                CoreText {
-                    objectName: "unsupportedPsbtPopupMessage"
-                    Layout.fillWidth: true
-                    text: unsupportedPsbtPopup.message
-                    font: Theme.text.description.font
-                    color: Theme.color.neutral7
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                ContinueButton {
-                    objectName: "unsupportedPsbtPopupOkButton"
-                    Layout.fillWidth: true
-                    text: qsTr("Ok")
-                    onClicked: unsupportedPsbtPopup.close()
-                }
+            AlertAction {
+                text: qsTr("OK")
+                buttonObjectName: "unsupportedPsbtPopupOkButton"
             }
         }
 

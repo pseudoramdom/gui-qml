@@ -805,6 +805,7 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(QObject* coinsListModel READ coinsListModel CONSTANT)
     Q_PROPERTY(QObject* currentTransaction READ currentTransaction CONSTANT)
     Q_PROPERTY(bool currentTransactionCanSend MEMBER m_current_transaction_can_send NOTIFY currentTransactionChanged)
+    Q_PROPERTY(bool currentTransactionCanBroadcast MEMBER m_current_transaction_can_broadcast NOTIFY currentTransactionChanged)
     Q_PROPERTY(QString currentTransactionReviewMessage MEMBER m_current_transaction_review_message NOTIFY currentTransactionChanged)
     Q_PROPERTY(QObject* currentPaymentRequest READ currentPaymentRequest CONSTANT)
     Q_PROPERTY(QObject* detailPaymentRequest READ detailPaymentRequest CONSTANT)
@@ -825,6 +826,7 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(int prepareTransactionCalls READ prepareTransactionCalls NOTIFY prepareTransactionCallsChanged)
     Q_PROPERTY(int scheduleFeeEstimatesCalls READ scheduleFeeEstimatesCalls NOTIFY scheduleFeeEstimatesCallsChanged)
     Q_PROPERTY(int sendTransactionCalls READ sendTransactionCalls NOTIFY sendTransactionCallsChanged)
+    Q_PROPERTY(int broadcastCurrentTransactionCalls READ broadcastCurrentTransactionCalls NOTIFY broadcastCurrentTransactionCallsChanged)
     Q_PROPERTY(int discardCurrentTransactionCalls READ discardCurrentTransactionCalls NOTIFY discardCurrentTransactionCallsChanged)
     Q_PROPERTY(bool isEncrypted MEMBER m_is_encrypted NOTIFY securityStateChanged)
     Q_PROPERTY(bool isLocked MEMBER m_is_locked NOTIFY securityStateChanged)
@@ -869,6 +871,7 @@ public:
     int m_target_blocks{2};
     bool m_prepare_transaction_result{true};
     bool m_current_transaction_can_send{true};
+    bool m_current_transaction_can_broadcast{false};
     QString m_current_transaction_review_message;
 
     QObject* activityListModel() const { return m_activity_list_model; }
@@ -918,6 +921,7 @@ public:
     int prepareTransactionCalls() const { return m_prepare_transaction_calls; }
     int scheduleFeeEstimatesCalls() const { return m_schedule_fee_estimates_calls; }
     int sendTransactionCalls() const { return m_send_transaction_calls; }
+    int broadcastCurrentTransactionCalls() const { return m_broadcast_current_transaction_calls; }
     int discardCurrentTransactionCalls() const { return m_discard_current_transaction_calls; }
     bool sendAmountExhaustsBalance() const { return m_send_amount_exhausts_balance; }
     QString lastBackupPath() const { return m_last_backup_path; }
@@ -1069,10 +1073,17 @@ public:
         }
         return m_send_transaction_result;
     }
+    Q_INVOKABLE bool broadcastCurrentTransaction()
+    {
+        ++m_broadcast_current_transaction_calls;
+        Q_EMIT broadcastCurrentTransactionCallsChanged();
+        return m_current_transaction_can_broadcast;
+    }
     Q_INVOKABLE void discardCurrentTransaction()
     {
         ++m_discard_current_transaction_calls;
         m_current_transaction_can_send = false;
+        m_current_transaction_can_broadcast = false;
         m_current_transaction_review_message.clear();
         if (m_recipients) {
             QMetaObject::invokeMethod(m_recipients, "clearToFront");
@@ -1182,6 +1193,7 @@ Q_SIGNALS:
     void prepareTransactionCallsChanged();
     void scheduleFeeEstimatesCallsChanged();
     void sendTransactionCallsChanged();
+    void broadcastCurrentTransactionCallsChanged();
     void discardCurrentTransactionCallsChanged();
     void currentTransactionChanged();
     void externalSignerApprovalSucceeded();
@@ -1234,6 +1246,7 @@ private:
     int m_prepare_transaction_calls{0};
     int m_schedule_fee_estimates_calls{0};
     int m_send_transaction_calls{0};
+    int m_broadcast_current_transaction_calls{0};
     int m_discard_current_transaction_calls{0};
     MockAddressListModel m_address_list_model;
 };

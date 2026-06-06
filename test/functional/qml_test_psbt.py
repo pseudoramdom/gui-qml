@@ -97,6 +97,25 @@ def write_psbt_fixture(rpc_port, wallet_name, outputs, filename):
     return fixture_path
 
 
+def write_signed_psbt_fixture(rpc_port, wallet_name, outputs, filename):
+    response = rpc_call(
+        rpc_port,
+        "walletcreatefundedpsbt",
+        [[], outputs, 0, {"fee_rate": 2}, True],
+        wallet=wallet_name,
+    )
+    processed = rpc_call(
+        rpc_port,
+        "walletprocesspsbt",
+        [response["psbt"], True, "ALL", True, True],
+        wallet=wallet_name,
+    )
+    assert processed["complete"], "Expected walletprocesspsbt to fully sign the fixture"
+    with open(filename, "wb") as fixture:
+        fixture.write(base64.b64decode(processed["psbt"]))
+    return filename
+
+
 def navigate_to_send(gui):
     gui.click("sendTabButton")
     gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
@@ -146,11 +165,18 @@ def build_fixtures(harness):
         [{recipient_address_1: 0.75}],
         os.path.join(harness.tmpdir, "review-only.psbt"),
     )
+    signed_foreign_path = write_signed_psbt_fixture(
+        harness.gui_rpc_port,
+        review_only_wallet,
+        [{recipient_address_2: 0.6}],
+        os.path.join(harness.tmpdir, "signed-foreign.psbt"),
+    )
     return {
         "source_wallet": source_wallet,
         "single_review_path": single_review_path,
         "multiple_review_path": multiple_review_path,
         "review_only_path": review_only_path,
+        "signed_foreign_path": signed_foreign_path,
     }
 
 
@@ -212,6 +238,7 @@ def run_test():
         )
         assert gui.get_property("sendReviewBackButton", "visible") is False
         assert gui.get_property("sendReviewSendButton", "visible") is False
+        assert gui.get_property("sendReviewBroadcastButton", "visible") is False
         assert gui.get_property("sendReviewDoneButton", "visible") is True
         assert gui.get_property("sendReviewDoneButton", "enabled") is True
         gui.click("sendReviewDoneButton")
@@ -220,6 +247,28 @@ def run_test():
         assert gui.get_property("sendAddressInput", "text") == ""
         assert gui.get_property("sendAmountInput", "text") == ""
         checkpoints.checkpoint("review-only SendReview modal dismissed", gui)
+
+        import_psbt(gui, fixtures["signed_foreign_path"])
+        checkpoints.checkpoint("signed foreign PSBT submitted", gui)
+        gui.wait_for_property("reviewOnlyPsbtPopup", "visible", True, timeout_ms=20000)
+        gui.wait_for_page("sendReviewPage", timeout_ms=10000)
+        gui.wait_for_property("sendReviewBroadcastButton", "visible", True, timeout_ms=10000)
+        assert gui.get_property("sendReviewCannotSignBanner", "visible") is False
+        assert gui.get_property("sendReviewBackButton", "visible") is False
+        assert gui.get_property("sendReviewSendButton", "visible") is False
+        assert gui.get_property("sendReviewDoneButton", "visible") is True
+        assert gui.get_property("sendReviewBroadcastButton", "enabled") is True
+        checkpoints.checkpoint("signed foreign PSBT ready to broadcast", gui)
+        gui.click("sendReviewBroadcastButton")
+        gui.wait_for_property("reviewOnlyPsbtPopup", "visible", False, timeout_ms=10000)
+        gui.wait_for_property("psbtBroadcastSuccessPopup", "visible", True, timeout_ms=10000)
+        assert gui.get_property("psbtBroadcastSuccessMessage", "text") == (
+            "The transaction was submitted to the Bitcoin network."
+        )
+        gui.click("psbtBroadcastSuccessOkButton")
+        gui.wait_for_property("psbtBroadcastSuccessPopup", "visible", False, timeout_ms=10000)
+        gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
+        checkpoints.checkpoint("signed foreign PSBT broadcast confirmed", gui)
 
         print("\n" + "=" * 50)
         print("All tests PASSED")

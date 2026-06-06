@@ -18,6 +18,7 @@ Page {
 
     property WalletQmlModel wallet: walletController.selectedWallet
     property WalletQmlModelTransaction transaction: wallet ? wallet.currentTransaction : null
+    property bool inspectionMode: false
     property bool sending: false
     property string savePsbtStatus: ""
     property bool savePsbtError: false
@@ -26,7 +27,8 @@ Page {
     readonly property bool multipleRecipients: recipientCount > 1
     readonly property bool isWatchOnly: wallet && wallet.keySchemeKind === WalletQmlModel.WatchOnly
     readonly property bool canSendTransaction: wallet ? wallet.currentTransactionCanSend : false
-    readonly property bool reviewOnlyTransaction: wallet ? wallet.currentTransactionReviewMessage.length > 0 : false
+    readonly property bool canBroadcastTransaction: wallet ? wallet.currentTransactionCanBroadcast : false
+    readonly property bool reviewWarningVisible: wallet ? wallet.currentTransactionReviewMessage.length > 0 : false
     readonly property string recipientCountText: recipientCount === 1
         ? qsTr("There is 1 recipient.")
         : qsTr("There are %1 recipients.").arg(recipientCount)
@@ -45,6 +47,16 @@ Page {
         } else if (root.wallet && root.wallet.transactionNeedsUnlock) {
             sendPassphrasePopup.errorText = ""
             sendPassphrasePopup.open()
+        }
+    }
+
+    function commitBroadcast() {
+        if (root.sending) {
+            return
+        }
+        if (root.wallet && root.wallet.broadcastCurrentTransaction()) {
+            root.sending = true
+            root.transactionSent()
         }
     }
 
@@ -88,16 +100,21 @@ Page {
 
     header: NavigationBar2 {
         id: navbar
-        visible: !root.reviewOnlyTransaction
-        height: visible ? implicitHeight : 0
         leftItem: NavButton {
             objectName: "sendReviewBackButton"
+            visible: !root.inspectionMode
             iconSource: "image://images/caret-left"
             text: root.wallet && root.wallet.hasExternalSigner ? qsTr("Edit") : qsTr("Back")
             onClicked: {
                 externalSignerActions.reset()
                 root.back()
             }
+        }
+        rightItem: NavButton {
+            objectName: "sendReviewDoneButton"
+            visible: root.inspectionMode
+            text: qsTr("Done")
+            onClicked: root.back()
         }
     }
 
@@ -134,7 +151,7 @@ Page {
 
             ColumnLayout {
                 Layout.topMargin: 30
-                Layout.bottomMargin: (root.reviewOnlyTransaction || root.isWatchOnly) ? 10 : (root.multipleRecipients ? 0 : 20)
+                Layout.bottomMargin: (root.reviewWarningVisible || root.isWatchOnly) ? 10 : (root.multipleRecipients ? 0 : 20)
                 Layout.fillWidth: true
                 spacing: 5
 
@@ -164,7 +181,7 @@ Page {
             InfoBanner {
                 objectName: "sendReviewCannotSignBanner"
                 Layout.fillWidth: true
-                visible: root.reviewOnlyTransaction || root.isWatchOnly
+                visible: root.reviewWarningVisible || root.isWatchOnly
                 iconSource: "image://images/info-filled"
                 contentMargin: root.isWatchOnly ? 18 : 16
                 contentSpacing: root.isWatchOnly ? 10 : 15
@@ -199,7 +216,7 @@ Page {
 
             ExternalSignerReviewActions {
                 id: externalSignerActions
-                visible: !root.reviewOnlyTransaction && root.wallet && root.wallet.hasExternalSigner
+                visible: !root.inspectionMode && root.wallet && root.wallet.hasExternalSigner
                 wallet: root.wallet
                 canSend: root.canSendTransaction
                 buttonObjectName: "sendReviewExternalSignerButton"
@@ -212,7 +229,7 @@ Page {
             ContinueButton {
                 id: confirmationButton
                 objectName: "sendReviewSendButton"
-                visible: !root.reviewOnlyTransaction && !root.isWatchOnly && (!root.wallet || !root.wallet.hasExternalSigner)
+                visible: !root.inspectionMode && !root.isWatchOnly && (!root.wallet || !root.wallet.hasExternalSigner)
                 enabled: root.canSendTransaction && !root.sending
                 Layout.fillWidth: true
                 Layout.topMargin: 30
@@ -221,20 +238,20 @@ Page {
             }
 
             ContinueButton {
-                id: doneButton
-                objectName: "sendReviewDoneButton"
-                visible: root.reviewOnlyTransaction
+                id: broadcastButton
+                objectName: "sendReviewBroadcastButton"
+                visible: root.inspectionMode && root.canBroadcastTransaction
                 enabled: !root.sending
                 Layout.fillWidth: true
                 Layout.topMargin: 30
-                text: qsTr("Done")
-                onClicked: root.back()
+                text: qsTr("Broadcast transaction")
+                onClicked: root.commitBroadcast()
             }
 
             OutlineButton {
                 id: savePsbtButton
                 objectName: "sendReviewSavePsbtButton"
-                visible: confirmationButton.visible || externalSignerActions.visible || doneButton.visible || root.isWatchOnly
+                visible: confirmationButton.visible || externalSignerActions.visible || root.inspectionMode || root.isWatchOnly
                 enabled: root.wallet && root.wallet.currentTransaction && !root.sending
                 Layout.fillWidth: true
                 Layout.topMargin: 10
