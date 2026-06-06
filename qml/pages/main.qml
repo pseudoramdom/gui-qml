@@ -75,12 +75,6 @@ ApplicationWindow {
 
     Binding {
         target: desktopTrayIconController
-        property: "isDark"
-        value: Theme.dark
-    }
-
-    Binding {
-        target: desktopTrayIconController
         property: "windowVisible"
         value: appWindow.visible &&
                appWindow.visibility !== Window.Hidden &&

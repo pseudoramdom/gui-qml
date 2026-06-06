@@ -4,58 +4,49 @@
 
 #include <qml/models/desktoptrayiconcontroller.h>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-
 #include <QSignalSpy>
+#include <QtTest/QtTest>
 
-#ifndef BITCOINQML_NO_TEST_MAIN
-int main(int argc, char* argv[])
+class DesktopTrayIconControllerTests : public QObject
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-#else
-int RunDesktopTrayIconControllerTests(int argc, char* argv[])
-{
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-#endif
+    Q_OBJECT
 
-TEST(DesktopTrayIconControllerTest, initiallyNotVisible)
+private Q_SLOTS:
+    void initiallyNotVisible();
+    void setVisibleFalseWhenAlreadyHidden_noSignal();
+    void setToolTipIsReadable();
+};
+
+void DesktopTrayIconControllerTests::initiallyNotVisible()
 {
     DesktopTrayIconController controller;
-    EXPECT_FALSE(controller.visible());
+    QVERIFY(!controller.visible());
 }
 
-TEST(DesktopTrayIconControllerTest, setVisibleFalseWhenAlreadyHidden_noSignal)
+void DesktopTrayIconControllerTests::setVisibleFalseWhenAlreadyHidden_noSignal()
 {
     DesktopTrayIconController controller;
     QSignalSpy spy(&controller, &DesktopTrayIconController::visibleChanged);
     controller.setVisible(false);
-    EXPECT_EQ(spy.count(), 0);
+    QCOMPARE(spy.count(), 0);
 }
 
-TEST(DesktopTrayIconControllerTest, isDarkDefaultTrue)
+// The system-tray tooltip (e.g. "Bitcoin Core client [regtest]") is set on the
+// QSystemTrayIcon and only shown by the OS on hover, which several Linux tray
+// hosts (GNOME/SNI) never render. Verify the value is stored and readable so it
+// can be asserted without depending on hover support.
+void DesktopTrayIconControllerTests::setToolTipIsReadable()
 {
     DesktopTrayIconController controller;
-    EXPECT_TRUE(controller.isDark());
+    const QString tip{QStringLiteral("Bitcoin Core client [regtest]")};
+    controller.setToolTip(tip);
+    QCOMPARE(controller.toolTip(), tip);
 }
 
-TEST(DesktopTrayIconControllerTest, setIsDarkSameValue_noSignal)
-{
-    DesktopTrayIconController controller;
-    QSignalSpy spy(&controller, &DesktopTrayIconController::isDarkChanged);
-    controller.setIsDark(true); // same as default
-    EXPECT_EQ(spy.count(), 0);
-}
-
-TEST(DesktopTrayIconControllerTest, setIsDarkChanged_emitsSignal)
-{
-    DesktopTrayIconController controller;
-    QSignalSpy spy(&controller, &DesktopTrayIconController::isDarkChanged);
-    controller.setIsDark(false);
-    ASSERT_EQ(spy.count(), 1);
-    EXPECT_EQ(spy.at(0).at(0).toBool(), false);
-}
+#ifdef BITCOINQML_NO_TEST_MAIN
+#include <test/qt_test_registry.h>
+BITCOINQML_REGISTER_QT_TEST(DesktopTrayIconControllerTests)
+#else
+QTEST_MAIN(DesktopTrayIconControllerTests)
+#endif
+#include "test_desktoptrayiconcontroller.moc"

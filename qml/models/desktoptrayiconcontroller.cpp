@@ -5,9 +5,7 @@
 #include <qml/models/desktoptrayiconcontroller.h>
 
 #include <QGuiApplication>
-#include <QImage>
 #include <QMenu>
-#include <QSettings>
 #include <QWindow>
 
 #if defined(Q_OS_MACOS)
@@ -40,10 +38,7 @@ static bool isObscured(const QWindow *w)
 DesktopTrayIconController::DesktopTrayIconController(QObject* parent)
     : QObject(parent)
     , m_tray_icon(new QSystemTrayIcon(this))
-    , m_is_dark(QSettings().value("dark", true).toBool())
 {
-    m_tray_icon->setToolTip(QStringLiteral("Bitcoin Core"));
-
     // Linux SNI/AppIndicator hosts require a native QMenu registered via
     // setContextMenu() — the menu is exported over D-Bus and displayed by
     // the DE natively. Without this, right-click does nothing on GNOME/KDE.
@@ -134,23 +129,20 @@ void DesktopTrayIconController::setVisible(bool visible)
     Q_EMIT visibleChanged(m_tray_icon->isVisible());
 }
 
-bool DesktopTrayIconController::isDark() const
-{
-    return m_is_dark;
-}
-
-void DesktopTrayIconController::setIsDark(bool dark)
-{
-    if (m_is_dark == dark) return;
-    m_is_dark = dark;
-    updateIcon();
-    Q_EMIT isDarkChanged(m_is_dark);
-}
-
 void DesktopTrayIconController::setBasePixmap(const QPixmap& pixmap)
 {
     m_base_pixmap = pixmap;
     updateIcon();
+}
+
+void DesktopTrayIconController::setToolTip(const QString& tip)
+{
+    m_tray_icon->setToolTip(tip);
+}
+
+QString DesktopTrayIconController::toolTip() const
+{
+    return m_tray_icon->toolTip();
 }
 
 bool DesktopTrayIconController::windowVisible() const
@@ -171,18 +163,8 @@ void DesktopTrayIconController::setWindowVisible(bool visible)
 void DesktopTrayIconController::updateIcon()
 {
     if (m_base_pixmap.isNull()) return;
-    QIcon icon;
-#if defined(Q_OS_MACOS)
-    icon = QIcon(m_base_pixmap);
-    icon.setIsMask(true);
-#else
-    if (m_is_dark) {
-        QImage img = m_base_pixmap.toImage();
-        img.invertPixels(QImage::InvertRgb);
-        icon = QIcon(QPixmap::fromImage(img));
-    } else {
-        icon = QIcon(m_base_pixmap);
-    }
-#endif
-    m_tray_icon->setIcon(icon);
+    // Match Bitcoin Core's Qt Widgets GUI: show the network-colored icon as-is,
+    // with no theme inversion and no macOS template mask (a mask would discard
+    // the per-network color). See src/qt/bitcoingui.cpp.
+    m_tray_icon->setIcon(QIcon(m_base_pixmap));
 }

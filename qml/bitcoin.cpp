@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <bitcoin-build-config.h> // IWYU pragma: keep
+
 #include <qml/bitcoin.h>
 
 #include <common/args.h>
@@ -522,8 +524,10 @@ int QmlGuiMain(int argc, char* argv[])
     Clipboard clipboard;
     BitcoinUriModel bitcoin_uri_model;
 
-    desktop_tray_icon_controller.setBasePixmap(QPixmap(":/icons/bitcoin-circle"));
-    desktop_tray_icon_controller.setIsDark(QSettings().value("dark", true).toBool());
+    desktop_tray_icon_controller.setBasePixmap(
+        network_style->getTrayAndWindowIcon().pixmap(QSize(256, 256)));
+    desktop_tray_icon_controller.setToolTip(
+        QString(QObject::tr("%1 client").arg(CLIENT_NAME) + " " + network_style->getTitleAddText()).trimmed());
     desktop_tray_icon_controller.setVisible(
         app_mode.isDesktop() && desktop_window_behavior_model.showTrayIcon());
     QObject::connect(&desktop_tray_icon_controller, &DesktopTrayIconController::supportedChanged,
