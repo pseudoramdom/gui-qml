@@ -97,7 +97,9 @@ def navigate_to_debug_log(gui):
     gui.wait_for_page("nodeRunner", timeout_ms=10000)
     gui.click("nodeSettingsButton")
     gui.wait_for_page("nodeSettingsStack", timeout_ms=5000)
-    gui.click("settingsDebugLog")
+    # Debug Log is a sidebar section (settings_debuglog) in the desktop layout.
+    gui.wait_for_property("settings_debuglog", "visible", True, timeout_ms=5000)
+    gui.click("settings_debuglog")
     gui.wait_for_page("settingsDebugLog", timeout_ms=5000)
 
 

@@ -54,84 +54,87 @@ Page {
         onBack: root.back()
         rightItem: RowLayout {
             spacing: 0
-            // Both buttons use a bare Item + centred Icon (not NavButton).
-            // Rationale: NavButton's contentItem is a RowLayout that fills
-            // the button, placing its 24×24 icon at the left edge — the
-            // icon is visually off-centre inside the hover background, and
-            // rotating the NavButton swings it in an arc. A centred Icon
-            // rotates in place and keeps the visible symbol aligned with
-            // the hover box.
-            Item {
+            // Both buttons are AbstractButtons with a centred Icon (not
+            // NavButton). Rationale: NavButton's contentItem is a RowLayout
+            // that fills the button, placing its 24×24 icon at the left edge —
+            // the icon is visually off-centre inside the hover background, and
+            // rotating the NavButton swings it in an arc. A centred Icon rotates
+            // in place and keeps the visible symbol aligned with the hover box.
+            // AbstractButton (vs a bare Item + MouseArea) gives keyboard focus,
+            // an Accessible role, and a real click() pipeline.
+            AbstractButton {
                 id: refreshBtn
                 objectName: "debugLogRefreshButton"
                 implicitWidth: 52
                 implicitHeight: 52
+                hoverEnabled: true
+                focusPolicy: Qt.TabFocus
+                Accessible.name: qsTr("Refresh")
+                Accessible.role: Accessible.Button
 
-                Rectangle {
-                    anchors.fill: parent
+                background: Rectangle {
                     radius: 5
-                    color: refreshArea.containsMouse ? Theme.color.neutral2
-                                                     : Theme.color.background
+                    color: refreshBtn.hovered ? Theme.color.neutral2
+                                              : Theme.color.background
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }
 
-                Icon {
-                    id: refreshIcon
-                    anchors.centerIn: parent
-                    source: "image://images/refresh"
-                    color: Theme.color.neutral9
-                    size: 24
+                contentItem: Item {
+                    Icon {
+                        id: refreshIcon
+                        anchors.centerIn: parent
+                        source: "image://images/refresh"
+                        color: Theme.color.neutral9
+                        size: 24
 
-                    RotationAnimation on rotation {
-                        id: spinAnimation
-                        from: 0
-                        to: 360
-                        duration: 600
-                        running: false
-                        easing.type: Easing.InOutQuad
+                        RotationAnimation on rotation {
+                            id: spinAnimation
+                            from: 0
+                            to: 360
+                            duration: 600
+                            running: false
+                            easing.type: Easing.InOutQuad
+                        }
                     }
                 }
 
-                MouseArea {
-                    id: refreshArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        debugLogModel.refresh()
-                        spinAnimation.restart()
-                    }
+                onClicked: {
+                    debugLogModel.refresh()
+                    spinAnimation.restart()
                 }
+
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
             }
 
-            Item {
+            AbstractButton {
                 id: exportBtn
                 objectName: "debugLogExportButton"
                 implicitWidth: 52
                 implicitHeight: 52
+                hoverEnabled: true
+                focusPolicy: Qt.TabFocus
+                Accessible.name: qsTr("Export")
+                Accessible.role: Accessible.Button
 
-                Rectangle {
-                    anchors.fill: parent
+                background: Rectangle {
                     radius: 5
-                    color: exportArea.containsMouse ? Theme.color.neutral2
-                                                    : Theme.color.background
+                    color: exportBtn.hovered ? Theme.color.neutral2
+                                             : Theme.color.background
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }
 
-                Icon {
-                    anchors.centerIn: parent
-                    source: "image://images/export"
-                    color: Theme.color.neutral9
-                    size: 24
+                contentItem: Item {
+                    Icon {
+                        anchors.centerIn: parent
+                        source: "image://images/export"
+                        color: Theme.color.neutral9
+                        size: 24
+                    }
                 }
 
-                MouseArea {
-                    id: exportArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: debugLogModel.openLogFile()
-                }
+                onClicked: debugLogModel.openLogFile()
+
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
             }
         }
     }
