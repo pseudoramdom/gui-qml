@@ -21,6 +21,15 @@ ApplicationWindow {
     color: Theme.color.background
     visible: true
 
+    // Restore the saved size via initial bindings so it is applied during
+    // construction, before the child Popups build their GridLayouts. Assigning
+    // width/height after the scene is laid out (e.g. in onCompleted) forces a
+    // live relayout that crashes Qt 6.4.x Quick Layouts. The bindings are
+    // broken in Component.onCompleted (self-assign) so the user can still
+    // resize the window freely afterwards.
+    width: windowSettings.windowWidth > 0 ? windowSettings.windowWidth : minimumWidth
+    height: windowSettings.windowHeight > 0 ? windowSettings.windowHeight : minimumHeight
+
     Settings {
         id: windowSettings
         property real windowX
@@ -212,11 +221,16 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        // Break the size bindings without changing the value (no relayout), so
+        // the user can resize freely while the one-way onWidthChanged/
+        // onHeightChanged writes keep the saved size up to date.
+        width = width
+        height = height
+        // Position can be restored imperatively: moving the window does not
+        // relayout its contents, so it does not hit the layout crash.
         if (windowSettings.windowWidth > 0 && windowSettings.windowHeight > 0) {
             x = windowSettings.windowX
             y = windowSettings.windowY
-            width = windowSettings.windowWidth
-            height = windowSettings.windowHeight
         }
         if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
             nodeModel.startNodeInitializionThread()

@@ -171,3 +171,4 @@ jobs:
           python3 test/functional/qml_test_shutdown.py
           python3 test/functional/qml_test_console.py
           python3 test/functional/qml_test_tray.py
+          python3 test/functional/qml_test_window_geometry.py
