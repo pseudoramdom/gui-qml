@@ -37,6 +37,8 @@ TestCase {
         testWalletModel.targetBlocks = 2
         testWalletModel.prepareTransactionResult = true
         testWalletModel.sendAmountExhaustsBalance = false
+        testWalletModel.currentTransactionCanSend = true
+        testWalletModel.currentTransactionReviewMessage = ""
         testSendRecipient.address.setAddress("bcrt1qsendtoaddress")
         testSendRecipient.amount.display = "0.00000000"
         testSendRecipient.label = ""
@@ -48,6 +50,30 @@ TestCase {
         testRecipientsModel.totalAmountSatoshi = 0
         optionsModel.displayUnit = BitcoinAmount.BTC
         testCoinsListModel.reset()
+    }
+
+    function test_review_only_psbt_closes_and_discards_on_wallet_change() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const popup = findChild(page, "reviewOnlyPsbtPopup")
+        verify(popup !== null)
+
+        testWalletModel.currentTransactionCanSend = false
+        testWalletModel.currentTransactionReviewMessage = "This wallet cannot sign."
+        const discardCallsBefore = testWalletModel.discardCurrentTransactionCalls
+
+        popup.reviewWallet = testWalletModel
+        popup.open()
+        tryCompare(popup, "opened", true)
+
+        walletController.setSelectedWallet("review-only-wallet-change")
+
+        tryCompare(popup, "opened", false)
+        tryCompare(testWalletModel, "discardCurrentTransactionCalls", discardCallsBefore + 1)
     }
 
     function test_send_has_stable_selectors() {

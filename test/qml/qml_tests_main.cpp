@@ -804,6 +804,8 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(QObject* recipients READ recipients CONSTANT)
     Q_PROPERTY(QObject* coinsListModel READ coinsListModel CONSTANT)
     Q_PROPERTY(QObject* currentTransaction READ currentTransaction CONSTANT)
+    Q_PROPERTY(bool currentTransactionCanSend MEMBER m_current_transaction_can_send NOTIFY currentTransactionChanged)
+    Q_PROPERTY(QString currentTransactionReviewMessage MEMBER m_current_transaction_review_message NOTIFY currentTransactionChanged)
     Q_PROPERTY(QObject* currentPaymentRequest READ currentPaymentRequest CONSTANT)
     Q_PROPERTY(QObject* detailPaymentRequest READ detailPaymentRequest CONSTANT)
     Q_PROPERTY(QObject* receiveRequests READ receiveRequests CONSTANT)
@@ -823,6 +825,7 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(int prepareTransactionCalls READ prepareTransactionCalls NOTIFY prepareTransactionCallsChanged)
     Q_PROPERTY(int scheduleFeeEstimatesCalls READ scheduleFeeEstimatesCalls NOTIFY scheduleFeeEstimatesCallsChanged)
     Q_PROPERTY(int sendTransactionCalls READ sendTransactionCalls NOTIFY sendTransactionCallsChanged)
+    Q_PROPERTY(int discardCurrentTransactionCalls READ discardCurrentTransactionCalls NOTIFY discardCurrentTransactionCallsChanged)
     Q_PROPERTY(bool isEncrypted MEMBER m_is_encrypted NOTIFY securityStateChanged)
     Q_PROPERTY(bool isLocked MEMBER m_is_locked NOTIFY securityStateChanged)
     Q_PROPERTY(QString keyScheme MEMBER m_key_scheme NOTIFY walletInfoChanged)
@@ -865,6 +868,8 @@ public:
     QString m_saved_payment_request_address_type;
     int m_target_blocks{2};
     bool m_prepare_transaction_result{true};
+    bool m_current_transaction_can_send{true};
+    QString m_current_transaction_review_message;
 
     QObject* activityListModel() const { return m_activity_list_model; }
     QObject* bumpModel() const { return m_bump_model; }
@@ -913,6 +918,7 @@ public:
     int prepareTransactionCalls() const { return m_prepare_transaction_calls; }
     int scheduleFeeEstimatesCalls() const { return m_schedule_fee_estimates_calls; }
     int sendTransactionCalls() const { return m_send_transaction_calls; }
+    int discardCurrentTransactionCalls() const { return m_discard_current_transaction_calls; }
     bool sendAmountExhaustsBalance() const { return m_send_amount_exhausts_balance; }
     QString lastBackupPath() const { return m_last_backup_path; }
     int backupWalletCalls() const { return m_backup_wallet_calls; }
@@ -1063,6 +1069,17 @@ public:
         }
         return m_send_transaction_result;
     }
+    Q_INVOKABLE void discardCurrentTransaction()
+    {
+        ++m_discard_current_transaction_calls;
+        m_current_transaction_can_send = false;
+        m_current_transaction_review_message.clear();
+        if (m_recipients) {
+            QMetaObject::invokeMethod(m_recipients, "clearToFront");
+        }
+        Q_EMIT currentTransactionChanged();
+        Q_EMIT discardCurrentTransactionCallsChanged();
+    }
     Q_INVOKABLE bool commitPaymentRequest()
     {
         auto* request = qobject_cast<MockPaymentRequest*>(m_current_payment_request);
@@ -1165,6 +1182,10 @@ Q_SIGNALS:
     void prepareTransactionCallsChanged();
     void scheduleFeeEstimatesCallsChanged();
     void sendTransactionCallsChanged();
+    void discardCurrentTransactionCallsChanged();
+    void currentTransactionChanged();
+    void externalSignerApprovalSucceeded();
+    void externalSignerApprovalFailed(const QString& message, bool signerNotFound);
     void securityStateChanged();
     void walletInfoChanged();
     void settingsErrorChanged();
@@ -1213,6 +1234,7 @@ private:
     int m_prepare_transaction_calls{0};
     int m_schedule_fee_estimates_calls{0};
     int m_send_transaction_calls{0};
+    int m_discard_current_transaction_calls{0};
     MockAddressListModel m_address_list_model;
 };
 
@@ -1224,13 +1246,30 @@ class MockWalletQmlModelTransaction : public QObject
     Q_PROPERTY(QString amount MEMBER m_amount CONSTANT)
     Q_PROPERTY(QString fee MEMBER m_fee CONSTANT)
     Q_PROPERTY(QString total MEMBER m_total CONSTANT)
+    Q_PROPERTY(QObject* amountAmount READ amountAmount CONSTANT)
+    Q_PROPERTY(QObject* feeAmount READ feeAmount CONSTANT)
+    Q_PROPERTY(QObject* totalAmount READ totalAmount CONSTANT)
 
 public:
+    MockWalletQmlModelTransaction()
+    {
+        m_amount_amount.m_display = QStringLiteral("0.01000000");
+        m_fee_amount.m_display = QStringLiteral("0.00001000");
+        m_total_amount.m_display = QStringLiteral("0.01001000");
+    }
+
     QString m_address{QStringLiteral("bcrt1qexampleaddress")};
     QString m_label{QStringLiteral("example-label")};
     QString m_amount{QStringLiteral("0.01000000 BTC")};
     QString m_fee{QStringLiteral("0.00001000 BTC")};
     QString m_total{QStringLiteral("0.01001000 BTC")};
+    MockBitcoinAmount m_amount_amount;
+    MockBitcoinAmount m_fee_amount;
+    MockBitcoinAmount m_total_amount;
+
+    QObject* amountAmount() { return &m_amount_amount; }
+    QObject* feeAmount() { return &m_fee_amount; }
+    QObject* totalAmount() { return &m_total_amount; }
 };
 
 class MockWalletController : public QObject

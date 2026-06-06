@@ -55,6 +55,9 @@ PageStack {
     Connections {
         target: walletController
         function onSelectedWalletChanged() {
+            if (reviewOnlyPsbtPopup.opened) {
+                reviewOnlyPsbtPopup.close()
+            }
             root.pop()
             // Clear URI import state so stale results from the previous wallet
             // are not shown when the user switches wallets and returns to Send.
@@ -129,17 +132,54 @@ PageStack {
         objectName: "walletSendPage"
         background: null
 
-        function handlePsbtImportResult(mode) {
+        function handlePsbtImportResult(result) {
             sendOptionsPopup.close()
-            if (mode === "single-review" || mode === "multiple-review") {
-                const multipleRecipientsEnabled = mode === "multiple-review"
+            if (result === WalletQmlModel.WalletCanSign) {
+                const multipleRecipientsEnabled = root.wallet.recipients.count > 1
                 sendOptionsPopup.multipleRecipientsEnabled = multipleRecipientsEnabled
                 root.transactionPrepared(multipleRecipientsEnabled)
-            } else if (mode === "unsupported") {
+            } else if (result === WalletQmlModel.WalletCannotSign) {
+                reviewOnlyPsbtPopup.reviewWallet = root.wallet
+                reviewOnlyPsbtPopup.open()
+            } else if (result === WalletQmlModel.PsbtUnsupported) {
                 unsupportedPsbtPopup.message = root.wallet.importedPsbt.error.length > 0
                     ? root.wallet.importedPsbt.error
                     : qsTr("This PSBT is not supported yet.")
                 unsupportedPsbtPopup.open()
+            }
+        }
+
+        Popup {
+            id: reviewOnlyPsbtPopup
+            objectName: "reviewOnlyPsbtPopup"
+            parent: Overlay.overlay
+            x: 0
+            y: 0
+            modal: true
+            closePolicy: Popup.NoAutoClose
+            padding: 0
+            width: Overlay.overlay.width
+            height: Overlay.overlay.height
+
+            property WalletQmlModel reviewWallet: null
+
+            onClosed: {
+                const wallet = reviewWallet
+                reviewWallet = null
+                if (wallet) {
+                    wallet.discardCurrentTransaction()
+                }
+            }
+
+            background: Rectangle {
+                color: Theme.color.background
+            }
+
+            contentItem: SendReview {
+                width: reviewOnlyPsbtPopup.availableWidth
+                height: reviewOnlyPsbtPopup.availableHeight
+                wallet: reviewOnlyPsbtPopup.reviewWallet
+                onBack: reviewOnlyPsbtPopup.close()
             }
         }
 

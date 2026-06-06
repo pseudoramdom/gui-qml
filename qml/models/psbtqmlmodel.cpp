@@ -84,6 +84,29 @@ QString PsbtQmlModel::LocalFilePath(const QString& path)
     return path;
 }
 
+QString PsbtQmlModel::LoadPsbtFromFile(const QString& path, PartiallySignedTransaction& psbt)
+{
+    QFile file(LocalFilePath(path));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return tr("Could not open PSBT file: %1").arg(file.errorString());
+    }
+
+    const QByteArray bytes{file.readAll()};
+    std::string error;
+    if (DecodePsbtFromBytes(bytes, psbt, error)) {
+        return {};
+    }
+
+    psbt = PartiallySignedTransaction{};
+    std::string base64_error;
+    if (DecodeBase64PSBT(psbt, QString::fromUtf8(bytes).trimmed().toStdString(), base64_error)) {
+        return {};
+    }
+
+    const std::string& decode_error{base64_error == "invalid base64" ? error : base64_error};
+    return tr("Could not decode PSBT: %1").arg(QString::fromStdString(decode_error));
+}
+
 QByteArray PsbtQmlModel::SerializePsbtRaw(const PartiallySignedTransaction& psbt)
 {
     DataStream stream{};
@@ -163,24 +186,11 @@ void PsbtQmlModel::setError(const QString& error)
 
 QString PsbtQmlModel::loadFromFile(const QString& path)
 {
-    const QString file_path{LocalFilePath(path)};
-    QFile file(file_path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        setError(tr("Could not open PSBT file: %1").arg(file.errorString()));
-        return m_error;
-    }
-
-    const QByteArray bytes{file.readAll()};
     PartiallySignedTransaction psbt;
-    std::string error;
-    if (!DecodePsbtFromBytes(bytes, psbt, error)) {
-        psbt = PartiallySignedTransaction{};
-        std::string base64_error;
-        if (!DecodeBase64PSBT(psbt, QString::fromUtf8(bytes).trimmed().toStdString(), base64_error)) {
-            const std::string& decode_error{base64_error == "invalid base64" ? error : base64_error};
-            setError(tr("Could not decode PSBT: %1").arg(QString::fromStdString(decode_error)));
-            return m_error;
-        }
+    const QString error{LoadPsbtFromFile(path, psbt)};
+    if (!error.isEmpty()) {
+        setError(error);
+        return error;
     }
 
     m_psbt = std::make_unique<PartiallySignedTransaction>(std::move(psbt));

@@ -56,6 +56,13 @@ public:
     };
     Q_ENUM(KeyScheme)
 
+    enum class PsbtImportResult {
+        PsbtUnsupported = 0,
+        WalletCanSign,
+        WalletCannotSign,
+    };
+    Q_ENUM(PsbtImportResult)
+
 private:
     Q_PROPERTY(QString name READ name NOTIFY nameChanged)
     Q_PROPERTY(QString displayName READ displayName NOTIFY displayNameChanged)
@@ -91,6 +98,8 @@ private:
     Q_PROPERTY(bool canManagePassphrase READ canManagePassphrase CONSTANT)
     Q_PROPERTY(QString transactionError READ transactionError NOTIFY transactionErrorChanged)
     Q_PROPERTY(bool transactionNeedsUnlock READ transactionNeedsUnlock NOTIFY transactionNeedsUnlockChanged)
+    Q_PROPERTY(bool currentTransactionCanSend READ currentTransactionCanSend NOTIFY currentTransactionChanged)
+    Q_PROPERTY(QString currentTransactionReviewMessage READ currentTransactionReviewMessage NOTIFY currentTransactionChanged)
     Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
     Q_PROPERTY(PsbtQmlModel* importedPsbt READ importedPsbt CONSTANT)
 
@@ -149,8 +158,9 @@ public:
     Q_INVOKABLE void clearSettingsError();
     Q_INVOKABLE void setDefaultReceiveAddressType(const QString& address_type);
     Q_INVOKABLE QString receiveAddressTypeLabel(const QString& address_type) const;
-    Q_INVOKABLE QString importPsbtFromFile(const QString& path);
+    Q_INVOKABLE PsbtImportResult importPsbtFromFile(const QString& path);
     Q_INVOKABLE QString saveCurrentTransactionAsPsbt(const QString& path);
+    Q_INVOKABLE void discardCurrentTransaction();
     PsbtQmlModel* importedPsbt() const { return m_imported_psbt_model; }
     interfaces::Wallet* wallet() const { return m_wallet.get(); }
     interfaces::Node* node() const { return m_node; }
@@ -208,6 +218,8 @@ public:
     bool canManagePassphrase() const;
     QString transactionError() const { return m_transaction_error; }
     bool transactionNeedsUnlock() const { return m_transaction_needs_unlock; }
+    bool currentTransactionCanSend() const { return m_current_transaction && m_current_transaction_can_send; }
+    QString currentTransactionReviewMessage() const { return m_current_transaction_review_message; }
     QString settingsError() const { return m_settings_error; }
     void setNode(interfaces::Node* node);
 
@@ -256,7 +268,7 @@ private:
     void setTransactionStatus(const QString& error, bool needs_unlock = false);
     void setSettingsError(const QString& error);
     QString persistedReceiveAddressTypeKey() const;
-    bool tryImportPsbtToReview(const PartiallySignedTransaction& psbt, QString& mode, QString& reason);
+    bool tryImportPsbtToReview(const PartiallySignedTransaction& psbt, PsbtImportResult& result, QString& reason);
 
     std::unique_ptr<interfaces::Wallet> m_wallet;
     interfaces::Node* m_node{nullptr};
@@ -272,6 +284,8 @@ private:
     WalletQmlModelTransaction* m_current_transaction{nullptr};
     wallet::CCoinControl m_coin_control;
     std::unique_ptr<PartiallySignedTransaction> m_current_psbt;
+    bool m_current_transaction_can_send{false};
+    QString m_current_transaction_review_message;
     QObject* m_fee_estimation_worker{nullptr};
     QThread* m_fee_estimation_thread{nullptr};
     QTimer* m_fee_estimation_timer{nullptr};

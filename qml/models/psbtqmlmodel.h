@@ -60,6 +60,7 @@ public:
     void refreshState(const QString& status_override = {});
 
     static QString LocalFilePath(const QString& path);
+    static QString LoadPsbtFromFile(const QString& path, PartiallySignedTransaction& psbt);
     static QByteArray SerializePsbtRaw(const PartiallySignedTransaction& psbt);
     static QString SavePsbtToFile(const PartiallySignedTransaction& psbt, const QString& path);
     static QString PsbtErrorText(common::PSBTError error);

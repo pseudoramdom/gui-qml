@@ -25,6 +25,8 @@ Page {
     readonly property int recipientCount: wallet ? wallet.recipients.count : 0
     readonly property bool multipleRecipients: recipientCount > 1
     readonly property bool isWatchOnly: wallet && wallet.keySchemeKind === WalletQmlModel.WatchOnly
+    readonly property bool canSendTransaction: wallet ? wallet.currentTransactionCanSend : false
+    readonly property bool reviewOnlyTransaction: wallet ? wallet.currentTransactionReviewMessage.length > 0 : false
     readonly property string recipientCountText: recipientCount === 1
         ? qsTr("There is 1 recipient.")
         : qsTr("There are %1 recipients.").arg(recipientCount)
@@ -86,6 +88,8 @@ Page {
 
     header: NavigationBar2 {
         id: navbar
+        visible: !root.reviewOnlyTransaction
+        height: visible ? implicitHeight : 0
         leftItem: NavButton {
             objectName: "sendReviewBackButton"
             iconSource: "image://images/caret-left"
@@ -130,7 +134,7 @@ Page {
 
             ColumnLayout {
                 Layout.topMargin: 30
-                Layout.bottomMargin: root.multipleRecipients ? 0 : 20
+                Layout.bottomMargin: (root.reviewOnlyTransaction || root.isWatchOnly) ? 10 : (root.multipleRecipients ? 0 : 20)
                 Layout.fillWidth: true
                 spacing: 5
 
@@ -157,6 +161,19 @@ Page {
                 }
             }
 
+            InfoBanner {
+                objectName: "sendReviewCannotSignBanner"
+                Layout.fillWidth: true
+                visible: root.reviewOnlyTransaction || root.isWatchOnly
+                iconSource: "image://images/info-filled"
+                contentMargin: root.isWatchOnly ? 18 : 16
+                contentSpacing: root.isWatchOnly ? 10 : 15
+                title: root.isWatchOnly ? qsTr("Watch-only wallet") : ""
+                message: root.isWatchOnly
+                    ? qsTr("This is a watch-only wallet. It does not have the keys to sign this transaction. Save it as a PSBT and sign it with another wallet.")
+                    : (root.wallet ? root.wallet.currentTransactionReviewMessage : "")
+            }
+
             Loader {
                 id: bodyLoader
                 Layout.fillWidth: true
@@ -180,21 +197,11 @@ Page {
                 }
             }
 
-            InfoBanner {
-                objectName: "sendReviewWatchOnlyBanner"
-                visible: root.isWatchOnly
-                Layout.fillWidth: true
-                Layout.topMargin: 30
-                contentMargin: 18
-                contentSpacing: 10
-                title: qsTr("Watch-only wallet")
-                message: qsTr("This is a watch-only wallet. It does not have the keys to sign this transaction. Save it as a PSBT and sign it with another wallet.")
-            }
-
             ExternalSignerReviewActions {
                 id: externalSignerActions
-                visible: root.wallet && root.wallet.hasExternalSigner
+                visible: !root.reviewOnlyTransaction && root.wallet && root.wallet.hasExternalSigner
                 wallet: root.wallet
+                canSend: root.canSendTransaction
                 buttonObjectName: "sendReviewExternalSignerButton"
                 statusObjectName: "sendReviewStatusText"
                 Layout.fillWidth: true
@@ -205,18 +212,29 @@ Page {
             ContinueButton {
                 id: confirmationButton
                 objectName: "sendReviewSendButton"
-                visible: !root.wallet || (!root.wallet.hasExternalSigner && !root.isWatchOnly)
-                enabled: !root.sending
+                visible: !root.reviewOnlyTransaction && !root.isWatchOnly && (!root.wallet || !root.wallet.hasExternalSigner)
+                enabled: root.canSendTransaction && !root.sending
                 Layout.fillWidth: true
                 Layout.topMargin: 30
                 text: qsTr("Send")
                 onClicked: root.commitSend()
             }
 
+            ContinueButton {
+                id: doneButton
+                objectName: "sendReviewDoneButton"
+                visible: root.reviewOnlyTransaction
+                enabled: !root.sending
+                Layout.fillWidth: true
+                Layout.topMargin: 30
+                text: qsTr("Done")
+                onClicked: root.back()
+            }
+
             OutlineButton {
                 id: savePsbtButton
                 objectName: "sendReviewSavePsbtButton"
-                visible: confirmationButton.visible || externalSignerActions.visible || root.isWatchOnly
+                visible: confirmationButton.visible || externalSignerActions.visible || doneButton.visible || root.isWatchOnly
                 enabled: root.wallet && root.wallet.currentTransaction && !root.sending
                 Layout.fillWidth: true
                 Layout.topMargin: 10

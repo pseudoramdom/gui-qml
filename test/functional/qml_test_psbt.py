@@ -111,11 +111,11 @@ def import_psbt(gui, psbt_path):
 
 def build_fixtures(harness):
     recipient_wallet = "psbt-recipient"
-    unsupported_wallet = "psbt-unsupported"
+    review_only_wallet = "psbt-review-only"
     source_wallet = "psbt-source"
 
     create_wallet(harness.gui_rpc_port, recipient_wallet)
-    create_wallet(harness.gui_rpc_port, unsupported_wallet)
+    create_wallet(harness.gui_rpc_port, review_only_wallet)
     create_wallet(harness.gui_rpc_port, source_wallet)
 
     recipient_address_1 = rpc_call(
@@ -125,7 +125,7 @@ def build_fixtures(harness):
         harness.gui_rpc_port, "getnewaddress", ["psbt-destination-2"], wallet=recipient_wallet
     )
 
-    fund_wallet(harness.gui_rpc_port, unsupported_wallet)
+    fund_wallet(harness.gui_rpc_port, review_only_wallet)
     fund_wallet(harness.gui_rpc_port, source_wallet)
 
     single_review_path = write_psbt_fixture(
@@ -140,17 +140,17 @@ def build_fixtures(harness):
         [{recipient_address_1: 1.0}, {recipient_address_2: 0.5}],
         os.path.join(harness.tmpdir, "multiple-review.psbt"),
     )
-    unsupported_path = write_psbt_fixture(
+    review_only_path = write_psbt_fixture(
         harness.gui_rpc_port,
-        unsupported_wallet,
+        review_only_wallet,
         [{recipient_address_1: 0.75}],
-        os.path.join(harness.tmpdir, "unsupported.psbt"),
+        os.path.join(harness.tmpdir, "review-only.psbt"),
     )
     return {
         "source_wallet": source_wallet,
         "single_review_path": single_review_path,
         "multiple_review_path": multiple_review_path,
-        "unsupported_path": unsupported_path,
+        "review_only_path": review_only_path,
     }
 
 
@@ -201,18 +201,25 @@ def run_test():
         gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
         checkpoints.checkpoint("returned from multiple review to send page", gui)
 
-        import_psbt(gui, fixtures["unsupported_path"])
-        checkpoints.checkpoint("unsupported PSBT submitted", gui)
-        gui.wait_for_property("unsupportedPsbtPopup", "visible", True, timeout_ms=20000)
-        checkpoints.checkpoint("unsupported PSBT modal displayed", gui)
-        assert gui.get_text("unsupportedPsbtPopupTitle") == "Not supported"
-        assert gui.get_text("unsupportedPsbtPopupMessage") == (
-            "Only PSBTs that spend this wallet's own inputs are supported right now."
+        import_psbt(gui, fixtures["review_only_path"])
+        checkpoints.checkpoint("review-only PSBT submitted", gui)
+        gui.wait_for_property("reviewOnlyPsbtPopup", "visible", True, timeout_ms=20000)
+        gui.wait_for_page("sendReviewPage", timeout_ms=10000)
+        gui.wait_for_property("sendReviewCannotSignBanner", "visible", True, timeout_ms=10000)
+        checkpoints.checkpoint("review-only SendReview modal displayed", gui)
+        assert gui.get_property("sendReviewCannotSignBanner", "message") == (
+            "This wallet does not have the keys to sign this transaction."
         )
-        gui.click("unsupportedPsbtPopupOkButton")
-        gui.wait_for_property("unsupportedPsbtPopup", "visible", False, timeout_ms=10000)
+        assert gui.get_property("sendReviewBackButton", "visible") is False
+        assert gui.get_property("sendReviewSendButton", "visible") is False
+        assert gui.get_property("sendReviewDoneButton", "visible") is True
+        assert gui.get_property("sendReviewDoneButton", "enabled") is True
+        gui.click("sendReviewDoneButton")
+        gui.wait_for_property("reviewOnlyPsbtPopup", "visible", False, timeout_ms=10000)
         gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
-        checkpoints.checkpoint("unsupported PSBT modal dismissed", gui)
+        assert gui.get_property("sendAddressInput", "text") == ""
+        assert gui.get_property("sendAmountInput", "text") == ""
+        checkpoints.checkpoint("review-only SendReview modal dismissed", gui)
 
         print("\n" + "=" * 50)
         print("All tests PASSED")

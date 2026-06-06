@@ -16,8 +16,10 @@ Item {
     property string statusObjectName: ""
     property string reviewState: "initial"
     property string errorMessage: ""
+    property bool canSend: true
 
     readonly property string statusText: {
+        if (!canSend) return ""
         if (reviewState === "signed") return qsTr("Signed on external signer. Ready to send.")
         if (reviewState === "waiting") return qsTr("Waiting for approval on external signer.")
         if (reviewState === "error") return errorMessage
@@ -108,7 +110,7 @@ Item {
             objectName: root.buttonObjectName
             Layout.fillWidth: true
             text: root.buttonText
-            enabled: root.reviewState !== "waiting"
+            enabled: root.canSend && root.reviewState !== "waiting"
             onClicked: {
                 if (root.reviewState === "signed") {
                     root.sendRequested()
