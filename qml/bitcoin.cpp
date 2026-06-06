@@ -209,6 +209,8 @@ void setupChainQSettings(QGuiApplication* app, QString chain)
         app->setApplicationName(QAPP_APP_NAME_DEFAULT);
     } else if (chain.compare("TEST") == 0) {
         app->setApplicationName(QAPP_APP_NAME_TESTNET);
+    } else if (chain.compare("TESTNET4") == 0) {
+        app->setApplicationName(QAPP_APP_NAME_TESTNET4);
     } else if (chain.compare("SIGNET") == 0) {
         app->setApplicationName(QAPP_APP_NAME_SIGNET);
     } else if (chain.compare("REGTEST") == 0) {
