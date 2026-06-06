@@ -121,7 +121,7 @@ target_link_libraries(bitcoinqml
     Qt6::Widgets
   PRIVATE
     bitcoin_cli
-    $<$<PLATFORM_ID:Darwin>:-framework AppKit>
+    $<$<PLATFORM_ID:Darwin>:-framework\ AppKit>
 )
 
 # Compile QML-app-specific translations (.ts → .qm) and embed as resources.
