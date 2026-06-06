@@ -457,17 +457,18 @@ class PeerQmlTestHarness:
 
 def navigate_to_peers(gui):
     """From the NodeRunner main screen, navigate to the Peers list page."""
-    gui.click("nodeSettingsButton")
-    gui.wait_for_page("settingsPeers", timeout_ms=3000)
-    _wait_for_node_settings_idle(gui)
-    gui.click("settingsPeers")
+    # Peers moved out of node settings into a dedicated NodeRunner header tab.
+    gui.click("peersTabButton")
     gui.wait_for_page("peers")
     _wait_for_node_settings_idle(gui)
 
 
 def _wait_for_node_settings_idle(gui, timeout_ms=PEER_ACTION_TIMEOUT_SECS * 1000) -> None:
-    """Wait until the nested NodeSettings stack has finished animating."""
-    gui.wait_for_property("nodeSettingsStack", "busy", False, timeout_ms=timeout_ms)
+    """Wait until page-stack transitions to/from the Peers page have settled.
+
+    Peers moved out of the NodeSettings stack onto the main page stack, so wait
+    on the app's stack views via settle() (missing stacks are ignored)."""
+    gui.settle(timeout_ms=timeout_ms)
 
 
 def _open_peer_details(gui, node_id: int) -> None:

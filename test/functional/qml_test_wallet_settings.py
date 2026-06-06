@@ -142,8 +142,8 @@ def load_wallet(gui, harness, wallet_name):
 def open_wallet_settings(gui):
     gui.click("desktopWalletSettingsTabButton")
     gui.settle()
-    gui.wait_for_property("settingsWallet", "visible", True, timeout_ms=5000)
-    gui.click("settingsWallet")
+    gui.wait_for_property("settings_wallet", "visible", True, timeout_ms=5000)
+    gui.click("settings_wallet")
     gui.wait_for_page("walletSettingsPage", timeout_ms=10000)
 
 

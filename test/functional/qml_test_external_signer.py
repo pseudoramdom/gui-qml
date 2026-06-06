@@ -234,17 +234,26 @@ def ensure_desktop_wallets_visible(gui):
 def open_wallet_settings(gui):
     ensure_desktop_wallets_visible(gui)
     gui.click("desktopWalletSettingsTabButton")
-    gui.wait_for_property("settingsExternalSigner", "visible", True, timeout_ms=10000)
-    gui.click("settingsExternalSigner")
+    # External-signer config moved into the node-settings sidebar's
+    # "External Signer" section (objectName settings_externalsigner), whose page
+    # hosts externalSignerPathInput.
+    gui.wait_for_property("settings_externalsigner", "visible", True, timeout_ms=10000)
+    gui.click("settings_externalsigner")
     gui.wait_for_property("externalSignerPathInput", "visible", True, timeout_ms=10000)
 
 
 def open_selected_wallet_settings(gui):
     ensure_desktop_wallets_visible(gui)
     gui.click("desktopWalletSettingsTabButton")
+    # Per-wallet settings live under the sidebar "Wallet" section
+    # (objectName settings_wallet), which opens walletSettingsPage.
+    gui.wait_for_property("settings_wallet", "visible", True, timeout_ms=10000)
+    gui.click("settings_wallet")
     try:
-        gui.wait_for_property("settingsExternalSigner", "visible", True, timeout_ms=1000)
+        gui.wait_for_page("walletSettingsPage", timeout_ms=1000)
     except QmlDriverError:
+        # The wallet section is a PageStack; if a prior step left it on a
+        # sub-page, pop back to the wallet settings root.
         for back_button in ("walletSettingsBackButton", "settingsWalletBack"):
             try:
                 if gui.get_property(back_button, "visible") is True:
@@ -252,9 +261,7 @@ def open_selected_wallet_settings(gui):
                     break
             except QmlDriverError:
                 pass
-        gui.wait_for_property("settingsExternalSigner", "visible", True, timeout_ms=10000)
-    gui.click("settingsWallet")
-    gui.wait_for_page("walletSettingsPage", timeout_ms=10000)
+        gui.wait_for_page("walletSettingsPage", timeout_ms=10000)
 
 
 def configure_external_signer_via_gui(harness, checkpoints, signer_path):

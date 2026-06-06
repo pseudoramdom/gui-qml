@@ -37,10 +37,9 @@ POST_ONBOARDING_TIMEOUT_MS = 30000
 def navigate_to_display_settings(gui):
     """From the NodeRunner main screen, navigate to the Display settings page."""
     gui.click("nodeSettingsButton")
-    # Wait for the NodeSettings page to finish loading (gotoDisplay is one of
-    # its rows).
-    gui.wait_for_page("gotoDisplay", timeout_ms=5000)
-    gui.click("gotoDisplay")
+    # Display is a sidebar section (settings_display) in the desktop layout.
+    gui.wait_for_property("settings_display", "visible", True, timeout_ms=5000)
+    gui.click("settings_display")
     # SettingsDisplay is identified by the presence of gotoDisplayUnit.
     gui.wait_for_page("gotoDisplayUnit", timeout_ms=5000)
     print("  Navigated to Display settings page")
