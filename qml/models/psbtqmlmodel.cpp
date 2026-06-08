@@ -53,14 +53,32 @@ QString TransactionErrorText(node::TransactionError error)
     return QString::fromStdString(common::TransactionErrorString(error).translated);
 }
 
-bool IsMultisigScript(const CScript& script)
+std::optional<std::pair<int, int>> ExtractMultisigSigInfo(const CScript& script)
 {
     if (script.empty()) {
-        return false;
+        return std::nullopt;
     }
 
     std::vector<std::vector<unsigned char>> solutions;
-    return Solver(script, solutions) == TxoutType::MULTISIG || MatchMultiA(script).has_value();
+    if (Solver(script, solutions) == TxoutType::MULTISIG
+        && solutions.size() >= 2
+        && !solutions.front().empty()
+        && !solutions.back().empty()) {
+        const int required{solutions.front()[0]};
+        const int total{solutions.back()[0]};
+        if (required > 0 && total >= required) {
+            return std::pair{required, total};
+        }
+    }
+    if (const auto multi_a{MatchMultiA(script)}) {
+        return std::pair{multi_a->first, static_cast<int>(multi_a->second.size())};
+    }
+    return std::nullopt;
+}
+
+bool IsMultisigScript(const CScript& script)
+{
+    return ExtractMultisigSigInfo(script).has_value();
 }
 
 bool DecodePsbtFromBytes(const QByteArray& bytes, PartiallySignedTransaction& psbt, std::string& error)
@@ -140,13 +158,20 @@ QString PsbtQmlModel::SavePsbtToFile(const PartiallySignedTransaction& psbt, con
 
 bool PsbtQmlModel::IsMultisigPsbtInput(const PartiallySignedTransaction& psbt, std::size_t index)
 {
+    return MultisigPsbtInputSigInfo(psbt, index).has_value();
+}
+
+std::optional<std::pair<int, int>> PsbtQmlModel::MultisigPsbtInputSigInfo(const PartiallySignedTransaction& psbt, std::size_t index)
+{
     const PSBTInput& input{psbt.inputs[index]};
-    if (IsMultisigScript(input.redeem_script) || IsMultisigScript(input.witness_script)) {
-        return true;
-    }
+    if (auto info{ExtractMultisigSigInfo(input.redeem_script)}) return info;
+    if (auto info{ExtractMultisigSigInfo(input.witness_script)}) return info;
 
     CTxOut utxo;
-    return psbt.GetInputUTXO(utxo, index) && IsMultisigScript(utxo.scriptPubKey);
+    if (psbt.GetInputUTXO(utxo, index)) {
+        if (auto info{ExtractMultisigSigInfo(utxo.scriptPubKey)}) return info;
+    }
+    return std::nullopt;
 }
 
 PsbtQmlModel::PsbtQmlModel(interfaces::Wallet* wallet, interfaces::Node* node, QObject* parent)

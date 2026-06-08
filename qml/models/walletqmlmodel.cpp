@@ -1961,10 +1961,13 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
         return false;
     }
     complete = FinalizePSBT(analysis_psbt);
-    for (size_t i{0}; i < analysis_psbt.inputs.size(); ++i) {
-        if (!complete && PsbtQmlModel::IsMultisigPsbtInput(analysis_psbt, i)) {
-            reason = tr("Multisignature PSBTs are not supported yet.");
-            return false;
+    std::optional<std::pair<int, int>> multisig_sig_info;
+    if (!complete) {
+        for (size_t i{0}; i < analysis_psbt.inputs.size(); ++i) {
+            if (auto info{PsbtQmlModel::MultisigPsbtInputSigInfo(analysis_psbt, i)}) {
+                multisig_sig_info = info;
+                break;
+            }
         }
     }
 
@@ -1972,14 +1975,16 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
     const bool fee_is_known{analysis.fee && *analysis.fee >= 0};
     const size_t unsigned_inputs{CountPSBTUnsignedInputs(analysis_psbt)};
     const bool wallet_has_signer{!m_wallet->privateKeysDisabled() || m_wallet->hasExternalSigner()};
-    const bool can_send{fee_is_known && spends_only_wallet_inputs && (complete || (wallet_has_signer && unsigned_inputs > 0 && could_sign >= unsigned_inputs))};
+    const bool can_send{fee_is_known && !multisig_sig_info && spends_only_wallet_inputs && (complete || (wallet_has_signer && unsigned_inputs > 0 && could_sign >= unsigned_inputs))};
     const bool can_broadcast{fee_is_known && complete};
     const QString review_message{
         !fee_is_known
             ? tr("The transaction fee is missing or invalid. Add valid input information before broadcasting.")
-            : can_send || can_broadcast
-                ? QString{}
-                : tr("This wallet does not have the keys to sign this transaction.")};
+            : multisig_sig_info
+                ? tr("This transaction requires %1 of %2 signatures.").arg(multisig_sig_info->first).arg(multisig_sig_info->second)
+                : can_send || can_broadcast
+                    ? QString{}
+                    : tr("This wallet does not have the keys to sign this transaction.")};
 
     struct DraftRecipient {
         QString address;

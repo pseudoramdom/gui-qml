@@ -10,6 +10,8 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include <QByteArray>
 #include <QObject>
@@ -68,6 +70,8 @@ public:
     static QString SavePsbtToFile(const PartiallySignedTransaction& psbt, const QString& path);
     static QString PsbtErrorText(common::PSBTError error);
     static bool IsMultisigPsbtInput(const PartiallySignedTransaction& psbt, std::size_t index);
+    // Returns (required, total) signers for a multisig PSBT input, or nullopt if not multisig.
+    static std::optional<std::pair<int, int>> MultisigPsbtInputSigInfo(const PartiallySignedTransaction& psbt, std::size_t index);
 
 Q_SIGNALS:
     void changed();
