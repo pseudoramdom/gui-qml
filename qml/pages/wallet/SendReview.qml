@@ -187,7 +187,7 @@ Page {
                 contentSpacing: root.isWatchOnly ? 10 : 15
                 title: root.isWatchOnly ? qsTr("Watch-only wallet") : ""
                 message: root.isWatchOnly
-                    ? qsTr("This is a watch-only wallet. It does not have the keys to sign this transaction. Save it as a PSBT and sign it with another wallet.")
+                    ? qsTr("This is a watch-only wallet. It does not have the keys to sign this transaction.")
                     : (root.wallet ? root.wallet.currentTransactionReviewMessage : "")
             }
 

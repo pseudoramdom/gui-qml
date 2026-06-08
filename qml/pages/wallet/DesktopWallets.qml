@@ -236,10 +236,15 @@ Page {
         currentIndex: navigationTabs.checkedButton.index
         clip: true
         Activity {
+            id: activityPage
         }
         Send {
             onTransactionPrepared: (multipleRecipientsEnabled) => {
                 root.sendTransaction(multipleRecipientsEnabled)
+            }
+            onViewTransactionInActivity: (txid) => {
+                activityTabButton.checked = true
+                activityPage.navigateToTransaction(txid)
             }
         }
         RequestPayment {

@@ -1870,6 +1870,17 @@ WalletQmlModel::PsbtImportResult WalletQmlModel::importPsbtFromFile(const QStrin
         return PsbtImportResult::PsbtUnsupported;
     }
 
+    if (m_wallet && psbt.tx) {
+        const Txid psbt_txid{psbt.tx->GetHash()};
+        interfaces::WalletTxStatus tx_status;
+        int num_blocks{0};
+        int64_t block_time{0};
+        if (m_wallet->tryGetTxStatus(psbt_txid, tx_status, num_blocks, block_time)) {
+            m_imported_psbt_model->setMatchedTxid(QString::fromStdString(psbt_txid.GetHex()));
+            return PsbtImportResult::TransactionAlreadyKnown;
+        }
+    }
+
     PsbtImportResult result{PsbtImportResult::PsbtUnsupported};
     QString reason;
     if (tryImportPsbtToReview(psbt, result, reason)) {

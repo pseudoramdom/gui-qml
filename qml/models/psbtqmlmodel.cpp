@@ -167,6 +167,7 @@ void PsbtQmlModel::clear()
     m_complete = false;
     m_unsigned_inputs = 0;
     m_could_sign_inputs = 0;
+    m_matched_txid.clear();
     Q_EMIT changed();
 }
 
@@ -181,6 +182,13 @@ void PsbtQmlModel::setError(const QString& error)
     m_complete = false;
     m_unsigned_inputs = 0;
     m_could_sign_inputs = 0;
+    m_matched_txid.clear();
+    Q_EMIT changed();
+}
+
+void PsbtQmlModel::setMatchedTxid(const QString& txid)
+{
+    m_matched_txid = txid;
     Q_EMIT changed();
 }
 

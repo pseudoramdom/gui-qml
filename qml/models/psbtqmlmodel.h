@@ -33,6 +33,7 @@ class PsbtQmlModel : public QObject
     Q_PROPERTY(bool complete READ complete NOTIFY changed)
     Q_PROPERTY(int unsignedInputCount READ unsignedInputCount NOTIFY changed)
     Q_PROPERTY(int couldSignInputCount READ couldSignInputCount NOTIFY changed)
+    Q_PROPERTY(QString matchedTxid READ matchedTxid NOTIFY changed)
 
 public:
     explicit PsbtQmlModel(interfaces::Wallet* wallet, interfaces::Node* node, QObject* parent = nullptr);
@@ -46,6 +47,7 @@ public:
     bool complete() const { return m_complete; }
     int unsignedInputCount() const { return m_unsigned_inputs; }
     int couldSignInputCount() const { return m_could_sign_inputs; }
+    QString matchedTxid() const { return m_matched_txid; }
 
     Q_INVOKABLE void clear();
     Q_INVOKABLE void sign();
@@ -56,6 +58,7 @@ public:
     QString loadFromFile(const QString& path);
     const PartiallySignedTransaction* psbt() const { return m_psbt.get(); }
     void setError(const QString& error);
+    void setMatchedTxid(const QString& txid);
     void setNode(interfaces::Node* node) { m_node = node; }
     void refreshState(const QString& status_override = {});
 
@@ -83,6 +86,7 @@ private:
     bool m_complete{false};
     int m_unsigned_inputs{0};
     int m_could_sign_inputs{0};
+    QString m_matched_txid;
 };
 
 #endif // BITCOIN_QML_MODELS_PSBTQMLMODEL_H

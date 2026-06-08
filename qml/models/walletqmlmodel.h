@@ -60,6 +60,7 @@ public:
         PsbtUnsupported = 0,
         WalletCanSign,
         WalletCannotSign,
+        TransactionAlreadyKnown,
     };
     Q_ENUM(PsbtImportResult)
 

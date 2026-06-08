@@ -35,6 +35,7 @@ PageStack {
         : (feeBalanceErrorText.length > 0 ? feeBalanceErrorText : prepareTransactionErrorText)
 
     signal transactionPrepared(bool multipleRecipientsEnabled)
+    signal viewTransactionInActivity(string txid)
 
     function clearPrepareTransactionError() {
         if (prepareTransactionErrorText.length > 0) {
@@ -141,6 +142,9 @@ PageStack {
             } else if (result === WalletQmlModel.WalletCannotSign) {
                 reviewOnlyPsbtPopup.reviewWallet = root.wallet
                 reviewOnlyPsbtPopup.open()
+            } else if (result === WalletQmlModel.TransactionAlreadyKnown) {
+                knownPsbtTxPopup.txid = root.wallet.importedPsbt.matchedTxid
+                knownPsbtTxPopup.open()
             } else if (result === WalletQmlModel.PsbtUnsupported) {
                 unsupportedPsbtPopup.message = root.wallet.importedPsbt.error.length > 0
                     ? root.wallet.importedPsbt.error
@@ -234,6 +238,30 @@ PageStack {
             AlertAction {
                 text: qsTr("OK")
                 buttonObjectName: "unsupportedPsbtPopupOkButton"
+            }
+        }
+
+        AlertPopup {
+            id: knownPsbtTxPopup
+            objectName: "knownPsbtTxPopup"
+            title: qsTr("Cannot import transaction")
+            message: qsTr("This transaction is already in your wallet spent history. View it in Activity")
+            messageObjectName: "knownPsbtTxPopupMessage"
+
+            property string txid: ""
+
+            onClosed: root.wallet.importedPsbt.clear()
+
+            AlertAction {
+                text: qsTr("View transaction")
+                buttonObjectName: "knownPsbtTxViewButton"
+                onTriggered: root.viewTransactionInActivity(knownPsbtTxPopup.txid)
+            }
+
+            AlertAction {
+                text: qsTr("Close")
+                role: AlertAction.Cancel
+                buttonObjectName: "knownPsbtTxCloseButton"
             }
         }
 

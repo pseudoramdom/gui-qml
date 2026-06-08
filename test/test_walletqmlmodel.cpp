@@ -44,6 +44,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <set>
 #include <vector>
 
 namespace {
@@ -197,6 +198,7 @@ public:
             complete = sign;
             return std::nullopt;
         };
+    std::set<Txid> known_txids;
     std::function<wallet::isminetype(const CTxIn&)> txin_is_mine_fn = [](const CTxIn&) {
         return wallet::ISMINE_NO;
     };
@@ -327,6 +329,10 @@ public:
     CAmount getAvailableBalance(const wallet::CCoinControl&) override { return balance; }
     wallet::isminetype txinIsMine(const CTxIn& txin) override { return txin_is_mine_fn(txin); }
     wallet::isminetype txoutIsMine(const CTxOut& txout) override { return txout_is_mine_fn(txout); }
+    bool tryGetTxStatus(const Txid& txid, interfaces::WalletTxStatus&, int&, int64_t&) override
+    {
+        return known_txids.contains(txid);
+    }
     CAmount getDebit(const CTxIn&, wallet::isminefilter) override { return 0; }
     CAmount getCredit(const CTxOut&, wallet::isminefilter) override { return 0; }
     CoinsList listCoins() override { return {}; }
@@ -461,6 +467,7 @@ private Q_SLOTS:
     void importPsbtFromFile_opensForeignUnsignedPsbtForReviewOnly();
     void importPsbtFromFile_broadcastsCompleteForeignMultisigPsbt();
     void importPsbtFromFile_blocksBroadcastWhenFeeIsInvalid();
+    void importPsbtFromFile_returnsTransactionAlreadyKnownWhenTxIsInWallet();
     void sendTransactionWithPrivateKeysDisabledDoesNotCommit();
     void bumpTransactionOnLockedWalletRequiresPassword();
     void bumpTransactionWithPassphraseUnlocksCommitsAndRelocks();
@@ -2303,6 +2310,36 @@ void WalletQmlModelTests::importPsbtFromFile_blocksBroadcastWhenFeeIsInvalid()
     EXPECT_CALL(node, broadcastTransaction(testing::_, testing::_, testing::_)).Times(0);
     QVERIFY(!model->broadcastCurrentTransaction());
     QCOMPARE(model->transactionError(), QString("This transaction is not ready to broadcast."));
+}
+
+void WalletQmlModelTests::importPsbtFromFile_returnsTransactionAlreadyKnownWhenTxIsInWallet()
+{
+    FakePasswordWallet* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+
+    CMutableTransaction mtx;
+    mtx.vin.emplace_back(COutPoint{Txid::FromUint256(uint256::ONE), 0});
+    mtx.vout.emplace_back(1'500, GetScriptForDestination(DecodeDestination(VALID_MAINNET_ADDRESS.toStdString())));
+    PartiallySignedTransaction psbt{mtx};
+    psbt.inputs[0].witness_utxo = CTxOut{2'000, CScript{}};
+
+    const Txid psbt_txid{psbt.tx->GetHash()};
+    wallet->known_txids.insert(psbt_txid);
+    wallet->fill_psbt_sign_args.clear();
+
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString path{WritePsbt(psbt, temp_dir, QStringLiteral("already-known.psbt"))};
+    QVERIFY(!path.isEmpty());
+
+    QCOMPARE(model->importPsbtFromFile(path), WalletQmlModel::PsbtImportResult::TransactionAlreadyKnown);
+    QCOMPARE(model->importedPsbt()->matchedTxid(), QString::fromStdString(psbt_txid.GetHex()));
+
+    // The review/SendReview flow must be skipped entirely.
+    QVERIFY(wallet->fill_psbt_sign_args.empty());
+    QVERIFY(model->currentTransaction() == nullptr);
+    QCOMPARE(model->sendRecipientList()->count(), 1);
+    QVERIFY(model->sendRecipientList()->currentRecipient()->address()->address().isEmpty());
 }
 
 void WalletQmlModelTests::bumpTransactionOnLockedWalletRequiresPassword()
