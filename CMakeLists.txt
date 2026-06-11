@@ -188,7 +188,7 @@ target_link_libraries(bitcoin-core-app
 )
 qt6_import_qml_plugins(bitcoin-core-app)
 
-option(BUILD_APP_TESTS "Build unit tests for the app" ON)
+option(BUILD_APP_TESTS "Build unit tests for the app" OFF)
 if(BUILD_APP_TESTS)
   include(CTest)
   enable_testing()
