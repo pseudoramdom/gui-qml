@@ -108,6 +108,9 @@ QString PsbtQmlModel::LoadPsbtFromFile(const QString& path, PartiallySignedTrans
     if (!file.open(QIODevice::ReadOnly)) {
         return tr("Could not open PSBT file: %1").arg(file.errorString());
     }
+    if (file.size() > MAX_FILE_SIZE_PSBT) {
+        return tr("PSBT file must be smaller than 100 MiB");
+    }
 
     const QByteArray bytes{file.readAll()};
     std::string error;
