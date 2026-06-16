@@ -1847,7 +1847,7 @@ void WalletQmlModelTests::importPsbtFromFile_opensOwnedUnsignedPsbtWithoutSignin
         if (n_signed) {
             *n_signed = 1;
         }
-        complete = false;
+        complete = sign;
         return std::nullopt;
     };
 
@@ -2185,7 +2185,7 @@ void WalletQmlModelTests::externalSignerApprovalSignsImportedPsbtOnlyOnce()
         if (sign) {
             CompleteReviewPsbt(psbt);
         }
-        complete = sign;
+        complete = false;
         return std::nullopt;
     };
 

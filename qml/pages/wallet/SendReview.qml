@@ -131,10 +131,13 @@ Page {
     }
 
     // Functional tests inject a destination here instead of driving a native dialog.
-    TextField {
+    Item {
         id: savePsbtAutomationPath
         objectName: "sendReviewSavePsbtPathField"
-        visible: false
+        visible: root.visible
+        width: 0
+        height: 0
+        property string text: ""
     }
 
     ScrollView {

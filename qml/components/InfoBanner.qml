@@ -19,7 +19,9 @@ Rectangle {
 
     property url iconSource: ""
     property string title: ""
+    property string titleObjectName: ""
     property string message: ""
+    property string messageObjectName: ""
     property string primaryButtonText: ""
     property string dismissButtonText: ""
     property bool showsCloseButton: false
@@ -77,6 +79,7 @@ Rectangle {
                 spacing: 4
 
                 CoreText {
+                    objectName: root.titleObjectName
                     visible: root.title !== ""
                     text: root.title
                     font.pixelSize: 15
@@ -87,6 +90,7 @@ Rectangle {
                 }
 
                 CoreText {
+                    objectName: root.messageObjectName
                     visible: root.message !== ""
                     text: root.message
                     font.pixelSize: 13
@@ -131,6 +135,7 @@ Rectangle {
             }
 
             CoreText {
+                objectName: root.titleObjectName
                 visible: root.title !== ""
                 text: root.title
                 font.pixelSize: 15
@@ -141,6 +146,7 @@ Rectangle {
             }
 
             CoreText {
+                objectName: root.messageObjectName
                 visible: root.message !== ""
                 text: root.message
                 font.pixelSize: 13

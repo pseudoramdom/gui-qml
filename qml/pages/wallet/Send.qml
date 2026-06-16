@@ -696,6 +696,7 @@ PageStack {
                         || (!sendPage.paymentRequestIsError && sendPage.paymentRequestStatus.length > 0)
                     title: sendPage.paymentRequestIsError ? "" : sendPage.paymentRequestStatus
                     message: sendPage.paymentRequestMessage
+                    messageObjectName: "sendPaymentRequestMessageText"
                     showsCloseButton: true
                     contentMargin: 16
                     onDismissClicked: {

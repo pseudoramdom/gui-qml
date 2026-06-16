@@ -1680,21 +1680,14 @@ void WalletQmlModel::approveExternalSignerTransaction()
             }
         }
 
-        if (!complete) {
+        CMutableTransaction signed_tx;
+        if (!FinalizeAndExtractPSBT(psbtx, signed_tx)) {
             m_current_psbt = std::make_unique<PartiallySignedTransaction>(std::move(psbtx));
             m_current_transaction_can_send = false;
             m_current_transaction_can_broadcast = false;
             m_current_transaction_review_message = tr("Signed on external signer. More signatures are required.");
             Q_EMIT currentTransactionChanged();
             Q_EMIT externalSignerApprovalPartiallySucceeded();
-            return;
-        }
-
-        CMutableTransaction signed_tx;
-        if (!FinalizeAndExtractPSBT(psbtx, signed_tx)) {
-            Q_EMIT externalSignerApprovalFailed(
-                PsbtQmlModel::PsbtErrorText(common::PSBTError::INCOMPLETE),
-                false);
             return;
         }
 
