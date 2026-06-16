@@ -99,7 +99,9 @@ TestCase {
 
         const lowFeeOption = picker.itemAtIndex(2)
         verify(lowFeeOption !== null)
+        compare(lowFeeOption.objectName, "feeSelectionOption2")
         compare(lowFeeOption.subtitle, "0.00000250 ₿")
+        verify(findChild(lowFeeOption, "feeSelectionOptionEstimate2") !== null)
 
         mouseClick(lowFeeOption, lowFeeOption.width / 2, lowFeeOption.height / 2)
 

@@ -43,7 +43,9 @@ ColumnLayout {
             rows.push({
                 text: r.feeLabel + " " + r.feeDuration,
                 value: r.target,
-                estimate: !isCustom && wm ? wm.estimatedFeeForTarget(r.target) : ""
+                estimate: !isCustom && wm ? wm.estimatedFeeForTarget(r.target) : "",
+                objectName: "feeSelectionOption" + i,
+                estimateObjectName: "feeSelectionOptionEstimate" + i
             })
         }
         return rows
@@ -163,6 +165,8 @@ ColumnLayout {
             objectName: "feeSelectionList"
             model: root._feePickerModel
             subtitleRole: "estimate"
+            objectNameRole: "objectName"
+            subtitleObjectNameRole: "estimateObjectName"
             currentValue: root.customSelected ? -1 : root.selectedTarget
             onActivated: function(value) {
                 if (root.walletModel) {

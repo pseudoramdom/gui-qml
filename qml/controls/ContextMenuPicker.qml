@@ -17,6 +17,7 @@ Item {
     property string valueRole: "value"
     property string subtitleRole: ""
     property string objectNameRole: ""
+    property string subtitleObjectNameRole: ""
     property var currentValue
     property url selectionIconSource: "image://images/check"
     property int rowHeight: 36
@@ -42,6 +43,11 @@ Item {
     function _rowObjectName(item) {
         if (root.objectNameRole === "" || typeof item !== 'object' || item === null) return ""
         const v = item[root.objectNameRole]
+        return v === undefined || v === null ? "" : v
+    }
+    function _rowSubtitleObjectName(item) {
+        if (root.subtitleObjectNameRole === "" || typeof item !== 'object' || item === null) return ""
+        const v = item[root.subtitleObjectNameRole]
         return v === undefined || v === null ? "" : v
     }
 
@@ -83,6 +89,7 @@ Item {
                 property string rowText: root._rowText(rowData)
                 property var rowValue: root._rowValue(rowData)
                 property string subtitle: root._rowSubtitle(rowData)
+                property string subtitleObjectName: root._rowSubtitleObjectName(rowData)
                 objectName: root._rowObjectName(rowData)
                 readonly property bool selected: root.currentValue === rowValue
                 readonly property int _effectiveHeight: subtitle !== ""
@@ -123,6 +130,7 @@ Item {
                         }
 
                         CoreText {
+                            objectName: _row.subtitleObjectName
                             visible: _row.subtitle !== ""
                             Layout.fillWidth: true
                             text: _row.subtitle
