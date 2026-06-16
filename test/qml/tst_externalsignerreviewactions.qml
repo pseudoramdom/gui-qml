@@ -17,8 +17,10 @@ TestCase {
 
         QtObject {
             property int approveCalls: 0
+            property string currentTransactionReviewMessage: ""
 
             signal externalSignerApprovalSucceeded()
+            signal externalSignerApprovalPartiallySucceeded()
             signal externalSignerApprovalFailed(string message, bool signerNotFound)
 
             function approveExternalSignerTransaction() {
@@ -98,6 +100,25 @@ TestCase {
         compare(review.statusText, "Signed on external signer. Ready to send.")
         compare(review.buttonText, "Send")
         verify(button.enabled)
+    }
+
+    function test_partial_success_shows_more_signatures_message() {
+        const wallet = createTemporaryObject(walletComponent, this)
+        verify(wallet !== null)
+        wallet.currentTransactionReviewMessage = "Signed on external signer. More signatures are required."
+
+        const review = createTemporaryObject(reviewComponent, this, {wallet: wallet, canSend: false})
+        verify(review !== null)
+
+        const button = findObjectByName(review, "externalSignerApproveButton")
+        verify(button !== null)
+
+        wallet.externalSignerApprovalPartiallySucceeded()
+
+        compare(review.reviewState, "partiallySigned")
+        compare(review.statusText, "Signed on external signer. More signatures are required.")
+        compare(review.buttonText, "More signatures required")
+        verify(!button.enabled)
     }
 
     function test_error_state_retries_approval() {

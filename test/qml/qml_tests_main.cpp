@@ -1197,6 +1197,7 @@ Q_SIGNALS:
     void discardCurrentTransactionCallsChanged();
     void currentTransactionChanged();
     void externalSignerApprovalSucceeded();
+    void externalSignerApprovalPartiallySucceeded();
     void externalSignerApprovalFailed(const QString& message, bool signerNotFound);
     void securityStateChanged();
     void walletInfoChanged();

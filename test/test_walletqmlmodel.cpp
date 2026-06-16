@@ -464,6 +464,7 @@ private Q_SLOTS:
     void discardCurrentTransaction_clearsReviewState();
     void sendImportedPsbtWithPassphraseSignsOnceAndRelocks();
     void externalSignerApprovalSignsImportedPsbtOnlyOnce();
+    void externalSignerApprovalKeepsIncompleteSignedPsbt();
     void importPsbtFromFile_opensForeignUnsignedPsbtForReviewOnly();
     void importPsbtFromFile_broadcastsCompleteForeignMultisigPsbt();
     void importPsbtFromFile_opensUnsignedMultisigPsbtForReviewOnly();
@@ -2202,6 +2203,66 @@ void WalletQmlModelTests::externalSignerApprovalSignsImportedPsbtOnlyOnce()
     QVERIFY(model->sendTransaction());
     QCOMPARE(wallet->commit_calls, 1);
     QCOMPARE(std::count(wallet->fill_psbt_sign_args.begin(), wallet->fill_psbt_sign_args.end(), true), 1);
+}
+
+void WalletQmlModelTests::externalSignerApprovalKeepsIncompleteSignedPsbt()
+{
+    FakePasswordWallet* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+    wallet->private_keys_disabled = true;
+    wallet->external_signer = true;
+
+    const PartiallySignedTransaction psbt{MakeReviewPsbt()};
+    const COutPoint owned_outpoint{psbt.tx->vin[0].prevout};
+    wallet->txin_is_mine_fn = [owned_outpoint](const CTxIn& txin) {
+        return txin.prevout == owned_outpoint ? wallet::ISMINE_SPENDABLE : wallet::ISMINE_NO;
+    };
+
+    const std::vector<unsigned char> signer_key{0x53};
+    const std::vector<unsigned char> signer_value{0x99};
+    wallet->fill_psbt_fn = [wallet, signer_key, signer_value](std::optional<int>,
+                                                              bool sign,
+                                                              bool,
+                                                              size_t* n_signed,
+                                                              PartiallySignedTransaction& psbt,
+                                                              bool& complete) {
+        wallet->fill_psbt_sign_args.push_back(sign);
+        if (n_signed) {
+            *n_signed = 1;
+        }
+        if (sign) {
+            psbt.inputs[0].unknown[signer_key] = signer_value;
+        }
+        complete = false;
+        return std::nullopt;
+    };
+
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString path{WritePsbt(psbt, temp_dir, QStringLiteral("incomplete-external.psbt"))};
+    QVERIFY(!path.isEmpty());
+    QCOMPARE(model->importPsbtFromFile(path), WalletQmlModel::PsbtImportResult::WalletCanSign);
+
+    QSignalSpy succeeded_spy{model.get(), &WalletQmlModel::externalSignerApprovalSucceeded};
+    QSignalSpy partially_succeeded_spy{model.get(), &WalletQmlModel::externalSignerApprovalPartiallySucceeded};
+    QSignalSpy failed_spy{model.get(), &WalletQmlModel::externalSignerApprovalFailed};
+    model->approveExternalSignerTransaction();
+
+    QCOMPARE(succeeded_spy.count(), 0);
+    QCOMPARE(partially_succeeded_spy.count(), 1);
+    QCOMPARE(failed_spy.count(), 0);
+    QVERIFY(!model->currentTransactionCanSend());
+    QVERIFY(!model->currentTransactionCanBroadcast());
+    QCOMPARE(model->currentTransactionReviewMessage(), QString("Signed on external signer. More signatures are required."));
+    QCOMPARE(std::count(wallet->fill_psbt_sign_args.begin(), wallet->fill_psbt_sign_args.end(), true), 1);
+
+    const QString saved_path{temp_dir.filePath(QStringLiteral("saved-incomplete-external.psbt"))};
+    QCOMPARE(model->saveCurrentTransactionAsPsbt(saved_path), QString{});
+
+    PartiallySignedTransaction saved;
+    QCOMPARE(PsbtQmlModel::LoadPsbtFromFile(saved_path, saved), QString{});
+    QVERIFY(saved.inputs[0].unknown.contains(signer_key));
+    QCOMPARE(saved.inputs[0].unknown.at(signer_key), signer_value);
 }
 
 void WalletQmlModelTests::importPsbtFromFile_broadcastsCompleteForeignMultisigPsbt()

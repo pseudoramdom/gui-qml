@@ -242,6 +242,7 @@ Q_SIGNALS:
     void feeEstimateRevisionChanged();
     void walletIsLoadedChanged();
     void externalSignerApprovalSucceeded();
+    void externalSignerApprovalPartiallySucceeded();
     void externalSignerApprovalFailed(const QString& message, bool signerNotFound);
     void displayUnitChanged(int unit);
     void securityStateChanged();
