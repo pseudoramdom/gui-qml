@@ -253,6 +253,12 @@ Q_SIGNALS:
     void addressListChanged();
 
 private:
+    enum class CurrentTransactionSource {
+        None,
+        SendDraft,
+        ImportedPsbt,
+    };
+
     void initializeFeeEstimator();
     void requestFeeEstimatesNow();
     void applyFeeEstimates(const QHash<unsigned int, CAmount>& estimates,
@@ -289,6 +295,7 @@ private:
     WalletQmlModelTransaction* m_current_transaction{nullptr};
     wallet::CCoinControl m_coin_control;
     std::unique_ptr<PartiallySignedTransaction> m_current_psbt;
+    CurrentTransactionSource m_current_transaction_source{CurrentTransactionSource::None};
     bool m_current_transaction_can_send{false};
     bool m_current_transaction_can_broadcast{false};
     QString m_current_transaction_review_message;

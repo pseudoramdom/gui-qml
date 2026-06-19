@@ -1606,6 +1606,7 @@ bool WalletQmlModel::prepareTransactionInternal(std::optional<SecureString> pass
         const CTransactionRef& newTx = *result;
         m_current_transaction = new WalletQmlModelTransaction(m_send_recipients, this);
         m_current_psbt.reset();
+        m_current_transaction_source = CurrentTransactionSource::SendDraft;
         m_current_transaction_can_send = true;
         m_current_transaction_can_broadcast = false;
         m_current_transaction_review_message.clear();
@@ -1749,6 +1750,7 @@ bool WalletQmlModel::broadcastCurrentTransaction()
 
     m_current_transaction->setWtx(tx);
     m_current_psbt.reset();
+    m_current_transaction_source = CurrentTransactionSource::None;
     m_current_transaction_can_send = false;
     m_current_transaction_can_broadcast = false;
     m_current_transaction_review_message.clear();
@@ -1830,6 +1832,7 @@ bool WalletQmlModel::sendTransactionInternal(std::optional<SecureString> passphr
         m_wallet->commitTransaction(signed_tx, value_map, order_form);
         m_current_transaction->setWtx(signed_tx);
         m_current_psbt.reset();
+        m_current_transaction_source = CurrentTransactionSource::None;
         m_current_transaction_can_send = true;
         m_current_transaction_can_broadcast = false;
         m_current_transaction_review_message.clear();
@@ -1857,6 +1860,7 @@ bool WalletQmlModel::sendTransactionInternal(std::optional<SecureString> passphr
     interfaces::WalletValueMap value_map;
     interfaces::WalletOrderForm order_form;
     m_wallet->commitTransaction(signed_tx, value_map, order_form);
+    m_current_transaction_source = CurrentTransactionSource::None;
 
     clearTransactionStatus();
     clearSelectedCoins();
@@ -1913,6 +1917,9 @@ QString WalletQmlModel::saveCurrentTransactionAsPsbt(const QString& path)
     try {
         if (m_current_psbt) {
             psbtx = *m_current_psbt;
+            if (m_current_transaction_source == CurrentTransactionSource::ImportedPsbt) {
+                return PsbtQmlModel::SavePsbtToFile(psbtx, path);
+            }
             if (!m_current_transaction_can_send) {
                 return PsbtQmlModel::SavePsbtToFile(psbtx, path);
             }
@@ -2003,6 +2010,9 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
     for (const CTxOut& output : analysis_psbt.tx->vout) {
         CTxDestination destination;
         if (!ExtractDestination(output.scriptPubKey, destination)) {
+            if (output.nValue == 0 && output.scriptPubKey.IsUnspendable()) {
+                continue;
+            }
             reason = tr("Only PSBTs with standard address outputs are supported right now.");
             return false;
         }
@@ -2048,11 +2058,8 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
     if (analysis.fee) {
         m_current_transaction->setTransactionFee(*analysis.fee);
     }
-    if (can_send || can_broadcast) {
-        m_current_psbt = std::make_unique<PartiallySignedTransaction>(std::move(analysis_psbt));
-    } else {
-        m_current_psbt = std::make_unique<PartiallySignedTransaction>(psbt);
-    }
+    m_current_psbt = std::make_unique<PartiallySignedTransaction>(psbt);
+    m_current_transaction_source = CurrentTransactionSource::ImportedPsbt;
     m_current_transaction_can_send = can_send;
     m_current_transaction_can_broadcast = can_broadcast;
     m_current_transaction_review_message = review_message;
@@ -2074,6 +2081,7 @@ void WalletQmlModel::discardCurrentTransaction()
     delete m_current_transaction;
     m_current_transaction = nullptr;
     m_current_psbt.reset();
+    m_current_transaction_source = CurrentTransactionSource::None;
     m_current_transaction_can_send = false;
     m_current_transaction_can_broadcast = false;
     m_current_transaction_review_message.clear();
