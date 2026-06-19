@@ -13,6 +13,13 @@ TestCase {
     when: windowShown
     width: 720
     height: 480
+    visible: true
+
+    Item {
+        id: host
+        width: parent.width
+        height: parent.height
+    }
 
     function findObject(root, objectName) {
         if (!root) {
@@ -80,7 +87,7 @@ TestCase {
     }
 
     function test_row_uses_display_amount_and_emits_actions() {
-        const row = createTemporaryObject(rowComponent, this)
+        const row = createTemporaryObject(rowComponent, host)
         verify(row !== null)
 
         const amountText = findObject(row, "addressRowAmountText")
