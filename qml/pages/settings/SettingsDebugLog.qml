@@ -85,7 +85,7 @@ Page {
                         anchors.centerIn: parent
                         source: "image://images/refresh"
                         color: Theme.color.neutral9
-                        size: 24
+                        size: 28
 
                         RotationAnimation on rotation {
                             id: spinAnimation
@@ -128,7 +128,7 @@ Page {
                         anchors.centerIn: parent
                         source: "image://images/export"
                         color: Theme.color.neutral9
-                        size: 24
+                        size: 28
                     }
                 }
 
