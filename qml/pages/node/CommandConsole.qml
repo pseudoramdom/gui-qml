@@ -29,7 +29,25 @@ Page {
         rpcConsoleModel.errorColor   = Theme.color.red
         rpcConsoleModel.keyColor     = consoleKeyColor
     }
-    Component.onCompleted: _pushPalette()
+    // Focus the command input when the console becomes the active view, so the
+    // user can type immediately. Mirrors Core's RPCConsole, which focuses its
+    // line edit when the Console tab is activated. Desktop only: on mobile this
+    // would raise the on-screen keyboard over the output before the user chose to
+    // type. onVisibleChanged covers the desktop nav-bar tab (a StackLayout child
+    // whose visibility toggles); the deferred check in onCompleted covers being
+    // pushed onto a StackView, where visible is already true at completion. The
+    // deferral lets a StackLayout apply its hidden-tab visibility first, so an
+    // inactive tab cannot steal focus at startup.
+    function focusInput() {
+        if (AppMode.isDesktop)
+            inputField.forceActiveFocus()
+    }
+    onVisibleChanged: if (visible) focusInput()
+
+    Component.onCompleted: {
+        _pushPalette()
+        Qt.callLater(function() { if (root.visible) root.focusInput() })
+    }
     Connections {
         target: Theme
         function onDarkChanged() { root._pushPalette() }

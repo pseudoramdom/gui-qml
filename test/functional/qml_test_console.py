@@ -48,7 +48,10 @@ def navigate_to_console(gui):
     )
     gui.click("consoleTabButton")
     gui.wait_for_page("commandConsole", timeout_ms=5000)
-    print("  Navigated to Console page.")
+    # The command input auto-focuses on open (desktop), mirroring Core's
+    # RPCConsole, so the user can type immediately.
+    gui.wait_for_property("consoleInput", "activeFocus", True, timeout_ms=5000)
+    print("  Navigated to Console page; command input auto-focused.")
 
 
 # ── Test cases ────────────────────────────────────────────────────────────────
