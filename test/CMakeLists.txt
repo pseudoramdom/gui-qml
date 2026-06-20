@@ -16,6 +16,7 @@ add_executable(bitcoinqml_unit_tests
   test_blockclockdial.cpp
   test_bitcoinuri.cpp
   test_bitcoinamount.cpp
+  test_debuglogmodel.cpp
   test_desktoptrayiconcontroller.cpp
   test_desktopwindowbehaviormodel.cpp
   test_peerlistmodel.cpp

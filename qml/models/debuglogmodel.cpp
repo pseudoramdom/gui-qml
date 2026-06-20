@@ -375,6 +375,12 @@ void DebugLogModel::buildDisplayLines()
     for (int i = 0; i < filtered.size(); i++)
         filtered[i].lineNumber = QString::number(i + 1);
 
+    // Skip the reset when nothing displayed actually changed. A model reset
+    // forces the (non-virtualised) Repeater viewer to destroy and rebuild every
+    // row delegate on the GUI thread, which freezes the UI; a manual refresh on
+    // an idle log would otherwise pay that cost for no change.
+    if (filtered == m_display_lines) return;
+
     beginResetModel();
     m_display_lines = filtered;
     endResetModel();

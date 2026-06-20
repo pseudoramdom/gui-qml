@@ -85,6 +85,16 @@ private:
         QString content;      // HTML-escaped message text
         qint64  timestamp_ms; // epoch ms, -1 if not parseable
         QString relativeTime; // cached human-readable age
+
+        // Identity for change detection in buildDisplayLines(). relativeTime is
+        // derived (refreshed separately by the relative-time timer) and so is
+        // deliberately excluded.
+        bool operator==(const LogLine& o) const
+        {
+            return lineNumber == o.lineNumber
+                && content == o.content
+                && timestamp_ms == o.timestamp_ms;
+        }
     };
 
     //! Result of a file read performed off the GUI thread. The worker must
