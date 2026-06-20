@@ -5,6 +5,7 @@
 #include <qml/models/desktoptrayiconcontroller.h>
 
 #include <QSignalSpy>
+#include <QWindow>
 #include <QtTest/QtTest>
 
 class DesktopTrayIconControllerTests : public QObject
@@ -15,6 +16,7 @@ private Q_SLOTS:
     void initiallyNotVisible();
     void setVisibleFalseWhenAlreadyHidden_noSignal();
     void setToolTipIsReadable();
+    void showRestoresGeometryCapturedAtHide();
 };
 
 void DesktopTrayIconControllerTests::initiallyNotVisible()
@@ -41,6 +43,27 @@ void DesktopTrayIconControllerTests::setToolTipIsReadable()
     const QString tip{QStringLiteral("Bitcoin Core client [regtest]")};
     controller.setToolTip(tip);
     QCOMPARE(controller.toolTip(), tip);
+}
+
+// Hiding to tray and showing again must preserve the window's size and position.
+// The window manager does not reliably keep geometry across an unmap/map cycle,
+// so the controller captures it on hide and re-applies it on show.
+void DesktopTrayIconControllerTests::showRestoresGeometryCapturedAtHide()
+{
+    DesktopTrayIconController controller;
+    QWindow window;
+    window.setGeometry(120, 130, 480, 360);
+    window.show();
+    controller.setMainWindow(&window);
+
+    const QRect captured = window.geometry();
+    controller.hideMainWindow();
+
+    // Simulate the window manager dropping size/position across the hide.
+    window.setGeometry(0, 0, 200, 200);
+
+    controller.showMainWindow();
+    QTRY_COMPARE(window.geometry(), captured);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

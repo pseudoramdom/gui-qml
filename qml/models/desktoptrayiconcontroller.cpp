@@ -92,13 +92,33 @@ void DesktopTrayIconController::setMainWindow(QWindow* window)
 void DesktopTrayIconController::hideMainWindow()
 {
     if (!m_main_window) return;
+    // Capture geometry before hiding so showMainWindow() can restore it; the
+    // window manager does not reliably preserve size/position across an
+    // unmap/map cycle.
+    m_saved_geometry = m_main_window->geometry();
     m_main_window->hide();
 }
 
 void DesktopTrayIconController::showMainWindow()
 {
     if (!m_main_window) return;
+    // hide() withdraws the window, so the WM forgets its geometry and re-maps it
+    // fresh, unlike minimize, which keeps the window mapped and restores it
+    // natively. Re-impose the saved geometry around the re-map: set the full
+    // geometry before show() (best chance the WM honors the position on map), and
+    // re-assert the size after show(), since a WM that ignores a programmatic
+    // position will often still honor a size request. On Wayland the compositor
+    // controls placement and does not reliably honor either, so restoration there
+    // is best-effort.
+    const QRect target = m_saved_geometry;
+    m_saved_geometry = QRect();
+    if (target.isValid()) {
+        m_main_window->setGeometry(target);
+    }
     m_main_window->show();
+    if (target.isValid()) {
+        m_main_window->resize(target.size());
+    }
     m_main_window->raise();
     m_main_window->requestActivate();
 }

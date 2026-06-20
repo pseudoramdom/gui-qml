@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QPixmap>
+#include <QRect>
 #include <QString>
 #include <QSystemTrayIcon>
 
@@ -54,6 +55,10 @@ private:
     QWindow* m_main_window{nullptr};
     bool m_window_visible{true};
     QPixmap m_base_pixmap;
+    // Geometry captured at hideMainWindow() time and re-applied on the next
+    // showMainWindow(), since the window manager does not reliably preserve it
+    // across a hide/show. Invalid (and ignored) outside a hide→show cycle.
+    QRect m_saved_geometry;
 };
 
 #endif // BITCOIN_QML_MODELS_DESKTOPTRAYICONCONTROLLER_H
