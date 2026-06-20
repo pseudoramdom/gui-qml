@@ -148,7 +148,12 @@ Page {
         width: Math.min(inputField.width, 300)
         height: Math.min(autocompleteList.contentHeight + 8, 200)
         padding: 4
-        closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
+        // Deliberately NOT CloseOnPressOutside: a real mouse press on the submit
+        // button would otherwise close this popup (and clear filteredCommands)
+        // before the button's onClicked fires, so the button could never act on
+        // the highlighted suggestion. Dismissal on outside taps is handled by the
+        // input losing focus (see the TapHandler and inputField.onActiveFocusChanged).
+        closePolicy: Popup.CloseOnEscape
         onClosed: filteredCommands = []
         background: Rectangle {
             color: Theme.color.neutral1
@@ -252,9 +257,12 @@ Page {
                 rightPadding: 0
                 background: Item {}
 
-                // Accept Enter key to submit.
-                Keys.onReturnPressed: submitCommand()
-                Keys.onEnterPressed: submitCommand()
+                // Enter accepts the highlighted autocomplete suggestion when the
+                // popup is open; otherwise it submits the command. This mirrors the
+                // Tab behaviour and avoids submitting the raw half-typed text while a
+                // completion is highlighted.
+                Keys.onReturnPressed: root.acceptHighlightedOrSubmit(event)
+                Keys.onEnterPressed: root.acceptHighlightedOrSubmit(event)
 
                 // Up/Down: navigate autocomplete when popup is open,
                 // otherwise browse command history.
@@ -314,9 +322,12 @@ Page {
                 Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
                 hoverEnabled: true
+                // Don't steal focus from the input on click, so the autocomplete
+                // popup stays open and onClicked can run the highlighted command.
+                focusPolicy: Qt.NoFocus
                 enabled: inputField.text.trim().length > 0 &&
                          (!rpcConsoleModel.executing || inputField.text.trim() === "stop")
-                onClicked: submitCommand()
+                onClicked: runHighlightedOrSubmit()
 
                 background: Rectangle {
                     id: submitBg
@@ -325,12 +336,15 @@ Page {
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }
 
-                contentItem: Icon {
-                    id: submitIcon
-                    source: "image://images/caret-right"
-                    size: 20
-                    color: submitButton.enabled ? Theme.color.neutral9 : Theme.color.neutral4
-                    Behavior on color { ColorAnimation { duration: 150 } }
+                contentItem: Item {
+                    Icon {
+                        id: submitIcon
+                        anchors.centerIn: parent
+                        source: "image://images/caret-right"
+                        size: 20
+                        color: submitButton.enabled ? Theme.color.neutral9 : Theme.color.neutral4
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
                 }
 
                 MouseArea {
@@ -399,11 +413,32 @@ Page {
     TapHandler {
         grabPermissions: PointerHandler.TakeOverForbidden
         onTapped: {
-            var pos = inputField.mapFromItem(root, point.position.x, point.position.y)
-            if (!inputField.contains(pos)) {
-                inputField.focus = false
-            }
+            if (inputField.contains(inputField.mapFromItem(root, point.position.x, point.position.y)))
+                return
+            // Keep focus (and the autocomplete popup) when tapping the submit
+            // button, so it can run the highlighted suggestion.
+            if (submitButton.contains(submitButton.mapFromItem(root, point.position.x, point.position.y)))
+                return
+            inputField.focus = false
         }
+    }
+
+    // Run the highlighted autocomplete suggestion when the popup is open,
+    // otherwise submit whatever is typed. Shared by Enter and the execute button
+    // so both behave the same while the suggestion menu is up; Tab only fills the
+    // suggestion in (for adding arguments). To run a different command, dismiss
+    // the menu first (click away or type past the matches).
+    function runHighlightedOrSubmit() {
+        if (autocompletePopup.visible && filteredCommands.length > 0) {
+            inputField.text = filteredCommands[autocompleteIndex]
+            autocompletePopup.close()
+        }
+        submitCommand()
+    }
+
+    function acceptHighlightedOrSubmit(event) {
+        runHighlightedOrSubmit()
+        event.accepted = true
     }
 
     function submitCommand() {
