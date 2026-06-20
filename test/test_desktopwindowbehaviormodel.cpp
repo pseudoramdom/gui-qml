@@ -33,6 +33,7 @@ private Q_SLOTS:
     void shouldMinimizeWindowOnClose_requiresDesktopAndMinimizeOnClose();
 
     // QSettings persistence
+    void loadSettings_clampsMinimizeToTrayWhenTrayHidden();
     void settings_persistAcrossInstances();
 
 private:
@@ -182,6 +183,26 @@ void DesktopWindowBehaviorModelTests::shouldMinimizeWindowOnClose_requiresDeskto
         model.setMinimizeOnClose(true);
         QCOMPARE(model.shouldMinimizeWindowOnClose(), true);
     }
+}
+
+void DesktopWindowBehaviorModelTests::loadSettings_clampsMinimizeToTrayWhenTrayHidden()
+{
+    // A stale or hand-edited QSettings can hold the otherwise unreachable
+    // combination tray-hidden + minimize-to-tray. Loading must clamp
+    // minimizeToTray to false and rewrite the persisted value.
+    QSettings settings;
+    settings.setValue("fHideTrayIcon", true);
+    settings.setValue("fMinimizeToTray", true);
+    settings.sync();
+
+    DesktopWindowBehaviorModel model(/*desktop_platform=*/true);
+
+    QCOMPARE(model.showTrayIcon(), false);
+    QCOMPARE(model.minimizeToTray(), false);
+    QCOMPARE(model.shouldHideToTrayOnMinimize(), false);
+
+    QSettings updated_settings;
+    QCOMPARE(updated_settings.value("fMinimizeToTray", true).toBool(), false);
 }
 
 void DesktopWindowBehaviorModelTests::settings_persistAcrossInstances()

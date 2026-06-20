@@ -11,7 +11,15 @@ void DesktopWindowBehaviorModel::loadFromSettings()
     QSettings settings;
     // fHideTrayIcon stores the inverse of showTrayIcon (default: show = true → hide = false)
     m_show_tray_icon = !settings.value(KEY_HIDE_TRAY_ICON, false).toBool();
-    m_minimize_to_tray = settings.value(KEY_MINIMIZE_TO_TRAY, false).toBool();
+    // Treat persisted settings as untrusted external input: a stale or manually
+    // edited QSettings could hold minimizeToTray=true while the tray is hidden,
+    // a state unreachable through the UI. Clamp it and rewrite the bad value so
+    // runtime can never observe showTrayIcon=false && minimizeToTray=true.
+    const bool raw_minimize_to_tray = settings.value(KEY_MINIMIZE_TO_TRAY, false).toBool();
+    m_minimize_to_tray = raw_minimize_to_tray && m_show_tray_icon;
+    if (raw_minimize_to_tray && !m_show_tray_icon) {
+        settings.setValue(KEY_MINIMIZE_TO_TRAY, false);
+    }
     m_minimize_on_close = settings.value(KEY_MINIMIZE_ON_CLOSE, false).toBool();
 
     if (!m_desktop_platform) {
