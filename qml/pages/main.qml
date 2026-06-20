@@ -68,6 +68,18 @@ ApplicationWindow {
         const prev = m_prevVisibility
         m_prevVisibility = visibility
 
+        // Capture geometry once the window reaches its normal (Windowed) state.
+        // The onWidthChanged/onHeightChanged writes only fire on a *change*, and
+        // the size is set before the window is Windowed (the onCompleted self-
+        // assign that breaks the size binding doesn't re-trigger them), so without
+        // this the initial size is never saved (windowWidth/Height stay 0).
+        if (visibility === Window.Windowed) {
+            windowSettings.windowX = x
+            windowSettings.windowY = y
+            windowSettings.windowWidth = width
+            windowSettings.windowHeight = height
+        }
+
         if (visibility === Window.Minimized &&
                 prev !== Window.Hidden &&
                 desktopWindowBehaviorModel.shouldHideToTrayOnMinimize()) {
