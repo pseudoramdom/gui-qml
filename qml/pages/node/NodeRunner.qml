@@ -6,6 +6,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../../controls"
+import "../../controls/utils.js" as Utils
 import "../../components"
 
 Page {
@@ -34,7 +35,7 @@ Page {
                 }
                 IconButton {
                     objectName: "peersTabButton"
-                    iconSource: "image://images/node-1-connection"
+                    iconSource: Utils.nodeConnectionIcon(nodeModel.numPeers)
                     iconColor: Theme.color.neutral7
                     hoverColor: Theme.color.neutral9
                     size: 34

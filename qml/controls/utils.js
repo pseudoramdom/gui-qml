@@ -4,6 +4,18 @@
 
 // utils.js
 
+// Map a live peer/connection count to one of the five node-connection icon
+// tiers (image provider aliases node-0-connections .. node-4-connections),
+// each showing one more filled node than the last. Thresholds mirror the Qt
+// Widgets GUI's connection-strength icon (connect_0 .. connect_4).
+function nodeConnectionIcon(numPeers) {
+    if (numPeers <= 0) return "image://images/node-0-connections"
+    if (numPeers <= 3) return "image://images/node-1-connection"
+    if (numPeers <= 6) return "image://images/node-2-connections"
+    if (numPeers <= 9) return "image://images/node-3-connections"
+    return "image://images/node-4-connections"
+}
+
 function formatRelativeTime(isoString) {
     if (!isoString) return ""
     var then = new Date(isoString)

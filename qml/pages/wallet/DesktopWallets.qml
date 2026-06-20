@@ -215,7 +215,7 @@ Page {
             NavigationTab {
                 id: peersTabButton
                 objectName: "peersTabButton"
-                iconSource: "image://images/node-1-connection"
+                iconSource: Utils.nodeConnectionIcon(nodeModel.numPeers)
                 iconColor: Theme.color.neutral7
                 Layout.preferredWidth: 30
                 property int index: 4

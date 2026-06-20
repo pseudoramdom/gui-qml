@@ -203,7 +203,11 @@
         <file alias="lock">res/icons/lock.png</file>
         <file alias="minus">res/icons/minus.png</file>
         <file alias="network-dark">res/icons/network-dark.png</file>
+        <file alias="node-0-connections">res/icons/node-0-connections.png</file>
         <file alias="node-1-connection">res/icons/node-1-connection.png</file>
+        <file alias="node-2-connections">res/icons/node-2-connections.png</file>
+        <file alias="node-3-connections">res/icons/node-3-connections.png</file>
+        <file alias="node-4-connections">res/icons/node-4-connections.png</file>
         <file alias="network-light">res/icons/network-light.png</file>
         <file alias="pending-dark">res/icons/pending-dark.png</file>
         <file alias="pending-light">res/icons/pending-light.png</file>
