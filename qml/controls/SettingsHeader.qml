@@ -103,9 +103,15 @@ Pane {
 
         Pane {
             id: rightSection
+            objectName: "settingsHeaderRightSection"
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            visible: contentItem !== null && contentItem.visible
+            // Gate on the child's existence only. Reading contentItem.visible
+            // here returns the child's *effective* visibility, which includes
+            // this Pane — a self-referential binding that latches to false and
+            // hides the right-side actions (e.g. the debug.log refresh/export
+            // buttons). See NavigationBar2, whose right section is never gated.
+            visible: contentItem !== null
             background: null
             padding: 0
         }
