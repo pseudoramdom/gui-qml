@@ -62,16 +62,21 @@ Page {
     ListModel { id: sidebarModel }
 
     Component.onCompleted: {
-        sidebarModel.append({ label: qsTr("About"), section: "about", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Display"), section: "display", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Wallet"), section: "wallet", alwaysVisible: false })
-        sidebarModel.append({ label: qsTr("Storage"), section: "storage", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("External Signer"), section: "externalsigner", alwaysVisible: false })
-        sidebarModel.append({ label: qsTr("Connection"), section: "connection", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Network Traffic"), section: "networktraffic", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Mempool Information"), section: "mempool", alwaysVisible: false })
-        sidebarModel.append({ label: qsTr("Debug Log"), section: "debuglog", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Window Behavior"), section: "windowbehavior", alwaysVisible: false })
+        // Display order and grouping follow the desktop settings design
+        // (BitcoinDesign/Bitcoin-Core-App#163). Row order is kept in lockstep
+        // with the contentStack page order below, so a row's index is its page
+        // index. Peers and Console live on the main nav bar, not in settings.
+        sidebarModel.append({ label: qsTr("Wallet"), section: "wallet", group: "wallet", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("External Signer"), section: "externalsigner", group: "wallet", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Display"), section: "display", group: "display", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Window Behavior"), section: "windowbehavior", group: "display", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Storage"), section: "storage", group: "display", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Connection"), section: "connection", group: "network", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Network Traffic"), section: "networktraffic", group: "network", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Mempool Information"), section: "mempool", group: "network", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Debug Log"), section: "debuglog", group: "developer", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("About"), section: "about", group: "about", alwaysVisible: true })
+        root.selectFirstVisibleSection()
     }
 
     function isSectionVisible(index) {
@@ -84,6 +89,26 @@ Page {
         if (item.section === "windowbehavior")
             return AppMode.isDesktop
         return true
+    }
+
+    // Land on the first visible row so node-only mode (where Wallet/External
+    // Signer are hidden) never opens on a hidden section.
+    function selectFirstVisibleSection() {
+        for (var i = 0; i < sidebarModel.count; i++) {
+            if (isSectionVisible(i)) { root.currentSection = i; return }
+        }
+    }
+
+    // True when this row begins a new group relative to the previous *visible*
+    // row, so the delegate can add leading space between groups while skipping
+    // hidden rows.
+    function isFirstVisibleInGroup(index) {
+        var group = sidebarModel.get(index).group
+        for (var j = index - 1; j >= 0; j--) {
+            if (!isSectionVisible(j)) continue
+            return sidebarModel.get(j).group !== group
+        }
+        return false
     }
 
     contentItem: RowLayout {
@@ -104,10 +129,12 @@ Page {
                     objectName: "settings_" + model.section
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
+                    Layout.topMargin: root.isFirstVisibleInGroup(index) ? 16 : 0
                     visible: root.isSectionVisible(index)
                     hoverEnabled: AppMode.isDesktop
                     focusPolicy: Qt.TabFocus
-                    rightPadding: 20
+                    leftPadding: 16
+                    rightPadding: 16
                     Accessible.name: model.label
                     Accessible.role: Accessible.ListItem
 
@@ -115,13 +142,20 @@ Page {
 
                     background: Item {
                         Rectangle {
-                            id: indicator
-                            width: 3
-                            height: parent.height - 8
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: Theme.color.orange
-                            visible: root.currentSection === index
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            anchors.topMargin: 2
+                            anchors.bottomMargin: 2
+                            radius: 8
+                            // Highlight the selected row with a filled pill rather
+                            // than an accent bar; a fainter fill marks hover.
+                            color: root.currentSection === index
+                                ? Theme.color.neutral3
+                                : parent.parent.hovered
+                                    ? Theme.color.neutral2
+                                    : "transparent"
+                            Behavior on color { ColorAnimation { duration: 150 } }
                         }
                         FocusBorder {
                             visible: parent.parent.visualFocus
@@ -129,7 +163,8 @@ Page {
                     }
 
                     contentItem: CoreText {
-                        horizontalAlignment: Text.AlignRight
+                        horizontalAlignment: Text.AlignLeft
+                        verticalAlignment: Text.AlignVCenter
                         text: model.label
                         font.pixelSize: 15
                         color: root.currentSection === index
@@ -167,15 +202,10 @@ Page {
             StackLayout {
                 id: contentStack
                 anchors.fill: parent
+                // Content order is kept in lockstep with the sidebar row order
+                // so the selected row maps directly to its page.
                 currentIndex: root.currentSection
 
-                PageStack {
-                    id: aboutStack
-                    initialItem: SettingsAbout {
-                        showBackButton: false
-                    }
-                }
-                SettingsDisplay { showBackButton: false }
                 PageStack {
                     id: walletStack
                     objectName: "walletSettingsStack"
@@ -217,13 +247,20 @@ Page {
                         }
                     }
                 }
-                SettingsStorage { showBackButton: false }
                 SettingsWallet { showBackButton: false }
+                SettingsDisplay { showBackButton: false }
+                SettingsWindowBehavior { showBackButton: false }
+                SettingsStorage { showBackButton: false }
                 SettingsConnection { showBackButton: false }
                 NetworkTraffic { showBackButton: false; showHeader: false }
                 MempoolInformationSettings { showBackButton: false }
                 SettingsDebugLog { showBackButton: false }
-                SettingsWindowBehavior { showBackButton: false }
+                PageStack {
+                    id: aboutStack
+                    initialItem: SettingsAbout {
+                        showBackButton: false
+                    }
+                }
             }
         }
     }

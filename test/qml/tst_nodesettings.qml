@@ -62,12 +62,17 @@ TestCase {
     function test_sidebar_section_switching() {
         const page = createNodeSettingsPage()
 
+        // currentSection is the sidebar row index in the grouped order:
+        // Wallet(0), External Signer(1), Display(2), Window Behavior(3),
+        // Storage(4), Connection(5), Network Traffic(6), Mempool(7),
+        // Debug Log(8), About(9). With the wallet enabled the page lands on
+        // the first visible row, Wallet.
         compare(page.currentSection, 0)
 
         const displayItem = findChild(page, "settings_display")
         verify(displayItem !== null)
         mouseClick(displayItem, displayItem.width / 2, displayItem.height / 2)
-        compare(page.currentSection, 1)
+        compare(page.currentSection, 2)
 
         const connectionItem = findChild(page, "settings_connection")
         verify(connectionItem !== null)

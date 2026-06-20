@@ -156,7 +156,10 @@ def walk_display_settings(gui, checkpoints):
 def walk_storage_settings(gui, checkpoints):
     print("  Opening Storage settings (sidebar)")
     gui.click("settings_storage")
-    gui.wait_for_property("nodeSettingsStack", "currentSection", 3, timeout_ms=SETTINGS_TIMEOUT_MS)
+    # currentSection is the sidebar row index; Storage sits at row 4 in the
+    # grouped sidebar order (Wallet, External Signer, Display, Window Behavior,
+    # Storage, ...).
+    gui.wait_for_property("nodeSettingsStack", "currentSection", 4, timeout_ms=SETTINGS_TIMEOUT_MS)
     checkpoints.checkpoint("storage settings opened", gui)
 
 
