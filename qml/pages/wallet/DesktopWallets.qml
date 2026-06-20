@@ -344,6 +344,9 @@ Page {
         }
         CommandConsole {
             showHeader: false
+            walletName: walletController.isWalletLoaded && walletController.selectedWallet
+                ? walletController.selectedWallet.name
+                : ""
         }
         NodeSettings {
             id: nodeSettings

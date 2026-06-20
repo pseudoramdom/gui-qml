@@ -203,7 +203,7 @@ public:
         : QObject(parent), m_node(node) {}
 
 public Q_SLOTS:
-    void execute(const QString& command)
+    void execute(const QString& command, const QString& wallet_name)
     {
         QString time = QDateTime::currentDateTime().toString("hh:mm:ss");
         try {
@@ -232,7 +232,7 @@ public Q_SLOTS:
             }
 
             std::string result;
-            if (!RpcCommandExecutor::RPCExecuteCommandLine(m_node, result, executableCommand)) {
+            if (!RpcCommandExecutor::RPCExecuteCommandLine(m_node, result, executableCommand, nullptr, wallet_name)) {
                 Q_EMIT resultReady(time, RpcConsoleModel::CMD_ERROR,
                                    tr("Parse error: unbalanced ' or \""));
                 return;
@@ -325,9 +325,10 @@ void RpcConsoleModel::appendFormattedRow(const QString& time, int category, cons
                              WrapColor(prefix + body, color));
 }
 
-void RpcConsoleModel::submitCommand(const QString& command)
+bool RpcConsoleModel::submitCommand(const QString& command, const QString& wallet_name)
 {
-    if (command.trimmed().isEmpty()) return;
+    const QString trimmed_command = command.trimmed();
+    if (trimmed_command.isEmpty()) return false;
 
     // Compute the filtered version to store in history (passwords redacted).
     // Mirrors Qt5's rpcconsole.cpp:994-1004: the fExecute=false parse call must be
@@ -337,17 +338,34 @@ void RpcConsoleModel::submitCommand(const QString& command)
     std::string dummy;
     QString time = QDateTime::currentDateTime().toString("hh:mm:ss");
     try {
-        if (!RpcCommandExecutor::RPCParseCommandLine(nullptr, dummy, command.toStdString() + "\n",
+        if (!RpcCommandExecutor::RPCParseCommandLine(nullptr, dummy, trimmed_command.toStdString() + "\n",
                                                      false, &filtered)) {
             appendFormattedRow(time, CMD_ERROR, tr("Parse error: unbalanced ' or \""));
-            return;
+            return true;
         }
     } catch (const std::runtime_error& e) {
         appendFormattedRow(time, CMD_ERROR,
                            tr("Error: %1").arg(QString::fromStdString(e.what())));
-        return;
+        return true;
     }
     QString filteredCmd = QString::fromStdString(filtered).trimmed();
+
+    // A special case allows requesting shutdown even while a long-running command
+    // is executing, mirroring Core's RPCConsole::on_lineEdit_returnPressed().
+    // "stop" runs synchronously on the calling thread, so it can abort a command
+    // that is blocking the worker, and returns before the request is echoed or
+    // added to history: the GUI shuts down immediately, so that output is never
+    // seen.
+    if (trimmed_command == QLatin1String("stop")) {
+        std::string result;
+        RpcCommandExecutor::RPCExecuteCommandLine(m_node, result, trimmed_command.toStdString());
+        return true;
+    }
+
+    // Keyboard Enter reaches submitCommand() directly, so this guard, not just the
+    // disabled Run button, is what serialises execution: a new command is refused
+    // until the in-flight reply arrives.
+    if (m_executing) return false;
 
     // Add to history (deduplicate consecutive identical entries).
     if (m_history.isEmpty() || m_history.last() != filteredCmd) {
@@ -359,6 +377,21 @@ void RpcConsoleModel::submitCommand(const QString& command)
     m_history_idx = -1;
     m_pending_text.clear();
 
+    // Surface the active wallet context whenever it changes, mirroring Qt Widgets.
+    if (m_last_wallet_name != wallet_name) {
+        if (!wallet_name.isEmpty()) {
+            //: RPC console message shown when a command is run against a specific
+            //: wallet. %1 is the wallet name.
+            appendFormattedRow(time, CMD_REQUEST,
+                               tr("Executing command using \"%1\" wallet").arg(wallet_name));
+        } else {
+            //: RPC console message shown when a command is run without any wallet
+            //: context (the node has no wallet selected).
+            appendFormattedRow(time, CMD_REQUEST, tr("Executing command without any wallet"));
+        }
+        m_last_wallet_name = wallet_name;
+    }
+
     // Append the request line immediately (main thread) so QML sees it before
     // the async reply arrives. Mirrors Qt GUI RPCConsole behaviour.
     appendFormattedRow(time, CMD_REQUEST, filteredCmd);
@@ -367,7 +400,9 @@ void RpcConsoleModel::submitCommand(const QString& command)
 
     // Dispatch to worker thread.
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
-                              Q_ARG(QString, command));
+                              Q_ARG(QString, trimmed_command),
+                              Q_ARG(QString, wallet_name));
+    return true;
 }
 
 QString RpcConsoleModel::browseHistory(int direction, const QString& currentText)

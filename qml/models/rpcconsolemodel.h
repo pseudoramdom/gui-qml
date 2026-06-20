@@ -73,7 +73,8 @@ private:
  *        emitted rows keep their baked-in colours, which is intentional).
  *
  * Invokable from QML:
- *  - submitCommand(command)
+ *  - submitCommand(command, walletName) → bool (false if rejected, e.g. empty or
+ *        refused while another command is executing)
  *  - browseHistory(direction, currentText) → QString
  *  - resetHistoryNavigation()
  *  - clear()
@@ -105,7 +106,7 @@ public:
     QStringList availableCommands() const { return m_available_commands; }
     QAbstractListModel* outputModel() { return &m_output_model; }
 
-    Q_INVOKABLE void submitCommand(const QString& command);
+    Q_INVOKABLE bool submitCommand(const QString& command, const QString& wallet_name = {});
 
     /**
      * Navigate command history.
@@ -151,6 +152,7 @@ private:
     QStringList m_history;
     int m_history_idx{-1};
     QString m_pending_text; // text being edited before browsing history
+    QString m_last_wallet_name; // last wallet context surfaced in the output
 
     QThread m_worker_thread;
     RpcConsoleWorker* m_worker{nullptr};

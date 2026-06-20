@@ -51,6 +51,10 @@ Page {
 
     property bool showHeader: true
 
+    // Wallet context for wallet-scoped RPCs (e.g. getbalance). Empty string runs
+    // commands without a wallet endpoint. Set by the embedding page.
+    property string walletName: ""
+
     header: NavigationBar2 {
         visible: root.showHeader
         leftItem: NavButton {
@@ -310,7 +314,8 @@ Page {
                 Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
                 hoverEnabled: true
-                enabled: !rpcConsoleModel.executing && inputField.text.trim().length > 0
+                enabled: inputField.text.trim().length > 0 &&
+                         (!rpcConsoleModel.executing || inputField.text.trim() === "stop")
                 onClicked: submitCommand()
 
                 background: Rectangle {
@@ -404,8 +409,12 @@ Page {
     function submitCommand() {
         var cmd = inputField.text.trim()
         if (cmd.length === 0) return
-        rpcConsoleModel.submitCommand(cmd)
-        inputField.text = ""
-        filteredCommands = []
+        // Only clear the input if the command was accepted. submitCommand()
+        // returns false when another command is still executing, so a refused
+        // command stays in the field instead of silently vanishing.
+        if (rpcConsoleModel.submitCommand(cmd, root.walletName)) {
+            inputField.text = ""
+            filteredCommands = []
+        }
     }
 }

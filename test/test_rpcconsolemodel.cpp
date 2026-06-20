@@ -12,7 +12,11 @@
 // therefore sufficient.
 
 #include <QtTest/QtTest>
+#include <QMutex>
+#include <QSemaphore>
 #include <QSignalSpy>
+
+#include <atomic>
 
 #include <qml/models/rpcconsolemodel.h>
 
@@ -184,6 +188,81 @@ public:
     }
 };
 
+// RpcTestStubNode whose executeRpc() blocks the worker thread until the test
+// releases it, so the model stays in the executing state deterministically.
+// A timeout backstops the wait so a forgotten release() can never hang the suite.
+class BlockingNode : public RpcTestStubNode
+{
+public:
+    UniValue executeRpc(const std::string&, const UniValue&, const std::string&) override
+    {
+        m_gate.tryAcquire(1, 5000);
+        return {};
+    }
+    void release() { m_gate.release(); }
+
+private:
+    QSemaphore m_gate{0};
+};
+
+// RpcTestStubNode whose long-running command blocks the worker thread until
+// "stop" is executed. "stop" records that it ran and releases the blocked
+// command, modelling shutdown aborting an in-flight RPC. This only works if
+// "stop" runs on the caller's thread: a worker-queued "stop" would sit behind
+// the blocked command and never release it.
+class StopAbortNode : public RpcTestStubNode
+{
+public:
+    UniValue executeRpc(const std::string& method, const UniValue&, const std::string&) override
+    {
+        if (method == "stop") {
+            m_stop_executed = true;
+            m_gate.release();
+            return {};
+        }
+        m_gate.tryAcquire(1, 5000);
+        return {};
+    }
+    bool stopExecuted() const { return m_stop_executed; }
+
+private:
+    QSemaphore m_gate{0};
+    std::atomic<bool> m_stop_executed{false};
+};
+
+// RpcTestStubNode that records the URI executeRpc() is invoked with, so tests can
+// assert that a wallet name is translated into a /wallet/<name> endpoint.
+class UriCapturingNode : public RpcTestStubNode
+{
+public:
+    UniValue executeRpc(const std::string&, const UniValue&, const std::string& uri) override
+    {
+        QMutexLocker lock(&m_mutex);
+        m_last_uri = QString::fromStdString(uri);
+        return {};
+    }
+    QString lastUri()
+    {
+        QMutexLocker lock(&m_mutex);
+        return m_last_uri;
+    }
+
+private:
+    QMutex m_mutex;
+    QString m_last_uri;
+};
+
+// submitCommand() now refuses a new command while one is in flight (matching Qt
+// Widgets), so the asynchronous worker round-trip must complete before the next
+// submit. The stub node's executeRpc() returns instantly, so this settles on the
+// first event-loop pass; a rejected/idle command leaves executing() false and the
+// wait returns immediately.
+static void submitAndSettle(RpcConsoleModel& model, const QString& command)
+{
+    model.submitCommand(command);
+    QTRY_VERIFY(!model.executing());
+}
+
 class RpcConsoleModelTests : public QObject
 {
     Q_OBJECT
@@ -194,6 +273,9 @@ private Q_SLOTS:
     void historyDeduplicatesConsecutiveDuplicates();
     void historyTruncatesAtMax();
     void resetHistoryNavigationClearsState();
+    void submitRefusedWhileExecuting();
+    void stopRunsSynchronouslyWhileExecuting();
+    void walletNameScopesRpcToWalletUri();
     void outputTruncatedWhenResultTooLong();
     void jsonReplyKeyColoringSkipsStringsContainingColons();
     void availableCommandsIncludesHelpVariants();
@@ -204,12 +286,11 @@ void RpcConsoleModelTests::historyNavigationOldestToNewest()
     RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
-    // submitCommand dispatches to the worker via QueuedConnection — with no
-    // event loop that slot never fires, so only the synchronous history append
-    // and CMD_REQUEST emit happen.
-    model.submitCommand("cmd_a");
-    model.submitCommand("cmd_b");
-    model.submitCommand("cmd_c");
+    // Each command must settle before the next, since submitCommand() refuses a
+    // new command while one is executing.
+    submitAndSettle(model, "cmd_a");
+    submitAndSettle(model, "cmd_b");
+    submitAndSettle(model, "cmd_c");
 
     // Navigate backward (direction=1 → older)
     QCOMPARE(model.browseHistory(1, ""), QString("cmd_c"));
@@ -232,8 +313,8 @@ void RpcConsoleModelTests::historyNavigationRestoresPendingText()
     RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
-    model.submitCommand("getblockcount");
-    model.submitCommand("help");
+    submitAndSettle(model, "getblockcount");
+    submitAndSettle(model, "help");
 
     const QString pending = "getblock";
     QCOMPARE(model.browseHistory(1, pending), QString("help"));
@@ -248,10 +329,10 @@ void RpcConsoleModelTests::historyDeduplicatesConsecutiveDuplicates()
     RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
-    model.submitCommand("getblockcount");
-    model.submitCommand("getblockcount"); // duplicate — should not be added
-    model.submitCommand("getblockcount"); // duplicate — should not be added
-    model.submitCommand("help");
+    submitAndSettle(model, "getblockcount");
+    submitAndSettle(model, "getblockcount"); // duplicate — should not be added
+    submitAndSettle(model, "getblockcount"); // duplicate — should not be added
+    submitAndSettle(model, "help");
 
     // History should be: [getblockcount, help]
     QCOMPARE(model.browseHistory(1, ""), QString("help"));
@@ -267,7 +348,7 @@ void RpcConsoleModelTests::historyTruncatesAtMax()
 
     // Submit 51 unique commands — only the last 50 should be kept.
     for (int i = 0; i < 51; ++i) {
-        model.submitCommand(QString("cmd_%1").arg(i));
+        submitAndSettle(model, QString("cmd_%1").arg(i));
     }
 
     // Navigate to oldest: should be cmd_1 (cmd_0 was evicted), newest cmd_50.
@@ -284,8 +365,8 @@ void RpcConsoleModelTests::resetHistoryNavigationClearsState()
     RpcTestStubNode mock;
     RpcConsoleModel model{mock};
 
-    model.submitCommand("getblockcount");
-    model.submitCommand("help");
+    submitAndSettle(model, "getblockcount");
+    submitAndSettle(model, "help");
 
     // Start navigating
     QCOMPARE(model.browseHistory(1, "typing..."), QString("help"));
@@ -293,6 +374,64 @@ void RpcConsoleModelTests::resetHistoryNavigationClearsState()
     // Reset — next browseHistory should restart from the top
     model.resetHistoryNavigation();
     QCOMPARE(model.browseHistory(1, ""), QString("help"));
+}
+
+void RpcConsoleModelTests::submitRefusedWhileExecuting()
+{
+    BlockingNode mock;
+    RpcConsoleModel model{mock};
+
+    // First command occupies the worker thread and blocks there.
+    QVERIFY(model.submitCommand("waitfornewblock"));
+    QVERIFY(model.executing());
+
+    // A second, non-"stop" command must be refused while one is in flight, so
+    // keyboard Enter cannot queue commands behind the disabled Run button.
+    QVERIFY(!model.submitCommand("getblockcount"));
+
+    // Let the worker finish and the model settle.
+    mock.release();
+    QTRY_VERIFY(!model.executing());
+
+    // The refused command never entered history — only the first remains.
+    QCOMPARE(model.browseHistory(1, ""), QString("waitfornewblock"));
+    QCOMPARE(model.browseHistory(1, ""), QString("waitfornewblock")); // clamped: no 2nd entry
+}
+
+void RpcConsoleModelTests::stopRunsSynchronouslyWhileExecuting()
+{
+    StopAbortNode mock;
+    RpcConsoleModel model{mock};
+
+    // A long-running command blocks the worker thread.
+    QVERIFY(model.submitCommand("waitfornewblock"));
+    QVERIFY(model.executing());
+
+    // "stop" is exempt from the executing guard and runs synchronously on the
+    // calling thread (matching Core), so its effect is already visible here
+    // without spinning the event loop. A worker-queued "stop" would not have run
+    // yet, since the worker is blocked on the in-flight command.
+    QVERIFY(model.submitCommand("stop"));
+    QVERIFY(mock.stopExecuted());
+
+    // The synchronous "stop" released the blocked command, so the model settles.
+    QTRY_VERIFY(!model.executing());
+}
+
+void RpcConsoleModelTests::walletNameScopesRpcToWalletUri()
+{
+    UriCapturingNode mock;
+    RpcConsoleModel model{mock};
+
+    // A non-empty wallet name is percent-encoded into a /wallet/<name> endpoint.
+    model.submitCommand("getwalletinfo", "my wallet");
+    QTRY_VERIFY(!model.executing());
+    QCOMPARE(mock.lastUri(), QString("/wallet/my%20wallet"));
+
+    // An empty wallet name runs the command without a wallet endpoint.
+    model.submitCommand("getblockcount", "");
+    QTRY_VERIFY(!model.executing());
+    QCOMPARE(mock.lastUri(), QString());
 }
 
 void RpcConsoleModelTests::outputTruncatedWhenResultTooLong()
