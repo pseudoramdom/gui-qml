@@ -287,7 +287,7 @@ Page {
             // DebugLogModel renders newest-first at the top, so y > 0 means
             // "scrolled away from the newest entries" — which is exactly when
             // the "N new entries" pill should be offered.
-            onScrolled: {
+            onScrolled: function(y) {
                 root.userIsScrolled = (y > 0)
                 if (logView.atTop && root.pendingNewLines > 0) {
                     root.pendingNewLines = 0
