@@ -97,6 +97,16 @@ Q_IMPORT_PLUGIN(QtQuickControls2Plugin)
 Q_IMPORT_PLUGIN(QtQuickTemplates2Plugin)
 #endif
 
+// Qt emits "OpenType support missing for ..." warnings when BitcoinCoreSans
+// lacks glyphs for a script and Qt falls back to another font. These are
+// harmless and noisy, so treat them like debug output rather than printing
+// them unconditionally. Defined at global scope (not in the anonymous
+// namespace below) so the classification can be unit tested.
+bool IsBenignQtFontWarning(const QString& msg)
+{
+    return msg.startsWith(QLatin1String("OpenType support missing for"));
+}
+
 namespace {
 void SetupUIArgs(ArgsManager& argsman)
 {
@@ -161,7 +171,7 @@ void RecordStartupWarning(QStringList& startup_warnings, const bilingual_str& me
 void DebugMessageHandler(QtMsgType type, const QMessageLogContext& context, const QString& msg)
 {
     Q_UNUSED(context);
-    if (type == QtDebugMsg) {
+    if (type == QtDebugMsg || (type == QtWarningMsg && IsBenignQtFontWarning(msg))) {
         LogDebug(BCLog::QT, "GUI: %s\n", msg.toStdString());
     } else {
         LogPrintf("GUI: %s\n", msg.toStdString());
