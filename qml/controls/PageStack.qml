@@ -1,4 +1,4 @@
-// Copyright (c) 2024 The Bitcoin Core developers
+// Copyright (c) 2024-2026 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,7 +18,7 @@ StackView {
     pushEnter: Transition {
         NumberAnimation {
             property: vertical ? "y" : "x"
-            from: vertical ? parent.height : parent.width
+            from: parent ? (vertical ? parent.height : parent.width) : 0
             to: 0
             duration: 500
             easing.type: Easing.InOutCubic
@@ -28,7 +28,7 @@ StackView {
         NumberAnimation {
             property: vertical ? "y" : "x"
             from: 0
-            to: vertical ? -parent.height : -parent.width
+            to: parent ? (vertical ? -parent.height : -parent.width) : 0
             duration: 500
             easing.type: Easing.InOutCubic
         }
@@ -36,7 +36,7 @@ StackView {
     popEnter: Transition {
         NumberAnimation {
             property: vertical ? "y" : "x"
-            from: vertical ? -parent.height : -parent.width
+            from: parent ? (vertical ? -parent.height : -parent.width) : 0
             to: 0
             duration: 500
             easing.type: Easing.InOutCubic
@@ -46,7 +46,7 @@ StackView {
         NumberAnimation {
             property: vertical ? "y" : "x"
             from: 0
-            to: vertical ? parent.height : parent.width
+            to: parent ? (vertical ? parent.height : parent.width) : 0
             duration: 500
             easing.type: Easing.InOutCubic
         }
