@@ -193,7 +193,8 @@ def prepare_multi_send(gui, first_address, first_amount_btc, second_address, sec
     gui.set_text("sendNoteInput", "Alice's salary")
     gui.wait_for_property("sendReviewButton", "enabled", True, timeout_ms=10000)
     gui.click("sendReviewButton")
-    gui.wait_for_page("multipleSendReviewPage", timeout_ms=10000)
+    gui.wait_for_page("sendReviewPage", timeout_ms=10000)
+    gui.wait_for_property("multipleRecipientsSummary", "visible", True, timeout_ms=10000)
 
 
 def wait_for_send_error(gui, expected_text):
@@ -219,6 +220,24 @@ def assert_amount_text(gui, object_name, expected_amount, expected_unit):
     else:
         expected = f"{expected_amount} {expected_unit}"
         assert text == expected, f"Expected {object_name} to be {expected!r}, got {text!r}"
+
+
+def assert_save_psbt(gui, destination):
+    gui.set_text("sendReviewSavePsbtPathField", destination)
+    gui.click("sendReviewSavePsbtButton")
+    gui.wait_for_property("sendReviewSavePsbtStatus", "text", "Saved.", timeout_ms=10000)
+    gui.wait_for_property("sendReviewPage", "savePsbtError", False, timeout_ms=10000)
+
+    with open(destination, "rb") as psbt_file:
+        assert psbt_file.read(5) == b"psbt\xff", "Saved transaction is not a raw PSBT file"
+
+
+def assert_save_psbt_error(gui, destination):
+    gui.set_text("sendReviewSavePsbtPathField", destination)
+    gui.click("sendReviewSavePsbtButton")
+    gui.wait_for_property("sendReviewPage", "savePsbtError", True, timeout_ms=10000)
+    status = gui.get_text("sendReviewSavePsbtStatus")
+    assert status.startswith("Could not save PSBT:"), f"Unexpected PSBT save error: {status!r}"
 
 
 def assert_address_expand(gui, short_object_name, full_object_name, address, checkpoints=None, label=None):
@@ -263,6 +282,10 @@ def case_single_btc(harness, gui, wallet_name, checkpoints):
     assert_amount_text(gui, "sendReviewAmountField", "1.25000000", "₿")
     assert_unit_suffix(gui, "sendReviewFeeField", "₿")
     assert_unit_suffix(gui, "sendReviewTotalField", "₿")
+    saved_psbt = os.path.join(harness.tmpdir, "review-transaction.psbt")
+    assert_save_psbt(gui, saved_psbt)
+    assert_save_psbt_error(gui, os.path.join(harness.tmpdir, "missing", "transaction.psbt"))
+    checkpoints.checkpoint("single-btc PSBT save success and failure displayed", gui)
     return_to_send_page(gui, "sendReviewBackButton")
 
 
@@ -330,7 +353,7 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
     )
     checkpoints.checkpoint("multi review page displayed", gui)
 
-    assert gui.get_text("multipleSendReviewRecipientCountText") == "There are 2 recipients."
+    assert gui.get_text("sendReviewRecipientCountText") == "There are 2 recipients."
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=0,
@@ -341,6 +364,16 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         row_index=0,
         prop="formattedAddress",
     ) == format_full_address(first_address)
+    assert gui.get_list_item_property(
+        view_object_name="multipleSendReviewRecipientsList",
+        row_index=0,
+        prop="secondaryText",
+    ) == format_short_address(first_address)
+    assert gui.get_list_item_property(
+        view_object_name="multipleSendReviewRecipientsList",
+        row_index=0,
+        prop="secondaryVisible",
+    ) is True
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=0,
@@ -389,7 +422,7 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
     checkpoints.checkpoint("multi review recipient expanded", gui)
     assert_unit_suffix(gui, "multipleSendReviewFeeField", "₿")
     assert_unit_suffix(gui, "multipleSendReviewTotalField", "₿")
-    return_to_send_page(gui, "multipleSendReviewBackButton")
+    return_to_send_page(gui, "sendReviewBackButton")
 
 
 def run_tests(args):

@@ -8,7 +8,7 @@ import QtQuick.Layouts 1.15
 
 import "../controls"
 
-OptionPopup {
+ContextMenu {
     id: root
     objectName: "receiveOptionsPopup"
 
@@ -22,80 +22,56 @@ OptionPopup {
     signal deleteFromHistory()
     signal viewAddressHistory()
 
-    implicitWidth: 300
-    implicitHeight: columnLayout.implicitHeight + 20
-
-    clip: true
     modal: true
     dim: false
 
-    ColumnLayout {
-        id: columnLayout
-        anchors.centerIn: parent
-        anchors.margins: 10
-        spacing: 5
+    ContextMenuToggle {
+        id: nameToggle
+        objectName: "receiveOptionsNameToggle"
+        text: qsTr("Name")
+        checked: true
+    }
 
-        EllipsisMenuToggleItem {
-            id: nameToggle
-            objectName: "receiveOptionsNameToggle"
-            Layout.fillWidth: true
-            text: qsTr("Name")
-            checked: true
-        }
+    ContextMenuToggle {
+        id: messageToggle
+        objectName: "receiveOptionsMessageToggle"
+        text: qsTr("Message")
+        checked: true
+    }
 
-        EllipsisMenuToggleItem {
-            id: messageToggle
-            objectName: "receiveOptionsMessageToggle"
-            Layout.fillWidth: true
-            text: qsTr("Message")
-            checked: true
-        }
+    ContextMenuToggle {
+        id: noteSelfToggle
+        objectName: "receiveOptionsNoteSelfToggle"
+        text: qsTr("Note to self")
+        checked: true
+    }
 
-        EllipsisMenuToggleItem {
-            id: noteSelfToggle
-            objectName: "receiveOptionsNoteSelfToggle"
-            Layout.fillWidth: true
-            text: qsTr("Note to self")
-            checked: true
-        }
+    ContextMenuToggle {
+        id: addressTypeToggle
+        objectName: "receiveOptionsAddressTypeToggle"
+        text: qsTr("Address type")
+    }
 
-        EllipsisMenuToggleItem {
-            id: addressTypeToggle
-            objectName: "receiveOptionsAddressTypeToggle"
-            Layout.fillWidth: true
-            text: qsTr("Address type")
-        }
+    ContextMenuDivider {}
 
-        EllipsisMenuButtonItem {
-            objectName: "receiveOptionsViewAddressHistoryButton"
-            Layout.fillWidth: true
-            text: qsTr("View address history")
-            onClicked: {
-                root.close()
-                root.viewAddressHistory()
-            }
-        }
+    ContextMenuButton {
+        objectName: "receiveOptionsViewAddressHistoryButton"
+        text: qsTr("View address history")
+        onTriggered: root.viewAddressHistory()
+    }
 
-        EllipsisMenuButtonItem {
-            objectName: "receiveOptionsUseAsTemplateButton"
-            Layout.fillWidth: true
-            visible: root.showRequestActions
-            text: qsTr("Use as template")
-            onClicked: {
-                root.close()
-                root.useAsTemplate()
-            }
-        }
+    ContextMenuButton {
+        objectName: "receiveOptionsUseAsTemplateButton"
+        visible: root.showRequestActions
+        text: qsTr("Use as template")
+        onTriggered: root.useAsTemplate()
+    }
 
-        EllipsisMenuButtonItem {
-            objectName: "receiveOptionsDeleteFromHistoryButton"
-            Layout.fillWidth: true
-            visible: root.showRequestActions
-            text: qsTr("Delete from history")
-            onClicked: {
-                root.close()
-                root.deleteFromHistory()
-            }
-        }
+    ContextMenuButton {
+        objectName: "receiveOptionsDeleteFromHistoryButton"
+        visible: root.showRequestActions
+        text: qsTr("Delete from history")
+        role: ContextMenuButton.Destructive
+        onTriggered: root.deleteFromHistory()
     }
 }

@@ -45,12 +45,20 @@
         <file>components/ReceiveOptionsPopup.qml</file>
         <file>components/Tooltip.qml</file>
         <file>components/LabeledValueField.qml</file>
+        <file>components/MultipleRecipientsSummary.qml</file>
+        <file>components/SingleRecipientSummary.qml</file>
         <file>components/WalletSettings.qml</file>
         <file>components/WalletMigrationPopup.qml</file>
         <file>components/WalletPassphrasePopup.qml</file>
         <file>controls/AddWalletButton.qml</file>
         <file>controls/CaretRightIcon.qml</file>
+        <file>controls/ContextMenu.qml</file>
+        <file>controls/ContextMenuButton.qml</file>
+        <file>controls/ContextMenuDivider.qml</file>
+        <file>controls/ContextMenuPicker.qml</file>
+        <file>controls/ContextMenuToggle.qml</file>
         <file>controls/ContinueButton.qml</file>
+        <file>controls/DropdownButton.qml</file>
         <file>controls/CoreCheckBox.qml</file>
         <file>controls/CoreText.qml</file>
         <file>controls/CoreTextField.qml</file>
@@ -65,8 +73,6 @@
         <file>controls/KeyValueRow.qml</file>
         <file>controls/LabeledTextInput.qml</file>
         <file>controls/LabeledCoinControlButton.qml</file>
-        <file>controls/EllipsisMenuButtonItem.qml</file>
-        <file>controls/EllipsisMenuToggleItem.qml</file>
         <file>controls/NavButton.qml</file>
         <file>controls/NavigationBar.qml</file>
         <file>controls/NavigationBar2.qml</file>
@@ -79,7 +85,6 @@
         <file>controls/ProgressIndicator.qml</file>
         <file>controls/QRImage.qml</file>
         <file>controls/qmldir</file>
-        <file>controls/ReceiveOptionsPopup.qml</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>
         <file>controls/Setting.qml</file>
@@ -141,7 +146,6 @@
         <file>pages/wallet/WatchOnlyIntro.qml</file>
         <file>pages/wallet/WatchOnlyXpub.qml</file>
         <file>pages/wallet/DesktopWallets.qml</file>
-        <file>pages/wallet/MultipleSendReview.qml</file>
         <file>pages/wallet/PaymentRequestDetail.qml</file>
         <file>pages/wallet/RequestPayment.qml</file>
         <file>pages/wallet/Send.qml</file>

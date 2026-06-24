@@ -25,15 +25,17 @@ Item {
     signal inputFocusChanged
 
     id: root
-    implicitHeight: input.height
+    implicitHeight: 56
 
     CoreText {
         id: label
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignLeft
-        width: 110
-        font.pixelSize: 18
+        width: 128
+        font: Theme.text.body.font
+        lineHeight: Theme.text.body.lineHeight
+        lineHeightMode: Text.FixedHeight
     }
 
     TextField {
@@ -42,9 +44,7 @@ Item {
         anchors.right: iconContainer.left
         anchors.verticalCenter: parent.verticalCenter
         leftPadding: 0
-        font.family: "BitcoinCoreSans"
-        font.styleName: "Regular"
-        font.pixelSize: 18
+        font: Theme.text.body.font
         color: Theme.color.neutral9
         placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
         background: Item {}

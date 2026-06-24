@@ -226,7 +226,7 @@ def enable_coin_control_and_select_first_coin(gui, checkpoints):
     checkpoints.checkpoint("one input selected", gui)
     gui.click("coinSelectionDoneButton")
     gui.wait_for_page("sendPage", timeout_ms=10000)
-    gui.wait_for_property("sendCoinControlButtonText", "text", "1 input selected", timeout_ms=10000)
+    gui.wait_for_property("sendCoinControlButtonText", "text", "1 coin selected", timeout_ms=10000)
 
 
 def run_test(*, save_screenshots=False, screenshot_root=None):

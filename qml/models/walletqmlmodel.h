@@ -20,6 +20,7 @@
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
 #include <policy/feerate.h>
+#include <psbt.h>
 #include <support/allocators/secure.h>
 #include <wallet/coincontrol.h>
 
@@ -31,13 +32,16 @@
 
 #include <QHash>
 #include <QObject>
+#include <QStringList>
 #include <QThread>
 #include <QTimer>
 #include <QVariantList>
 
 namespace interfaces {
 class Node;
-}
+} // namespace interfaces
+
+class PsbtQmlModel;
 
 class WalletQmlModel : public QObject
 {
@@ -51,6 +55,14 @@ public:
         ExternalSigner,
     };
     Q_ENUM(KeyScheme)
+
+    enum class PsbtImportResult {
+        PsbtUnsupported = 0,
+        WalletCanSign,
+        WalletCannotSign,
+        TransactionAlreadyKnown,
+    };
+    Q_ENUM(PsbtImportResult)
 
 private:
     Q_PROPERTY(QString name READ name NOTIFY nameChanged)
@@ -87,7 +99,11 @@ private:
     Q_PROPERTY(bool canManagePassphrase READ canManagePassphrase CONSTANT)
     Q_PROPERTY(QString transactionError READ transactionError NOTIFY transactionErrorChanged)
     Q_PROPERTY(bool transactionNeedsUnlock READ transactionNeedsUnlock NOTIFY transactionNeedsUnlockChanged)
+    Q_PROPERTY(bool currentTransactionCanSend READ currentTransactionCanSend NOTIFY currentTransactionChanged)
+    Q_PROPERTY(bool currentTransactionCanBroadcast READ currentTransactionCanBroadcast NOTIFY currentTransactionChanged)
+    Q_PROPERTY(QString currentTransactionReviewMessage READ currentTransactionReviewMessage NOTIFY currentTransactionChanged)
     Q_PROPERTY(QString settingsError READ settingsError NOTIFY settingsErrorChanged)
+    Q_PROPERTY(PsbtQmlModel* importedPsbt READ importedPsbt CONSTANT)
 
 public:
     WalletQmlModel(std::unique_ptr<interfaces::Wallet> wallet, interfaces::Node* node = nullptr, QObject* parent = nullptr);
@@ -131,6 +147,8 @@ public:
     Q_INVOKABLE void approveExternalSignerTransaction();
     Q_INVOKABLE bool prepareTransactionWithPassphrase(const QString& passphrase);
     Q_INVOKABLE bool sendTransaction();
+    Q_INVOKABLE bool sendTransactionWithPassphrase(const QString& passphrase);
+    Q_INVOKABLE bool broadcastCurrentTransaction();
     Q_INVOKABLE QVariantList availableReceiveAddressTypes() const;
     Q_INVOKABLE QString defaultReceiveAddressType() const;
     Q_INVOKABLE QString estimatedFeeForTarget(unsigned int target_blocks) const;
@@ -143,6 +161,12 @@ public:
     Q_INVOKABLE void clearSettingsError();
     Q_INVOKABLE void setDefaultReceiveAddressType(const QString& address_type);
     Q_INVOKABLE QString receiveAddressTypeLabel(const QString& address_type) const;
+    Q_INVOKABLE PsbtImportResult importPsbtFromFile(const QString& path);
+    Q_INVOKABLE QString saveCurrentTransactionAsPsbt(const QString& path);
+    Q_INVOKABLE void discardCurrentTransaction();
+    PsbtQmlModel* importedPsbt() const { return m_imported_psbt_model; }
+    interfaces::Wallet* wallet() const { return m_wallet.get(); }
+    interfaces::Node* node() const { return m_node; }
     void removeWallet();
 
     std::set<interfaces::WalletTx> getWalletTxs() const;
@@ -197,7 +221,11 @@ public:
     bool canManagePassphrase() const;
     QString transactionError() const { return m_transaction_error; }
     bool transactionNeedsUnlock() const { return m_transaction_needs_unlock; }
+    bool currentTransactionCanSend() const { return m_current_transaction && m_current_transaction_can_send; }
+    bool currentTransactionCanBroadcast() const { return m_current_transaction && m_current_transaction_can_broadcast; }
+    QString currentTransactionReviewMessage() const { return m_current_transaction_review_message; }
     QString settingsError() const { return m_settings_error; }
+    void setNode(interfaces::Node* node);
 
 Q_SIGNALS:
     void nameChanged();
@@ -214,6 +242,7 @@ Q_SIGNALS:
     void feeEstimateRevisionChanged();
     void walletIsLoadedChanged();
     void externalSignerApprovalSucceeded();
+    void externalSignerApprovalPartiallySucceeded();
     void externalSignerApprovalFailed(const QString& message, bool signerNotFound);
     void displayUnitChanged(int unit);
     void securityStateChanged();
@@ -224,6 +253,12 @@ Q_SIGNALS:
     void addressListChanged();
 
 private:
+    enum class CurrentTransactionSource {
+        None,
+        SendDraft,
+        ImportedPsbt,
+    };
+
     void initializeFeeEstimator();
     void requestFeeEstimatesNow();
     void applyFeeEstimates(const QHash<unsigned int, CAmount>& estimates,
@@ -238,12 +273,13 @@ private:
     bool prepareTransactionInternal(std::optional<SecureString> passphrase);
     bool ensurePaymentRequestDestination();
     bool saveCurrentPaymentRequest();
-    bool sendTransactionInternal();
+    bool sendTransactionInternal(std::optional<SecureString> passphrase = std::nullopt);
     bool unlockForAction(std::optional<SecureString>& passphrase, bool& relock);
     void clearTransactionStatus();
     void setTransactionStatus(const QString& error, bool needs_unlock = false);
     void setSettingsError(const QString& error);
     QString persistedReceiveAddressTypeKey() const;
+    bool tryImportPsbtToReview(const PartiallySignedTransaction& psbt, PsbtImportResult& result, QString& reason);
 
     std::unique_ptr<interfaces::Wallet> m_wallet;
     interfaces::Node* m_node{nullptr};
@@ -258,6 +294,11 @@ private:
     ReceiveRequestHistoryModel* m_receive_requests{nullptr};
     WalletQmlModelTransaction* m_current_transaction{nullptr};
     wallet::CCoinControl m_coin_control;
+    std::unique_ptr<PartiallySignedTransaction> m_current_psbt;
+    CurrentTransactionSource m_current_transaction_source{CurrentTransactionSource::None};
+    bool m_current_transaction_can_send{false};
+    bool m_current_transaction_can_broadcast{false};
+    QString m_current_transaction_review_message;
     QObject* m_fee_estimation_worker{nullptr};
     QThread* m_fee_estimation_thread{nullptr};
     QTimer* m_fee_estimation_timer{nullptr};
@@ -280,6 +321,7 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_transaction_changed;
     std::unique_ptr<interfaces::Handler> m_handler_unload;
     int m_display_unit{0};
+    PsbtQmlModel* m_imported_psbt_model{nullptr};
 };
 
 #endif // BITCOIN_QML_MODELS_WALLETQMLMODEL_H

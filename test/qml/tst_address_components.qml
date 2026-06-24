@@ -13,6 +13,13 @@ TestCase {
     when: windowShown
     width: 720
     height: 480
+    visible: true
+
+    Item {
+        id: host
+        width: parent.width
+        height: parent.height
+    }
 
     function findObject(root, objectName) {
         if (!root) {
@@ -20,6 +27,15 @@ TestCase {
         }
         if (root.objectName === objectName) {
             return root
+        }
+        const extraRoots = []
+        if (root.contentItem) extraRoots.push(root.contentItem)
+        if (root.background) extraRoots.push(root.background)
+        for (let i = 0; i < extraRoots.length; ++i) {
+            const extraMatch = findObject(extraRoots[i], objectName)
+            if (extraMatch) {
+                return extraMatch
+            }
         }
         const objectChildren = root.children || []
         for (let i = 0; i < objectChildren.length; ++i) {
@@ -71,7 +87,7 @@ TestCase {
     }
 
     function test_row_uses_display_amount_and_emits_actions() {
-        const row = createTemporaryObject(rowComponent, this)
+        const row = createTemporaryObject(rowComponent, host)
         verify(row !== null)
 
         const amountText = findObject(row, "addressRowAmountText")
@@ -84,23 +100,29 @@ TestCase {
         })
         const noteButton = findObject(row, "addressRowNoteButton")
         verify(noteButton !== null)
-        noteButton.clicked()
+        mouseClick(noteButton, noteButton.width / 2, noteButton.height / 2)
         verify(editRequested)
 
-        let menuRequested = false
-        row.menuRequested.connect(function(address, label, amount, hasAmount, category, scriptType, used, menuButton) {
-            menuRequested = address === "bcrt1qexampleaddress"
+        let detailsRequested = false
+        row.detailsRequested.connect(function(address, label, amount, hasAmount, category, scriptType, used) {
+            detailsRequested = address === "bcrt1qexampleaddress"
                 && amount === "₿ 0.0"
                 && hasAmount === false
                 && category === "single-use"
                 && scriptType === "P2WPKH"
                 && used === false
-                && menuButton !== null
         })
+
         const menuButton = findObject(row, "addressRowMenuButton")
         verify(menuButton !== null)
-        menuButton.clicked()
-        verify(menuRequested)
+        mouseClick(menuButton, menuButton.width / 2, menuButton.height / 2)
+        tryCompare(row.menu, "opened", true)
+
+        const detailsButton = findObject(row.menu, "addressRowDetailsButton")
+        verify(detailsButton !== null)
+        mouseClick(detailsButton, detailsButton.width / 2, detailsButton.height / 2)
+        verify(detailsRequested)
+        tryCompare(row.menu, "opened", false)
     }
 
     function test_details_has_no_status_row_and_emits_actions() {

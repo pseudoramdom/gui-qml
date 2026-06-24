@@ -81,7 +81,7 @@ Item {
 
                 TapHandler {
                     enabled: root.expandable
-                    onTapped: root.expanded = !root.expanded
+                    onTapped: root.click()
                 }
             }
 

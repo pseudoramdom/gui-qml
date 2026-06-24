@@ -5,11 +5,9 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import org.bitcoincore.qt 1.0
 
-import "../components"
-import "../controls"
-
-OptionPopup {
+ContextMenu {
     id: root
     objectName: "sendOptionsPopup"
 
@@ -17,50 +15,48 @@ OptionPopup {
     property alias multipleRecipientsEnabled: multipleRecipientsToggle.checked
 
     signal openPaymentRequest()
+    signal importPsbtFromFileRequested()
+    signal clearFormRequested()
 
-    implicitWidth: 300
-    implicitHeight: columnLayout.implicitHeight + 20
-
-    clip: true
     modal: true
     dim: false
 
-    ColumnLayout {
-        id: columnLayout
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.topMargin: 5
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
-        spacing: 0
+    ContextMenuButton {
+        objectName: "sendOptionsOpenPaymentRequestButton"
+        text: qsTr("Open payment request")
+        autoClose: true
+        onTriggered: root.openPaymentRequest()
+    }
 
-        EllipsisMenuButtonItem {
-            objectName: "sendOptionsOpenPaymentRequestButton"
-            Layout.fillWidth: true
-            text: qsTr("Open payment request")
-            onClicked: {
-                root.close()
-                root.openPaymentRequest()
-            }
-        }
+    ContextMenuDivider {}
 
-        Separator {
-            Layout.fillWidth: true
-        }
+    ContextMenuToggle {
+        id: coinControlToggle
+        objectName: "sendOptionsCoinControlToggle"
+        text: qsTr("Enable Coin control")
+    }
 
-        EllipsisMenuToggleItem {
-            id: coinControlToggle
-            objectName: "sendOptionsCoinControlToggle"
-            Layout.fillWidth: true
-            text: qsTr("Enable Coin control")
-        }
+    ContextMenuToggle {
+        id: multipleRecipientsToggle
+        objectName: "sendOptionsMultipleRecipientsToggle"
+        text: qsTr("Multiple Recipients")
+    }
 
-        EllipsisMenuToggleItem {
-            id: multipleRecipientsToggle
-            objectName: "sendOptionsMultipleRecipientsToggle"
-            Layout.fillWidth: true
-            text: qsTr("Multiple Recipients")
-        }
+    ContextMenuDivider {}
+
+    ContextMenuButton {
+        objectName: "sendImportPsbtFromFileButton"
+        text: qsTr("Import PSBT from file…")
+        iconSource: "qrc:/icons/file"
+        onTriggered: root.importPsbtFromFileRequested()
+    }
+
+    ContextMenuDivider {}
+
+    ContextMenuButton {
+        objectName: "sendClearFormButton"
+        text: qsTr("Clear form")
+        iconSource: "qrc:/icons/cross"
+        onTriggered: root.clearFormRequested()
     }
 }

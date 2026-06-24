@@ -31,32 +31,42 @@ ColumnLayout {
         ? ""
         : (walletModel ? (walletModel.feeEstimateRevision, walletModel.estimatedFeeForTarget(selectedTarget)) : "")
     property bool customFeeRateValid: walletModel ? walletModel.customFeeRateValid : false
-    readonly property int optionSpacing: 8
-    readonly property int detailsSpacing: 4
-    readonly property int selectionColumnWidth: 20
     readonly property int customFeeRateMaximumLength: 12
-    readonly property int estimateColumnWidth: Math.ceil(estimateFontMetrics.advanceWidth("0.00000000 ₿"))
+
+    readonly property var _feePickerModel: {
+        const revision = root.walletModel ? root.walletModel.feeEstimateRevision : 0
+        const wm = root.walletModel
+        const rows = []
+        for (let i = 0; i < feeModel.count; ++i) {
+            const r = feeModel.get(i)
+            const isCustom = r.target < 0
+            rows.push({
+                text: r.feeLabel + " " + r.feeDuration,
+                value: r.target,
+                estimate: !isCustom && wm ? wm.estimatedFeeForTarget(r.target) : "",
+                objectName: "feeSelectionOption" + i,
+                estimateObjectName: "feeSelectionOptionEstimate" + i
+            })
+        }
+        return rows
+    }
 
     signal feeChanged(int target)
     signal includeFeeInAmountToggled(bool checked)
 
     spacing: 12
 
-    FontMetrics {
-        id: estimateFontMetrics
-        font.family: "Inter"
-        font.styleName: "Regular"
-        font.pixelSize: 18
-    }
-
     RowLayout {
         Layout.fillWidth: true
+        Layout.minimumHeight: 56
         spacing: 16
 
         CoreText {
-            Layout.preferredWidth: 110
+            Layout.preferredWidth: 128
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             text: root.customSelected ? qsTr("Fee Rate") : qsTr("Fee")
         }
 
@@ -65,7 +75,9 @@ ColumnLayout {
             objectName: "feeSelectionEstimateLabel"
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.neutral7
             text: root.selectedEstimate
             visible: !root.customSelected
@@ -77,9 +89,7 @@ ColumnLayout {
             Layout.fillWidth: true
             visible: root.customSelected
             leftPadding: 0
-            font.family: "Inter"
-            font.styleName: "Regular"
-            font.pixelSize: 18
+            font: Theme.text.body.font
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
@@ -97,68 +107,35 @@ ColumnLayout {
             }
         }
 
-        Button {
+        DropdownButton {
             id: dropDownButton
             objectName: "feeSelectionDropdownButton"
-            hoverEnabled: true
-            leftPadding: 10
+            text: root.selectedLabel
+            subtitle: root.selectedDuration
+            labelTextStyle: Theme.text.body
+            subtitleTextStyle: Theme.text.body
+            caretSize: 30
             rightPadding: 8
             topPadding: 4
             bottomPadding: 4
             implicitHeight: 32
-
-            HoverHandler {
-                cursorShape: Qt.PointingHandCursor
-            }
-
+            opened: feePopup.visible
             onClicked: feePopup.open()
-
-            contentItem: RowLayout {
-                spacing: 0
-
-                CoreText {
-                    text: root.selectedLabel
-                    font.pixelSize: 18
-                    color: dropDownButton.enabled ? Theme.color.neutral9 : Theme.color.neutral4
-                }
-
-                Item { width: 5 }
-
-                CoreText {
-                    text: root.selectedDuration
-                    font.pixelSize: 18
-                    color: dropDownButton.enabled ? Theme.color.neutral7 : Theme.color.neutral4
-                }
-
-                Icon {
-                    source: "image://images/caret-down-medium-filled"
-                    Layout.preferredWidth: 30
-                    size: 30
-                    color: dropDownButton.enabled ? Theme.color.orange : Theme.color.neutral4
-                }
-            }
-
-            background: Rectangle {
-                id: dropDownButtonBg
-                color: dropDownButton.hovered ? Theme.color.neutral2 : Theme.color.background
-                radius: 6
-
-                Behavior on color {
-                    ColorAnimation { duration: 150 }
-                }
-            }
         }
     }
 
     RowLayout {
         Layout.fillWidth: true
+        Layout.minimumHeight: 56
         spacing: 16
         visible: root.customSelected
 
         CoreText {
-            Layout.preferredWidth: 110
+            Layout.preferredWidth: 128
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             text: qsTr("Fee")
         }
 
@@ -167,218 +144,52 @@ ColumnLayout {
             objectName: "feeSelectionCustomEstimateLabel"
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignLeft
-            font.pixelSize: 18
+            font: Theme.text.body.font
+            lineHeight: Theme.text.body.lineHeight
+            lineHeightMode: Text.FixedHeight
             color: Theme.color.neutral7
             text: root.walletModel ? (root.walletModel.feeEstimateRevision, root.walletModel.estimatedFee) : ""
         }
     }
 
-    Popup {
+    ContextMenu {
         id: feePopup
         objectName: "feeSelectionPopup"
         modal: true
         dim: false
-        width: Math.ceil(Math.max(dropDownButton.implicitWidth + 24, feeList.maxItemImplicitWidth + leftPadding + rightPadding))
-        height: Math.min(feeList.implicitHeight + topPadding + bottomPadding, 300)
         x: dropDownButton.x + dropDownButton.width - width
         y: dropDownButton.height + 6
-        padding: 6
 
-        background: Rectangle {
-            color: Theme.color.background
-            radius: 6
-            border.color: Theme.color.neutral4
+        ContextMenuPicker {
+            id: feePicker
+            objectName: "feeSelectionList"
+            model: root._feePickerModel
+            subtitleRole: "estimate"
+            objectNameRole: "objectName"
+            subtitleObjectNameRole: "estimateObjectName"
+            currentValue: root.customSelected ? -1 : root.selectedTarget
+            onActivated: function(value) {
+                if (root.walletModel) {
+                    root.walletModel.customFeeEnabled = (value === -1)
+                }
+                if (value !== -1) {
+                    root.feeChanged(value)
+                }
+                feePopup.close()
+            }
         }
 
-        contentItem: Column {
-            id: feeList
-            objectName: "feeSelectionList"
-            readonly property int maxItemImplicitWidth: {
-                const feeEstimateRevision = root.walletModel ? root.walletModel.feeEstimateRevision : 0
-                let maxWidth = 0
-                for (let i = 0; i < feeOptionsRepeater.count; ++i) {
-                    const item = feeOptionsRepeater.itemAt(i)
-                    if (item) {
-                        maxWidth = Math.max(maxWidth, item.implicitWidth)
-                    }
-                }
-                maxWidth = Math.max(maxWidth, includeFeeToggleItem.implicitWidth)
-                return Math.ceil(maxWidth)
-            }
-            width: feePopup.availableWidth
-            spacing: 0
+        ContextMenuDivider {}
 
-            function itemAtIndex(index) {
-                return feeOptionsRepeater.itemAt(index)
-            }
-
-            Repeater {
-                id: feeOptionsRepeater
-                model: feeModel
-
-                delegate: ItemDelegate {
-                    id: delegate
-                    objectName: "feeSelectionOption" + index
-                    required property string feeLabel
-                    required property string feeDuration
-                    required property int index
-                    required property int target
-
-                    readonly property bool isCustomOption: target < 0
-                    implicitWidth: delegateContent.implicitWidth + leftPadding + rightPadding
-                    width: feeList.width
-                    height: 44
-                    leftPadding: 12
-                    rightPadding: 12
-                    topPadding: 0
-                    bottomPadding: 0
-
-                    background: Item {
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 6
-                            color: Theme.color.neutral2
-                            visible: delegate.hovered
-                        }
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: delegate.index === feeModel.count - 1 ? 0 : 1
-                            color: Theme.color.neutral4
-                        }
-                    }
-
-                    contentItem: Item {
-                        id: delegateContent
-                        implicitWidth: selectionSlot.width
-                            + root.optionSpacing
-                            + feeDetails.implicitWidth
-                            + (estimateText.visible ? root.optionSpacing + root.estimateColumnWidth : 0)
-                        implicitHeight: Math.max(selectionSlot.height, feeDetails.implicitHeight, estimateText.implicitHeight)
-
-                        Item {
-                            id: selectionSlot
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: root.selectionColumnWidth
-                            height: 20
-
-                            CoreText {
-                                anchors.centerIn: parent
-                                visible: delegate.index === root.selectedIndex
-                                text: "\u2713"
-                                font.pixelSize: 18
-                                color: Theme.color.orange
-                            }
-                        }
-
-                        Row {
-                            id: feeDetails
-                            anchors.left: selectionSlot.right
-                            anchors.leftMargin: root.optionSpacing
-                            anchors.right: estimateText.visible ? estimateText.left : parent.right
-                            anchors.rightMargin: estimateText.visible ? root.optionSpacing : 0
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: root.detailsSpacing
-
-                            CoreText {
-                                text: feeLabel
-                                font.pixelSize: 18
-                                color: Theme.color.neutral9
-                            }
-
-                            CoreText {
-                                text: feeDuration
-                                font.pixelSize: 18
-                                color: Theme.color.neutral7
-                            }
-                        }
-
-                        CoreText {
-                            id: estimateText
-                            objectName: "feeSelectionOptionEstimate" + delegate.index
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !delegate.isCustomOption && text.length > 0
-                            width: visible ? root.estimateColumnWidth : 0
-                            horizontalAlignment: Text.AlignRight
-                            text: delegate.isCustomOption || !root.walletModel
-                                ? ""
-                                : (root.walletModel.feeEstimateRevision, root.walletModel.estimatedFeeForTarget(target))
-                            font.pixelSize: 18
-                            color: Theme.color.neutral7
-                        }
-                    }
-
-                    HoverHandler {
-                        cursorShape: Qt.PointingHandCursor
-                    }
-
-                    onClicked: {
-                        if (root.walletModel) {
-                            root.walletModel.customFeeEnabled = delegate.isCustomOption
-                        }
-                        if (!delegate.isCustomOption) {
-                            root.feeChanged(target)
-                        }
-                        feePopup.close()
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                height: 1
-                color: Theme.color.neutral4
-            }
-
-            ItemDelegate {
-                id: includeFeeToggleItem
-                objectName: "feeSelectionIncludeFeeToggle"
-                implicitWidth: includeFeeToggleContent.implicitWidth + leftPadding + rightPadding
-                width: feeList.width
-                height: 44
-                leftPadding: 12
-                rightPadding: 12
-                topPadding: 0
-                bottomPadding: 0
-
-                background: Item {
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 6
-                        color: Theme.color.neutral2
-                        visible: includeFeeToggleItem.hovered
-                    }
-                }
-
-                contentItem: RowLayout {
-                    id: includeFeeToggleContent
-                    spacing: 12
-
-                    CoreText {
-                        Layout.fillWidth: true
-                        text: qsTr("Include fee in amount")
-                        font.pixelSize: 18
-                        color: Theme.color.neutral9
-                    }
-
-                    OptionSwitch {
-                        enabled: false
-                        checked: root.includeFeeInAmount
-                    }
-                }
-
-                HoverHandler {
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                onClicked: {
-                    root.includeFeeInAmountToggled(!root.includeFeeInAmount)
-                    feePopup.close()
-                }
+        ContextMenuToggle {
+            id: includeFeeToggle
+            objectName: "feeSelectionIncludeFeeToggle"
+            checkable: false
+            text: qsTr("Include fee in amount")
+            checked: root.includeFeeInAmount
+            onClicked: {
+                root.includeFeeInAmountToggled(!root.includeFeeInAmount)
+                feePopup.close()
             }
         }
     }

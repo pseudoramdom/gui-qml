@@ -84,9 +84,9 @@ TestCase {
         verify(control !== null)
 
         const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
+        const picker = findChild(control, "feeSelectionList")
         verify(popup !== null)
-        verify(list !== null)
+        verify(picker !== null)
 
         feeChangedSpy.target = control
         feeChangedSpy.signalName = "feeChanged"
@@ -94,17 +94,16 @@ TestCase {
 
         popup.open()
         tryVerify(function() {
-            return list.itemAtIndex(2) !== null
+            return picker.itemAtIndex(2) !== null
         })
 
-        const lowFeeOption = list.itemAtIndex(2)
+        const lowFeeOption = picker.itemAtIndex(2)
         verify(lowFeeOption !== null)
+        compare(lowFeeOption.objectName, "feeSelectionOption2")
+        compare(lowFeeOption.subtitle, "0.00000250 ₿")
+        verify(findChild(lowFeeOption, "feeSelectionOptionEstimate2") !== null)
 
-        const lowFeeEstimate = findChild(lowFeeOption, "feeSelectionOptionEstimate2")
-        verify(lowFeeEstimate !== null)
-        compare(lowFeeEstimate.text, "0.00000250 ₿")
-
-        lowFeeOption.clicked()
+        mouseClick(lowFeeOption, lowFeeOption.width / 2, lowFeeOption.height / 2)
 
         compare(control.selectedIndex, 2)
         compare(control.selectedLabel, "Low")
@@ -112,73 +111,32 @@ TestCase {
         compare(control.selectedEstimate, "0.00000250 ₿")
         compare(feeChangedSpy.count, 1)
         compare(feeChangedSpy.signalArguments[0][0], 6)
-        compare(popup.visible, false)
+        tryCompare(popup, "visible", false)
     }
 
-    function test_feeSelection_popup_width_handles_estimate_availability() {
+    function test_feeSelection_picker_estimates_react_to_walletModel() {
         const control = createTemporaryObject(feeSelectionComponent, this)
         verify(control !== null)
 
         const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
+        const picker = findChild(control, "feeSelectionList")
         verify(popup !== null)
-        verify(list !== null)
+        verify(picker !== null)
 
         popup.open()
         tryVerify(function() {
-            return list.itemAtIndex(0) !== null
-                && list.itemAtIndex(1) !== null
-                && list.itemAtIndex(2) !== null
+            return picker.itemAtIndex(0) !== null
+                && picker.itemAtIndex(1) !== null
+                && picker.itemAtIndex(2) !== null
         })
 
-        const initialWidth = popup.width
-        verify(initialWidth > 0)
+        compare(picker.itemAtIndex(0).subtitle, "0.00000750 ₿")
+        compare(picker.itemAtIndex(1).subtitle, "0.00000500 ₿")
+        compare(picker.itemAtIndex(2).subtitle, "0.00000250 ₿")
+        compare(picker.itemAtIndex(3).subtitle, "")
 
-        testWalletModel.clearFeeEstimates()
-        tryVerify(function() {
-            return popup.width > 0
-        })
-
-        const widthWithoutEstimates = popup.width
-        verify(widthWithoutEstimates > 0)
-
-        testWalletModel.setFeeEstimate(2, "12345.12345678 ₿")
-
-        tryVerify(function() {
-            return popup.width >= widthWithoutEstimates
-        })
-    }
-
-    function test_feeSelection_popup_estimates_stay_aligned_when_selection_changes() {
-        testWalletModel.targetBlocks = 2
-
-        const control = createTemporaryObject(feeSelectionComponent, this)
-        verify(control !== null)
-
-        const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
-        verify(popup !== null)
-        verify(list !== null)
-
-        popup.open()
-        tryVerify(function() {
-            return list.itemAtIndex(0) !== null
-                && list.itemAtIndex(1) !== null
-                && list.itemAtIndex(2) !== null
-        })
-
-        const highFeeEstimate = findChild(list.itemAtIndex(0), "feeSelectionOptionEstimate0")
-        const defaultFeeEstimate = findChild(list.itemAtIndex(1), "feeSelectionOptionEstimate1")
-        const lowFeeEstimate = findChild(list.itemAtIndex(2), "feeSelectionOptionEstimate2")
-        verify(highFeeEstimate !== null)
-        verify(defaultFeeEstimate !== null)
-        verify(lowFeeEstimate !== null)
-
-        compare(highFeeEstimate.x + highFeeEstimate.width, defaultFeeEstimate.x + defaultFeeEstimate.width)
-        compare(defaultFeeEstimate.x + defaultFeeEstimate.width, lowFeeEstimate.x + lowFeeEstimate.width)
-        verify(highFeeEstimate.width >= highFeeEstimate.contentWidth)
-        verify(defaultFeeEstimate.width >= defaultFeeEstimate.contentWidth)
-        verify(lowFeeEstimate.width >= lowFeeEstimate.contentWidth)
+        testWalletModel.setFeeEstimate(1, "0.00009999 ₿")
+        tryCompare(picker.itemAtIndex(0), "subtitle", "0.00009999 ₿")
     }
 
     function test_feeSelection_current_target_syncs_selected_preset() {
@@ -204,29 +162,26 @@ TestCase {
         verify(control !== null)
 
         const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
+        const picker = findChild(control, "feeSelectionList")
         const presetEstimateLabel = findChild(control, "feeSelectionEstimateLabel")
         const customFeeRateInput = findChild(control, "feeSelectionCustomRateInput")
         const customEstimateLabel = findChild(control, "feeSelectionCustomEstimateLabel")
         verify(popup !== null)
-        verify(list !== null)
+        verify(picker !== null)
         verify(presetEstimateLabel !== null)
         verify(customFeeRateInput !== null)
         verify(customEstimateLabel !== null)
 
         popup.open()
         tryVerify(function() {
-            return list.itemAtIndex(3) !== null
+            return picker.itemAtIndex(3) !== null
         })
 
-        const customOption = list.itemAtIndex(3)
+        const customOption = picker.itemAtIndex(3)
         verify(customOption !== null)
+        compare(customOption.subtitle, "")
 
-        const customOptionEstimate = findChild(customOption, "feeSelectionOptionEstimate3")
-        verify(customOptionEstimate !== null)
-        compare(customOptionEstimate.text, "")
-
-        customOption.clicked()
+        mouseClick(customOption, customOption.width / 2, customOption.height / 2)
 
         compare(control.selectedIndex, 3)
         compare(control.selectedLabel, "sats/vbyte")
@@ -241,21 +196,22 @@ TestCase {
         verify(control !== null)
 
         const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
+        const picker = findChild(control, "feeSelectionList")
         const presetEstimateLabel = findChild(control, "feeSelectionEstimateLabel")
         const customFeeRateInput = findChild(control, "feeSelectionCustomRateInput")
         const customEstimateLabel = findChild(control, "feeSelectionCustomEstimateLabel")
         verify(popup !== null)
-        verify(list !== null)
+        verify(picker !== null)
         verify(presetEstimateLabel !== null)
         verify(customFeeRateInput !== null)
         verify(customEstimateLabel !== null)
 
         popup.open()
         tryVerify(function() {
-            return list.itemAtIndex(3) !== null
+            return picker.itemAtIndex(3) !== null
         })
-        list.itemAtIndex(3).clicked()
+        const customOption = picker.itemAtIndex(3)
+        mouseClick(customOption, customOption.width / 2, customOption.height / 2)
 
         customFeeRateInput.text = "2"
         compare(testWalletModel.customFeeRate, "2")
@@ -268,9 +224,10 @@ TestCase {
 
         popup.open()
         tryVerify(function() {
-            return list.itemAtIndex(2) !== null
+            return picker.itemAtIndex(2) !== null
         })
-        list.itemAtIndex(2).clicked()
+        const lowFeeOption = picker.itemAtIndex(2)
+        mouseClick(lowFeeOption, lowFeeOption.width / 2, lowFeeOption.height / 2)
 
         compare(testWalletModel.customFeeEnabled, false)
         compare(control.selectedIndex, 2)
@@ -285,10 +242,10 @@ TestCase {
         verify(control !== null)
 
         const popup = findChild(control, "feeSelectionPopup")
-        const list = findChild(control, "feeSelectionList")
+        const picker = findChild(control, "feeSelectionList")
         const toggle = findChild(control, "feeSelectionIncludeFeeToggle")
         verify(popup !== null)
-        verify(list !== null)
+        verify(picker !== null)
         verify(toggle !== null)
 
         includeFeeInAmountToggledSpy.target = control
@@ -298,10 +255,10 @@ TestCase {
         popup.open()
         tryCompare(popup, "opened", true)
 
-        toggle.clicked()
+        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
 
         compare(includeFeeInAmountToggledSpy.count, 1)
         compare(includeFeeInAmountToggledSpy.signalArguments[0][0], true)
-        compare(popup.visible, false)
+        tryCompare(popup, "visible", false)
     }
 }

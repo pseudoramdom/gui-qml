@@ -174,6 +174,9 @@ void SendRecipientsListModel::updateTotalAmount()
     for (const auto& recipient : m_recipients) {
         total += recipient->amount()->satoshi();
     }
+    if (m_totalAmount == total) {
+        return;
+    }
     m_totalAmount = total;
     Q_EMIT totalAmountChanged();
 }

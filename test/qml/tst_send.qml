@@ -3,7 +3,9 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 import QtQuick 2.15
+import QtQuick.Window 2.15
 import QtTest 1.2
+import org.bitcoincore.qt 1.0
 import "../../qml/pages/wallet"
 
 TestCase {
@@ -11,6 +13,13 @@ TestCase {
     when: windowShown
     width: 900
     height: 700
+
+    Window {
+        id: testWindow
+        width: 900
+        height: 700
+        visible: true
+    }
 
     Component {
         id: sendComponent
@@ -28,6 +37,9 @@ TestCase {
         testWalletModel.targetBlocks = 2
         testWalletModel.prepareTransactionResult = true
         testWalletModel.sendAmountExhaustsBalance = false
+        testWalletModel.currentTransactionCanSend = true
+        testWalletModel.currentTransactionCanBroadcast = false
+        testWalletModel.currentTransactionReviewMessage = ""
         testSendRecipient.address.setAddress("bcrt1qsendtoaddress")
         testSendRecipient.amount.display = "0.00000000"
         testSendRecipient.label = ""
@@ -35,7 +47,67 @@ TestCase {
         testSendRecipient.isValid = true
         testRecipientsModel.allValid = true
         testRecipientsModel.validationError = ""
+        testRecipientsModel.clearToFront()
+        testRecipientsModel.totalAmountSatoshi = 0
+        optionsModel.displayUnit = BitcoinAmount.BTC
         testCoinsListModel.reset()
+    }
+
+    function test_review_only_psbt_closes_and_discards_on_wallet_change() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const popup = findChild(page, "reviewOnlyPsbtPopup")
+        verify(popup !== null)
+
+        testWalletModel.currentTransactionCanSend = false
+        testWalletModel.currentTransactionReviewMessage = "This wallet cannot sign."
+        const discardCallsBefore = testWalletModel.discardCurrentTransactionCalls
+
+        popup.reviewWallet = testWalletModel
+        popup.open()
+        tryCompare(popup, "opened", true)
+
+        walletController.setSelectedWallet("review-only-wallet-change")
+
+        tryCompare(popup, "opened", false)
+        tryCompare(testWalletModel, "discardCurrentTransactionCalls", discardCallsBefore + 1)
+    }
+
+    function test_successful_psbt_broadcast_shows_confirmation() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const reviewPopup = findChild(page, "reviewOnlyPsbtPopup")
+        const successPopup = findChild(page, "psbtBroadcastSuccessPopup")
+        verify(reviewPopup !== null)
+        verify(successPopup !== null)
+
+        testWalletModel.currentTransactionCanSend = false
+        testWalletModel.currentTransactionCanBroadcast = true
+        reviewPopup.reviewWallet = testWalletModel
+        reviewPopup.open()
+        tryCompare(reviewPopup, "opened", true)
+
+        const broadcastButton = findChild(reviewPopup, "sendReviewBroadcastButton")
+        verify(broadcastButton !== null)
+        tryCompare(broadcastButton, "visible", true)
+        const broadcastCallsBefore = testWalletModel.broadcastCurrentTransactionCalls
+        const discardCallsBefore = testWalletModel.discardCurrentTransactionCalls
+
+        broadcastButton.clicked()
+
+        tryCompare(reviewPopup, "opened", false)
+        tryCompare(testWalletModel, "broadcastCurrentTransactionCalls", broadcastCallsBefore + 1)
+        tryCompare(testWalletModel, "discardCurrentTransactionCalls", discardCallsBefore + 1)
+        tryCompare(successPopup, "opened", true)
+        successPopup.close()
     }
 
     function test_send_has_stable_selectors() {
@@ -54,7 +126,77 @@ TestCase {
         verify(findChild(page, "sendFeeIncludedNoteText") !== null)
         verify(findChild(page, "sendPrepareTransactionError") !== null)
         verify(findChild(page, "sendPrepareTransactionErrorText") !== null)
+        verify(findChild(page, "sendTransactionSectionHeader") !== null)
+        verify(findChild(page, "sendTotalAmountRow") !== null)
+        verify(findChild(page, "sendTotalAmountValue") !== null)
         verify(findChild(page, "sendReviewButton") !== null)
+    }
+
+    function test_send_multiple_recipient_layout_and_total_follow_state() {
+        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        verify(page !== null)
+        page.width = testWindow.width
+        page.height = testWindow.height
+        page.visible = true
+
+        const optionsPopup = findChild(page, "sendOptionsPopup")
+        const recipientsRow = findChild(page, "sendMultipleRecipientsRow")
+        const transactionHeader = findChild(page, "sendTransactionSectionHeader")
+        const totalRow = findChild(page, "sendTotalAmountRow")
+        const totalValue = findChild(page, "sendTotalAmountValue")
+        const addButton = findChild(page, "sendRecipientAddButton")
+        const removeButton = findChild(page, "sendRecipientRemoveButton")
+        const multipleRecipientsToggle = findChild(page, "sendOptionsMultipleRecipientsToggle")
+        verify(optionsPopup !== null)
+        verify(recipientsRow !== null)
+        verify(transactionHeader !== null)
+        verify(totalRow !== null)
+        verify(totalValue !== null)
+        verify(addButton !== null)
+        verify(removeButton !== null)
+        verify(multipleRecipientsToggle !== null)
+
+        try {
+            optionsPopup.multipleRecipientsEnabled = false
+            tryCompare(testRecipientsModel, "count", 1)
+            compare(recipientsRow.visible, false)
+            compare(transactionHeader.visible, false)
+            compare(totalRow.visible, false)
+
+            optionsPopup.open()
+            tryCompare(optionsPopup, "opened", true)
+            mouseClick(
+                multipleRecipientsToggle,
+                multipleRecipientsToggle.width / 2,
+                multipleRecipientsToggle.height / 2)
+            compare(optionsPopup.multipleRecipientsEnabled, true)
+            tryCompare(recipientsRow, "visible", true)
+            tryCompare(transactionHeader, "visible", true)
+            tryCompare(totalRow, "visible", true)
+            optionsPopup.close()
+            tryCompare(optionsPopup, "opened", false)
+
+            compare(testRecipientsModel.count, 2)
+            verify(removeButton.enabled)
+
+            addButton.clicked()
+            compare(testRecipientsModel.count, 3)
+            verify(removeButton.enabled)
+
+            testRecipientsModel.totalAmountSatoshi = 123456789
+            tryCompare(totalValue, "text", "1.23456789 BTC")
+
+            optionsModel.displayUnit = BitcoinAmount.SAT
+            tryCompare(totalValue, "text", "123456789 sats")
+
+            removeButton.clicked()
+            compare(testRecipientsModel.count, 2)
+            removeButton.clicked()
+            compare(testRecipientsModel.count, 1)
+            compare(removeButton.enabled, false)
+        } finally {
+            optionsPopup.multipleRecipientsEnabled = false
+        }
     }
 
     function test_send_continue_button_tracks_recipient_validity() {
@@ -364,11 +506,11 @@ TestCase {
         popup.open()
         tryCompare(popup, "opened", true)
 
-        toggle.clicked()
+        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
 
         compare(testSendRecipient.subtractFeeFromAmount, true)
         tryCompare(testWalletModel, "scheduleFeeEstimatesCalls", callsBefore + 1)
-        compare(popup.visible, false)
+        tryCompare(popup, "visible", false)
     }
 
     function test_send_uri_import_schedules_fee_estimate() {
@@ -391,7 +533,7 @@ TestCase {
         compare(testSendRecipient.address.address, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9")
         compare(testSendRecipient.amount.display, "0.02000000")
         compare(testSendRecipient.label, "uri-label")
-        compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard.")
+        compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard")
         compare(sendPage.paymentRequestIsError, false)
     }
 }
