@@ -79,7 +79,15 @@ Popup {
             horizontalAlignment: Text.AlignHCenter
         }
 
-        RowLayout {
+        // The action buttons live in a Row positioner, not a RowLayout, on
+        // purpose. A Repeater directly inside a Quick Layout hits a Qt 6.4
+        // use-after-free in QGridLayoutEngine when the layout rearranges while
+        // the Repeater is rebuilding a delegate (for example, navigating to the
+        // Send tab resizes the popup, which re-fires its parent-bound width and
+        // rearranges this row). A positioner never hands delegates to the grid
+        // layout engine, so the buttons are given equal widths explicitly.
+        Row {
+            id: actionRow
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
@@ -94,8 +102,7 @@ Popup {
                     readonly property AlertAction alertAction: root.visibleActions[index]
 
                     objectName: alertAction.buttonObjectName
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 0
+                    width: Math.max(0, (actionRow.width - actionRow.spacing * (root.visibleActions.length - 1)) / root.visibleActions.length)
                     text: alertAction.text
                     textColor: alertAction.role === AlertAction.Cancel ? Theme.color.neutral9 : Theme.color.white
                     textHoverColor: textColor
