@@ -19,16 +19,16 @@ ApplicationWindow {
     minimumWidth: 640
     minimumHeight: 665
     color: Theme.color.background
-    visible: true
 
-    // Restore the saved size via initial bindings so it is applied during
-    // construction, before the child Popups build their GridLayouts. Assigning
-    // width/height after the scene is laid out (e.g. in onCompleted) forces a
-    // live relayout that crashes Qt 6.4.x Quick Layouts. The bindings are
-    // broken in Component.onCompleted (self-assign) so the user can still
-    // resize the window freely afterwards.
-    width: windowSettings.windowWidth > 0 ? windowSettings.windowWidth : minimumWidth
-    height: windowSettings.windowHeight > 0 ? windowSettings.windowHeight : minimumHeight
+    // The window starts hidden and is shown at the end of Component.onCompleted,
+    // after the saved size has been applied (below). Applying the size while
+    // hidden, before the first expose, lays the scene out exactly once at the
+    // final size. That avoids the Qt 6.4.x Quick Layouts crash from resizing an
+    // already-laid-out scene, and it avoids a live size binding pinned to
+    // minimumWidth during construction (which loops popup layout on Qt 6.4).
+    visible: false
+    width: minimumWidth
+    height: minimumHeight
 
     Settings {
         id: windowSettings
@@ -233,17 +233,23 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        // Break the size bindings without changing the value (no relayout), so
-        // the user can resize freely while the one-way onWidthChanged/
-        // onHeightChanged writes keep the saved size up to date.
-        width = width
-        height = height
-        // Position can be restored imperatively: moving the window does not
-        // relayout its contents, so it does not hit the layout crash.
+        // Apply the saved geometry once, while the window is still hidden, then
+        // show it. Sizing before the first expose lays the scene out a single
+        // time at the final size: there is no live size binding to oscillate and
+        // no resize of an already-laid-out scene (which crashes Qt 6.4 Quick
+        // Layouts). Position is restored imperatively; moving a window does not
+        // relayout its contents.
+        if (windowSettings.windowWidth > 0) {
+            width = windowSettings.windowWidth
+        }
+        if (windowSettings.windowHeight > 0) {
+            height = windowSettings.windowHeight
+        }
         if (windowSettings.windowWidth > 0 && windowSettings.windowHeight > 0) {
             x = windowSettings.windowX
             y = windowSettings.windowY
         }
+        visible = true
         if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
             nodeModel.startNodeInitializionThread()
         }
