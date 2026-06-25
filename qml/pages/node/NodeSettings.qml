@@ -214,7 +214,13 @@ Page {
                     objectName: "walletSettingsStack"
                     initialItem: WalletSettings {
                         objectName: "walletSettingsPage"
-                        showBackButton: walletStack.depth > 1
+                        // Reached from the settings sidebar, like the other
+                        // sections, so it has no back button of its own; the
+                        // pushed sub-pages carry theirs. Binding this to
+                        // depth > 1 turned the back button on as soon as a
+                        // sub-page was pushed, flashing it on this page for the
+                        // duration of the push transition.
+                        showBackButton: false
                         onBack: walletStack.pop()
                         onSelectWalletRequested: root.selectWalletRequested()
                         onPasswordRequested: walletStack.push(walletPasswordComp, { "updating": walletController.selectedWallet.isEncrypted })

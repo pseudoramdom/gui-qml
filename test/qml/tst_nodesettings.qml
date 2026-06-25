@@ -30,6 +30,11 @@ TestCase {
         }
     }
 
+    Component {
+        id: subPageComponent
+        Item {}
+    }
+
     function init() {
         nodeModel.mempoolInformationAvailable = true
         AppMode.walletEnabled = true
@@ -100,5 +105,24 @@ TestCase {
         const windowItem = findChild(page, "settings_windowbehavior")
         verify(windowItem !== null)
         compare(windowItem.visible, false)
+    }
+
+    function test_wallet_settings_back_button_stays_hidden_when_subpage_open() {
+        const page = createNodeSettingsPage()
+
+        const walletSettingsPage = findChild(page, "walletSettingsPage")
+        verify(walletSettingsPage !== null)
+        const walletStack = findChild(page, "walletSettingsStack")
+        verify(walletStack !== null)
+
+        // The wallet settings page is reached from the sidebar and has no back
+        // button of its own. Pushing a sub-page must not turn it on: binding it
+        // to depth > 1 flashed the back button on this page during the push
+        // transition.
+        compare(walletSettingsPage.showBackButton, false)
+        walletStack.push(subPageComponent)
+        wait(0)
+        verify(walletStack.depth > 1)
+        compare(walletSettingsPage.showBackButton, false)
     }
 }
