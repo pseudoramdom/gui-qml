@@ -121,6 +121,9 @@ Page {
             Layout.fillWidth: false
             Layout.fillHeight: true
             Layout.topMargin: 20
+            // Keep the sidebar off the window edge for breathing room, but drop
+            // the margin near the minimum window width so content is not squeezed.
+            Layout.leftMargin: root.width > 700 ? 20 : 0
             spacing: 0
 
             Repeater {
