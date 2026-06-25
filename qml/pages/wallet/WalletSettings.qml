@@ -277,9 +277,10 @@ Page {
         }
 
         Rectangle {
+            objectName: "walletSettingsPasswordDivider"
             visible: root.canManagePassphrase
             Layout.fillWidth: true
-            height: visible ? 1 : 0
+            height: 1
             color: Theme.color.neutral4
         }
 
