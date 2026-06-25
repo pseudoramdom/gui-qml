@@ -53,7 +53,7 @@ class DebugLogHarness:
             f"-test-automation={self.socket_path}",
             # Intentionally omit -resetguisettings: the datadir already
             # exists so pre-init onboarding is skipped and NodeRunner loads.
-            # -disablewallet forces AppMode.walletEnabled=false so main.qml
+            # -disablewallet forces AppMode.walletEnabled=false so MainWindow
             # routes to the node/NodeRunner stack instead of desktopWallets.
             "-disablewallet",
             "-logtimemicros",
@@ -90,7 +90,7 @@ class DebugLogHarness:
 def navigate_to_debug_log(gui):
     """From the NodeRunner main screen, navigate to the Debug Log page.
 
-    Requires -disablewallet so AppMode.walletEnabled is false and main.qml
+    Requires -disablewallet so AppMode.walletEnabled is false and MainWindow
     routes to the node/NodeRunner stack rather than desktopWallets.
     """
     gui.wait_for_page("nodeRunner", timeout_ms=10000)

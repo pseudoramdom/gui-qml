@@ -537,7 +537,7 @@ QByteArray TestBridge::cmdGetCurrentPage()
         return QJsonDocument(resp).toJson(QJsonDocument::Compact);
     };
 
-    // Preferred path: resolve from the named main PageStack in main.qml.
+    // Preferred path: resolve from the named main PageStack in the main window.
     for (QObject* root : m_engine->rootObjects()) {
         QObject* main_stack = root->findChild<QObject*>(QStringLiteral("mainPageStack"));
         if (!main_stack) continue;

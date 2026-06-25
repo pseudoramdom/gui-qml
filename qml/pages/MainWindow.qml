@@ -29,12 +29,9 @@ ApplicationWindow {
     visible: false
     width: minimumWidth
     height: minimumHeight
-    readonly property bool walletAvailableForUi: typeof walletAvailable !== "undefined" ? walletAvailable : AppMode.walletEnabled
-    readonly property bool appModeDesktopForUi: typeof effectiveAppMode !== "undefined" ? effectiveAppMode === "DESKTOP" : AppMode.isDesktop
-    readonly property bool appModeWalletEnabledForUi: AppMode.walletEnabled
-    readonly property string appModeStateForUi: AppMode.state
-    readonly property bool preInitOnboardingRanForUi: typeof preInitOnboardingRan !== "undefined" && preInitOnboardingRan
-    readonly property string effectiveAppModeForUi: typeof effectiveAppMode !== "undefined" ? effectiveAppMode : AppMode.state
+    property bool walletAvailableForUi: AppMode.walletEnabled
+    property bool appModeDesktopForUi: AppMode.isDesktop
+    property bool preInitOnboardingRanForUi: false
     readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
     readonly property bool waitForPostOnboardingWalletRoute: preInitOnboardingRanForUi && desktopWalletMode
     property bool postOnboardingWalletRouteResolved: false

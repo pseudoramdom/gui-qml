@@ -63,7 +63,11 @@ _COMMON_CONF = (
 def _terminate_process(proc) -> None:
     if proc and proc.poll() is None:
         proc.send_signal(signal.SIGTERM)
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
 
 GUI_RPC_USER = "qmltest"
 GUI_RPC_PASS = "qmltestpass"
@@ -574,7 +578,12 @@ def test_ban_persistence(harness):
     harness.restart_gui()
 
     navigate_to_peers(harness.driver)
-    harness.driver.wait_for_property("viewBannedPeersButton", "visible", True)
+    harness.driver.wait_for_property(
+        "viewBannedPeersButton",
+        "visible",
+        True,
+        timeout_ms=PEER_ACTION_TIMEOUT_SECS * 1000,
+    )
 
     assert harness.driver.get_property("viewBannedPeersButton", "visible"), \
         "viewBannedPeersButton should be visible after GUI restart (ban persisted)"

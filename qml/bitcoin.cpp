@@ -730,10 +730,6 @@ int QmlGuiMain(int argc, char* argv[])
 #else
     engine.rootContext()->setContextProperty("testAutomationEnabled", false);
 #endif
-    engine.rootContext()->setContextProperty("walletAvailable", wallet_enabled);
-    engine.rootContext()->setContextProperty("preInitOnboardingRan", pre_init_onboarding_status == PreInitOnboardingStatus::COMPLETED);
-    engine.rootContext()->setContextProperty("effectiveAppMode", app_mode.state());
-
     // Install language before QML engine loads so that all qsTr() calls in QML
     // pick up the correct locale from the start.
     install_language(options_model.language());
@@ -753,11 +749,16 @@ int QmlGuiMain(int argc, char* argv[])
     QObject::connect(&desktop_tray_icon_controller, &DesktopTrayIconController::supportedChanged,
         [&desktop_window_behavior_model](bool supported) {
             if (!supported) desktop_window_behavior_model.setShowTrayIcon(false);
-        });
+    });
     engine.rootContext()->setContextProperty("desktopWindowBehaviorModel", &desktop_window_behavior_model);
     engine.rootContext()->setContextProperty("desktopTrayIconController", &desktop_tray_icon_controller);
 
-    engine.load(QUrl(QStringLiteral("qrc:///qml/pages/main.qml")));
+    engine.setInitialProperties({
+        {QStringLiteral("walletAvailableForUi"), wallet_enabled},
+        {QStringLiteral("appModeDesktopForUi"), app_mode.mode() == AppMode::DESKTOP},
+        {QStringLiteral("preInitOnboardingRanForUi"), pre_init_onboarding_status == PreInitOnboardingStatus::COMPLETED},
+    });
+    engine.load(QUrl(QStringLiteral("qrc:///qml/pages/MainWindow.qml")));
     if (engine.rootObjects().isEmpty()) {
         return EXIT_FAILURE;
     }

@@ -4,9 +4,11 @@
 
 import QtQuick 2.15
 import QtTest 1.2
+import "../../qml/pages"
 
 TestCase {
-    name: "Main"
+    id: testCase
+    name: "MainRouting"
     when: windowShown
     width: 900
     height: 600
@@ -14,6 +16,14 @@ TestCase {
     property bool walletAvailable: true
     property bool preInitOnboardingRan: false
     property var windowUnderTest: null
+
+    Component {
+        id: mainWindowComponent
+        MainWindow {
+            walletAvailableForUi: testCase.walletAvailable
+            preInitOnboardingRanForUi: testCase.preInitOnboardingRan
+        }
+    }
 
     function cleanup() {
         if (windowUnderTest) {
@@ -33,9 +43,7 @@ TestCase {
         walletController.setWalletLoaded(!no_wallets_found)
         walletController.setNoWalletsFound(no_wallets_found || false)
         walletListModel.setWalletDirLoaded(wallet_dir_loaded === undefined ? true : wallet_dir_loaded)
-        const component = Qt.createComponent("../../qml/pages/main.qml")
-        compare(component.status, Component.Ready, component.errorString())
-        windowUnderTest = component.createObject(null)
+        windowUnderTest = mainWindowComponent.createObject(null)
         verify(windowUnderTest !== null)
         wait(0)
         return windowUnderTest
