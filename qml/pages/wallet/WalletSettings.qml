@@ -321,7 +321,7 @@ Page {
             id: signVerifyMessageSetting
             objectName: "walletSettingsSignVerifyMessageRow"
             Layout.fillWidth: true
-            header: qsTr("Sign or Verify Message")
+            header: qsTr("Sign or verify message")
             filledStateColor: Theme.color.neutral7
             hoverStateColor: Theme.color.orange
             activeStateColor: Theme.color.orange

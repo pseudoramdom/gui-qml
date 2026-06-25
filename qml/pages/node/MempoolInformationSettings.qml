@@ -15,7 +15,7 @@ InformationPage {
 
     showNavBar: false
     header: SettingsHeader {
-        title: qsTr("Mempool Information")
+        title: qsTr("Mempool information")
         showBackButton: root.showBackButton
         backButtonObjectName: "mempoolInformationBackButton"
         onBack: root.back()

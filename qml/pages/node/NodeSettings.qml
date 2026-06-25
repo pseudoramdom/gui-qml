@@ -67,14 +67,14 @@ Page {
         // with the contentStack page order below, so a row's index is its page
         // index. Peers and Console live on the main nav bar, not in settings.
         sidebarModel.append({ label: qsTr("Wallet"), section: "wallet", group: "wallet", alwaysVisible: false })
-        sidebarModel.append({ label: qsTr("External Signer"), section: "externalsigner", group: "wallet", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("External signer"), section: "externalsigner", group: "wallet", alwaysVisible: false })
         sidebarModel.append({ label: qsTr("Display"), section: "display", group: "display", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Window Behavior"), section: "windowbehavior", group: "display", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Window behavior"), section: "windowbehavior", group: "display", alwaysVisible: false })
         sidebarModel.append({ label: qsTr("Storage"), section: "storage", group: "display", alwaysVisible: true })
         sidebarModel.append({ label: qsTr("Connection"), section: "connection", group: "network", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Network Traffic"), section: "networktraffic", group: "network", alwaysVisible: true })
-        sidebarModel.append({ label: qsTr("Mempool Information"), section: "mempool", group: "network", alwaysVisible: false })
-        sidebarModel.append({ label: qsTr("Debug Log"), section: "debuglog", group: "developer", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Network traffic"), section: "networktraffic", group: "network", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Mempool information"), section: "mempool", group: "network", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Debug log"), section: "debuglog", group: "developer", alwaysVisible: true })
         sidebarModel.append({ label: qsTr("About"), section: "about", group: "about", alwaysVisible: true })
         root.selectFirstVisibleSection()
     }

@@ -29,7 +29,7 @@ InformationPage {
     }
     bannerActive: false
     bold: true
-    headerText: qsTr("Network Traffic")
+    headerText: qsTr("Network traffic")
     headerMargin: 0
     description: qsTr("How much data you have sent to and received from your peers.")
     descriptionMargin: 15

@@ -19,7 +19,7 @@ Page {
     background: null
 
     header: SettingsHeader {
-        title: qsTr("Proxy Settings")
+        title: qsTr("Proxy settings")
         backButtonObjectName: "settingsProxyBack"
         onBack: root.back()
     }

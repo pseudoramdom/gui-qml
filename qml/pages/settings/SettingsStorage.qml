@@ -31,7 +31,7 @@ InformationPage {
     }
     showNavBar: false
     header: SettingsHeader {
-        title: root.onboarding ? "" : qsTr("Storage Settings")
+        title: root.onboarding ? "" : qsTr("Storage settings")
         showBackButton: !root.onboarding && root.showBackButton
         backButtonObjectName: "settingsStorageBack"
         onBack: root.back()

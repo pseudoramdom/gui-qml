@@ -72,7 +72,7 @@ Page {
     }
 
     header: SettingsHeader {
-        title: qsTr("Sign or Verify Message")
+        title: qsTr("Sign or verify message")
         backButtonObjectName: "signVerifyMessageBackButton"
         onBack: root.back()
     }

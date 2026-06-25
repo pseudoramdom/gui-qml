@@ -19,7 +19,7 @@ Page {
     background: null
 
     header: SettingsHeader {
-        title: qsTr("External Signer")
+        title: qsTr("External signer")
         showBackButton: root.showBackButton
         backButtonObjectName: "settingsWalletBack"
         onBack: root.back()
