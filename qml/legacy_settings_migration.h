@@ -22,6 +22,7 @@ struct MigrationResult {
 };
 
 QString ReadLegacyGuiDataDir();
+int ReadLegacyGuiDisplayUnit(const QString& chain, int fallback);
 QString ReadLegacyGuiLanguage(const QString& chain);
 void ClearLegacyGuiSettings(const QString& chain);
 MigrationResult MigrateCoreSettings(ArgsManager& args, MigrationMode mode);

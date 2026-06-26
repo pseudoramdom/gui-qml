@@ -95,6 +95,8 @@ private Q_SLOTS:
     void thirdPartyTransactionLinksParseValidUrls();
     void moneyFontChoicePersists();
     void displayUnitUsesQtCompatibleSettingsKey();
+    void displayUnitUsesLegacyQtFallback();
+    void displayUnitPrefersQmlSettingOverLegacyQtFallback();
     void sharedCoreSettingHelpersDeduplicateOverrides();
     void parameterInteractionOverridesPersistExplicitValues();
     void coreSettingsLegacyNumericOverridesWriteStrings();
@@ -220,6 +222,24 @@ private:
     const QString m_original;
 };
 
+class SavedSettingsFormat
+{
+public:
+    explicit SavedSettingsFormat(QSettings::Format format)
+        : m_format{QSettings::defaultFormat()}
+    {
+        QSettings::setDefaultFormat(format);
+    }
+
+    ~SavedSettingsFormat()
+    {
+        QSettings::setDefaultFormat(m_format);
+    }
+
+private:
+    QSettings::Format m_format;
+};
+
 class SavedNamedSettings
 {
 public:
@@ -245,6 +265,43 @@ public:
 
 private:
     QSettings m_settings;
+    QVariantMap m_values;
+};
+
+class SavedRawNamedSettings
+{
+public:
+    SavedRawNamedSettings(const QString& org, const QString& app)
+        : m_format{QSettings::defaultFormat()}
+        , m_org{org}
+        , m_app{app}
+    {
+        QSettings settings{m_format, QSettings::UserScope, m_org, m_app};
+        m_file_name = settings.fileName();
+        for (const QString& key : settings.allKeys()) {
+            m_values.insert(key, settings.value(key));
+        }
+        settings.clear();
+        settings.sync();
+    }
+
+    ~SavedRawNamedSettings()
+    {
+        QSettings settings{m_format, QSettings::UserScope, m_org, m_app};
+        settings.clear();
+        for (auto it = m_values.cbegin(); it != m_values.cend(); ++it) {
+            settings.setValue(it.key(), it.value());
+        }
+        settings.sync();
+    }
+
+    QString fileName() const { return m_file_name; }
+
+private:
+    QSettings::Format m_format;
+    QString m_org;
+    QString m_app;
+    QString m_file_name;
     QVariantMap m_values;
 };
 
@@ -1072,6 +1129,7 @@ void OptionsModelTests::resetGuiSettingsClearsLegacyQtSettings()
     SavedNamedSettings legacy_default_settings{QStringLiteral("Bitcoin"), QStringLiteral("Bitcoin-Qt")};
     legacy_core_settings.settings().setValue(QStringLiteral("fListen"), false);
     legacy_core_settings.settings().setValue(QStringLiteral("addrProxy"), QStringLiteral("10.0.0.1:9050"));
+    legacy_core_settings.settings().setValue(SettingsKeys::DISPLAY_UNIT, 3);
     legacy_default_settings.settings().setValue(SettingsKeys::DATA_DIR, QStringLiteral("/tmp/legacy-bitcoin-data"));
 
     std::vector<std::string> argv = TestArgv();
@@ -1085,6 +1143,7 @@ void OptionsModelTests::resetGuiSettingsClearsLegacyQtSettings()
 
     QVERIFY(!legacy_core_settings.settings().contains(QStringLiteral("fListen")));
     QVERIFY(!legacy_core_settings.settings().contains(QStringLiteral("addrProxy")));
+    QVERIFY(!legacy_core_settings.settings().contains(SettingsKeys::DISPLAY_UNIT));
     QVERIFY(!legacy_default_settings.settings().contains(SettingsKeys::DATA_DIR));
 }
 
@@ -1529,6 +1588,63 @@ void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
     } else {
         settings.remove(SettingsKeys::DISPLAY_UNIT);
     }
+}
+
+void OptionsModelTests::displayUnitUsesLegacyQtFallback()
+{
+    using ::testing::NiceMock;
+
+    SavedSettingsFormat settings_format{QSettings::IniFormat};
+    SavedGuiDataDirSettings saved_settings;
+    SavedRawNamedSettings legacy_settings{QStringLiteral("Bitcoin"), QStringLiteral("Bitcoin-Qt-regtest")};
+
+    QSettings settings;
+    settings.remove(SettingsKeys::DISPLAY_UNIT);
+
+    QFile settings_file{legacy_settings.fileName()};
+    QVERIFY(QDir().mkpath(QFileInfo(settings_file).absolutePath()));
+    QVERIFY(settings_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate));
+    QVERIFY(settings_file.write(R"ini([General]
+DisplayBitcoinUnit=@Variant(\0\0\0\x7f\0\0\0\fBitcoinUnit\0\x3)
+)ini") > 0);
+    settings_file.close();
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, TestArgv(), parse_error), parse_error.c_str());
+    args.SelectConfigNetwork(args.GetChainTypeString());
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+
+    OptionsQmlModel model(node, args);
+    QCOMPARE(model.displayUnit(), 3);
+    QCOMPARE(model.displayUnitLabel(), QStringLiteral("sat"));
+    QCOMPARE(model.displayUnitLabelForAmount(2), QStringLiteral("sats"));
+}
+
+void OptionsModelTests::displayUnitPrefersQmlSettingOverLegacyQtFallback()
+{
+    using ::testing::NiceMock;
+
+    SavedGuiDataDirSettings saved_settings;
+    SavedNamedSettings legacy_settings{QStringLiteral("Bitcoin"), QStringLiteral("Bitcoin-Qt-regtest")};
+
+    QSettings settings;
+    settings.setValue(SettingsKeys::DISPLAY_UNIT, 1);
+    legacy_settings.settings().setValue(SettingsKeys::DISPLAY_UNIT, 3);
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, TestArgv(), parse_error), parse_error.c_str());
+    args.SelectConfigNetwork(args.GetChainTypeString());
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+
+    OptionsQmlModel model(node, args);
+    QCOMPARE(model.displayUnit(), 1);
+    QCOMPARE(model.displayUnitLabel(), QStringLiteral("mBTC"));
 }
 
 void OptionsModelTests::sharedCoreSettingHelpersDeduplicateOverrides()

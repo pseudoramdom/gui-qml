@@ -24,6 +24,8 @@
 #include <wallet/wallet.h>
 #endif
 
+#include <QDataStream>
+#include <QMetaType>
 #include <QSettings>
 #include <QVariant>
 
@@ -34,7 +36,39 @@
 #include <string>
 #include <vector>
 
+namespace QmlLegacySettingsDetail {
+enum class LegacyBitcoinUnit : qint8 {
+    BTC = 0,
+    mBTC = 1,
+    uBTC = 2,
+    SAT = 3,
+};
+
+QDataStream& operator<<(QDataStream& out, const LegacyBitcoinUnit& unit)
+{
+    return out << static_cast<qint8>(unit);
+}
+
+QDataStream& operator>>(QDataStream& in, LegacyBitcoinUnit& unit)
+{
+    qint8 input;
+    in >> input;
+    switch (input) {
+    case 0: unit = LegacyBitcoinUnit::BTC; break;
+    case 1: unit = LegacyBitcoinUnit::mBTC; break;
+    case 2: unit = LegacyBitcoinUnit::uBTC; break;
+    case 3: unit = LegacyBitcoinUnit::SAT; break;
+    default: unit = LegacyBitcoinUnit::BTC; break;
+    }
+    return in;
+}
+} // namespace QmlLegacySettingsDetail
+
+Q_DECLARE_METATYPE(QmlLegacySettingsDetail::LegacyBitcoinUnit)
+
 namespace {
+using LegacyBitcoinUnit = QmlLegacySettingsDetail::LegacyBitcoinUnit;
+
 constexpr const char* QT_ORG_NAME{"Bitcoin"};
 constexpr const char* QT_APP_NAME_DEFAULT{"Bitcoin-Qt"};
 constexpr const char* QT_APP_NAME_TESTNET{"Bitcoin-Qt-testnet"};
@@ -50,6 +84,12 @@ QString AppNameForChain(const QString& chain, bool legacy_qt)
     if (normalized == QStringLiteral("signet")) return legacy_qt ? QT_APP_NAME_SIGNET : QAPP_APP_NAME_SIGNET;
     if (normalized == QStringLiteral("regtest")) return legacy_qt ? QT_APP_NAME_REGTEST : QAPP_APP_NAME_REGTEST;
     return legacy_qt ? QT_APP_NAME_DEFAULT : QAPP_APP_NAME_DEFAULT;
+}
+
+void RegisterLegacyBitcoinUnitMetaType()
+{
+    static const int meta_type = qRegisterMetaType<LegacyBitcoinUnit>("BitcoinUnit");
+    Q_UNUSED(meta_type);
 }
 
 std::unique_ptr<QSettings> OpenSettings(const QString& org, const QString& app)
@@ -351,6 +391,22 @@ QString ReadLegacyGuiDataDir()
     return settings->value(SettingsKeys::DATA_DIR).toString();
 }
 
+int ReadLegacyGuiDisplayUnit(const QString& chain, int fallback)
+{
+    RegisterLegacyBitcoinUnitMetaType();
+    const std::unique_ptr<QSettings> settings = OpenSettings(QString::fromUtf8(QT_ORG_NAME), AppNameForChain(chain, /*legacy_qt=*/true));
+    if (!settings->contains(SettingsKeys::DISPLAY_UNIT)) {
+        return fallback;
+    }
+
+    bool ok{false};
+    const int display_unit = settings->value(SettingsKeys::DISPLAY_UNIT).toInt(&ok);
+    if (!ok || display_unit < 0 || display_unit > 3) {
+        return fallback;
+    }
+    return display_unit;
+}
+
 QString ReadLegacyGuiLanguage(const QString& chain)
 {
     const std::unique_ptr<QSettings> chain_settings = OpenSettings(QString::fromUtf8(QT_ORG_NAME), AppNameForChain(chain, /*legacy_qt=*/true));
@@ -368,6 +424,7 @@ void ClearLegacyGuiSettings(const QString& chain)
         for (const QString& key : LegacyCoreKeys(store.legacy_qt)) {
             store.settings->remove(key);
         }
+        store.settings->remove(SettingsKeys::DISPLAY_UNIT);
         store.settings->sync();
     }
 

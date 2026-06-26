@@ -15,6 +15,7 @@
 #include <node/chainstatemanager_args.h>
 #include <qml/datadir.h>
 #include <qml/guiconstants.h>
+#include <qml/legacy_settings_migration.h>
 #include <univalue.h>
 
 #include <cassert>
@@ -137,7 +138,8 @@ OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, ArgsManager& args)
     if (!command_line_language.isEmpty()) {
         m_language = command_line_language;
     }
-    m_display_unit = NormalizeDisplayUnit(settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt());
+    const int display_unit_fallback{QmlLegacySettings::ReadLegacyGuiDisplayUnit(QString::fromStdString(m_args.GetChainTypeString()), 0)};
+    m_display_unit = NormalizeDisplayUnit(settings.value(SettingsKeys::DISPLAY_UNIT, display_unit_fallback).toInt());
     m_third_party_transaction_urls = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, "").toString();
     m_money_font_choice = settings.value(SettingsKeys::MONEY_FONT_CHOICE, MONEY_FONT_EMBEDDED).toString();
     if (m_money_font_choice != MONEY_FONT_EMBEDDED && m_money_font_choice != MONEY_FONT_BEST_SYSTEM) {
