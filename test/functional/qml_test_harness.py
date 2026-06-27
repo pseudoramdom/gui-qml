@@ -86,6 +86,11 @@ def qsettings_sandbox_args(env, config_home):
     return [f"-test-settings-dir={config_home}"]
 
 
+def qml_qpa_platform():
+    """Return the Qt platform plugin for QML functional tests."""
+    return os.getenv("QML_TEST_QPA_PLATFORM", os.getenv("QT_QPA_PLATFORM", "offscreen"))
+
+
 def parse_args():
     """Parse common CLI arguments for QML test scripts."""
     parser = argparse.ArgumentParser(
@@ -157,7 +162,7 @@ class QmlTestHarness:
             return
 
         env = dict(os.environ)
-        env["QT_QPA_PLATFORM"] = "offscreen"
+        env["QT_QPA_PLATFORM"] = qml_qpa_platform()
         settings_args = []
         if self.config_home:
             settings_args = qsettings_sandbox_args(env, self.config_home)

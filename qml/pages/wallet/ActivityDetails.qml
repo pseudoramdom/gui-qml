@@ -13,6 +13,7 @@ import "../settings"
 
 Page {
     id: root
+    objectName: "activityDetailsPage"
 
     signal showTransaction(string txid)
 
@@ -142,11 +143,12 @@ Page {
                 font.pixelSize: 18
             }
 
-            ColumnLayout {
+            Column {
                 id: thirdPartyLinks
                 objectName: "activityDetailsThirdPartyLinks"
                 visible: root.txid.length > 0 && optionsModel.thirdPartyTransactionLinks(root.txid).length > 0
                 Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
                 Layout.bottomMargin: visible ? 20 : 0
                 spacing: 8
 
@@ -154,7 +156,7 @@ Page {
                     model: optionsModel.thirdPartyTransactionLinks(root.txid)
                     delegate: ExternalLink {
                         required property var modelData
-                        Layout.fillWidth: true
+                        width: thirdPartyLinks.width
                         parentState: "FILLED"
                         description: qsTr("Show in %1").arg(modelData.host)
                         link: modelData.url
@@ -188,11 +190,12 @@ Page {
                 address: root.address
             }
 
-            ColumnLayout {
+            Column {
                 id: paymentRequestsSection
                 objectName: "activityDetailsPaymentRequestsSection"
                 visible: root.paymentRequestCount > 0
                 Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
                 Layout.topMargin: 10
                 Layout.bottomMargin: 20
                 spacing: 0
@@ -206,7 +209,7 @@ Page {
                         required property var modelData
 
                         objectName: "activityDetailsPaymentRequest_" + paymentRequestDelegate.index
-                        Layout.fillWidth: true
+                        width: paymentRequestsSection.width
                         leftPadding: 0
                         rightPadding: 0
                         topPadding: 4

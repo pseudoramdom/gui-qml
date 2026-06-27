@@ -20,6 +20,14 @@ TestCase {
         }
     }
 
+    function init() {
+        optionsModel.thirdPartyTransactionUrls = ""
+    }
+
+    function cleanup() {
+        optionsModel.thirdPartyTransactionUrls = ""
+    }
+
     function test_speedUpBanner_exists_when_bumpable() {
         const page = createTemporaryObject(detailsComponent, this, {
             txid: "bbbb",
@@ -207,6 +215,49 @@ TestCase {
         const section = findChild(page, "activityDetailsPaymentRequestsSection")
         verify(section !== null)
         compare(section.visible, false)
+    }
+
+    function test_thirdPartyTransactionLinks_show_matching_layout() {
+        optionsModel.thirdPartyTransactionUrls = "https://example.com/tx/%s"
+        compare(optionsModel.thirdPartyTransactionLinks("ffff").length, 1)
+        const page = createTemporaryObject(detailsComponent, this, {
+            txid: "ffff",
+            canBump: false,
+            amount: "+0.01000000 BTC",
+            date: "2026-01-06",
+            depth: 1,
+            status: 2,
+            type: 1,
+            address: "bcrt1qrequestaddress"
+        })
+        verify(page !== null)
+
+        const section = findChild(page, "activityDetailsThirdPartyLinks")
+        verify(section !== null)
+        tryVerify(function() {
+            return section.width > 0 && section.height > 0
+        })
+    }
+
+    function test_no_thirdPartyTransactionLinks_hides_section() {
+        const page = createTemporaryObject(detailsComponent, this, {
+            txid: "gggg",
+            canBump: false,
+            amount: "+0.01000000 BTC",
+            date: "2026-01-07",
+            depth: 1,
+            status: 2,
+            type: 1,
+            address: "bcrt1qrequestaddress"
+        })
+        verify(page !== null)
+
+        const section = findChild(page, "activityDetailsThirdPartyLinks")
+        verify(section !== null)
+        compare(optionsModel.thirdPartyTransactionLinks("gggg").length, 0)
+        tryVerify(function() {
+            return section.height === 0
+        })
     }
 
     function test_dimmed_when_replaced() {

@@ -462,7 +462,8 @@ QByteArray TestBridge::processCommand(const QByteArray& json_cmd)
     } else if (cmd == QLatin1String("invoke")) {
         return cmdInvoke(
             obj.value(QStringLiteral("objectName")).toString(),
-            obj.value(QStringLiteral("method")).toString());
+            obj.value(QStringLiteral("method")).toString(),
+            obj.value(QStringLiteral("args")).toArray());
     } else if (cmd == QLatin1String("invoke_property_object")) {
         return cmdInvokePropertyObject(
             obj.value(QStringLiteral("objectName")).toString(),
@@ -692,10 +693,13 @@ QByteArray TestBridge::cmdSetProperty(const QString& object_name, const QString&
     return okResponse();
 }
 
-QByteArray TestBridge::cmdInvoke(const QString& object_name, const QString& method)
+QByteArray TestBridge::cmdInvoke(const QString& object_name, const QString& method, const QJsonArray& args)
 {
     if (object_name.isEmpty() || method.isEmpty()) {
         return errorResponse(QStringLiteral("objectName and method are required"));
+    }
+    if (args.size() > 1) {
+        return errorResponse(QStringLiteral("Only zero or one string argument is supported"));
     }
 
     QObject* obj = findObjectByName(object_name);
@@ -706,13 +710,29 @@ QByteArray TestBridge::cmdInvoke(const QString& object_name, const QString& meth
     const QMetaObject* meta = obj->metaObject();
     QByteArray signature = method.toUtf8();
     if (!signature.contains('(')) {
-        signature += "()";
+        signature += args.isEmpty() ? "()" : "(QString)";
     }
-    const int idx = meta->indexOfMethod(signature.constData());
+    int idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+    bool use_variant_arg{false};
+    if (idx < 0 && args.size() == 1 && !method.contains(QLatin1Char('('))) {
+        signature = method.toUtf8() + "(QVariant)";
+        idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+        use_variant_arg = idx >= 0;
+    }
     if (idx < 0) {
         return errorResponse(QStringLiteral("Method not found: %1 on %2").arg(QString::fromUtf8(signature), object_name));
     }
-    if (!meta->method(idx).invoke(obj, Qt::DirectConnection)) {
+
+    const QMetaMethod meta_method = meta->method(idx);
+    bool invoked{false};
+    if (args.isEmpty()) {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection);
+    } else if (use_variant_arg) {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection, Q_ARG(QVariant, args.at(0).toString()));
+    } else {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection, Q_ARG(QString, args.at(0).toString()));
+    }
+    if (!invoked) {
         return errorResponse(QStringLiteral("Could not invoke %1 on %2").arg(QString::fromUtf8(signature), object_name));
     }
     return okResponse();

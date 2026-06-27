@@ -16,7 +16,7 @@ import tempfile
 import time
 
 from qml_driver import QmlDriver, QmlDriverError
-from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qsettings_sandbox_args
+from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qml_qpa_platform, qsettings_sandbox_args
 
 
 RPC_USER = "qmlwallettest"
@@ -214,7 +214,7 @@ class WalletFlowHarness:
 
     def start_gui(self, reset_gui_settings=False, extra_args=None, cwd=None):
         env = dict(os.environ)
-        env["QT_QPA_PLATFORM"] = "offscreen"
+        env["QT_QPA_PLATFORM"] = qml_qpa_platform()
         settings_args = qsettings_sandbox_args(env, self.config_home)
         args = [
             self.gui_binary,

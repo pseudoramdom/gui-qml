@@ -14,6 +14,7 @@ import "../../components"
 
 PageStack {
     id: stackView
+    objectName: "activityStack"
 
     function navigateToTransaction(txid) {
         if (!walletController.selectedWallet)
