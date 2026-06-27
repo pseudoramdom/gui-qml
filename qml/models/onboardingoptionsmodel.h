@@ -167,7 +167,6 @@ private:
     int m_assumed_chainstate_size{0};
     uint64_t m_storage_request_id{0};
     uint64_t m_storage_available_bytes{0};
-    uint64_t m_storage_capacity_bytes{0};
     bool m_storage_check_in_flight{false};
     bool m_storage_check_pending{false};
     bool m_storage_result_valid{false};

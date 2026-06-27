@@ -253,7 +253,6 @@ void OnboardingOptionsModel::applyStorageCheckResult(uint64_t request_id, const 
     m_storage_check_pending = false;
     m_storage_result_valid = result.ok;
     m_storage_available_bytes = result.ok ? result.available_bytes : 0;
-    m_storage_capacity_bytes = result.ok ? result.capacity_bytes : 0;
     m_storage_path_message = result.message;
     m_storage_error_text = result.ok ? QString{} : result.message;
     applyAutomaticPruneRecommendation();
