@@ -20,6 +20,7 @@ ColumnLayout {
     property int descriptionSize: 18
     property string descriptionColor: Theme.color.neutral8
     property bool descriptionBold: false
+    property int descriptionTextFormat: Text.AutoText
     property string subtext: ""
     property int subtextMargin
     property int subtextSize: 15
@@ -58,6 +59,7 @@ ColumnLayout {
             font.pixelSize: root.descriptionSize
             color: root.descriptionColor
             text: root.description
+            textFormat: root.descriptionTextFormat
             horizontalAlignment: root.center ? Text.AlignHCenter : Text.AlignLeft
             wrapMode: wrap ? Text.WordWrap : Text.NoWrap
 

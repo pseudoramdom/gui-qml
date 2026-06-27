@@ -16,6 +16,7 @@ AbstractButton {
     property string description
     property color descriptionColor: Theme.color.neutral8
     property int descriptionSize: 15
+    property int descriptionTextFormat: Text.AutoText
     property string errorText: ""
     property bool showErrorText: false
     property string infoText: ""
@@ -100,6 +101,7 @@ AbstractButton {
             description: root.description
             descriptionSize: root.descriptionSize
             descriptionColor: root.stateDescriptionColor
+            descriptionTextFormat: root.descriptionTextFormat
             descriptionMargin: 0
             subtext: root.showErrorText ? root.errorText : (root.showInfoText ? root.infoText : "")
             subtextColor: root.showErrorText ? Theme.color.blue : Theme.color.neutral7

@@ -100,6 +100,7 @@ Item {
                     Layout.fillWidth: true
                     header: qsTr("Third-party transaction URLs")
                     description: optionsModel.thirdPartyTransactionUrls.length > 0 ? optionsModel.thirdPartyTransactionUrls : qsTr("None")
+                    descriptionTextFormat: Text.PlainText
                     actionItem: CaretRightIcon {
                         color: gotoThirdPartyUrls.stateColor
                     }

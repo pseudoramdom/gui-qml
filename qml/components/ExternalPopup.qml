@@ -48,6 +48,7 @@ Popup {
             headerSize: 16
             description: ("\"" + externalConfirmPopup.link + "\"")
             descriptionMargin: 8
+            descriptionTextFormat: Text.PlainText
         }
 
         GridLayout {

@@ -1505,13 +1505,24 @@ void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
     ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
 
     OptionsQmlModel model(node);
-    model.setThirdPartyTransactionUrls("https://example.com/tx/%s|https://example.org/tx|not-a-url");
+    model.setThirdPartyTransactionUrls(
+        "https://example.com/tx/%s|"
+        "http://example.net/tx/%s|"
+        "file://host/tmp/%s|"
+        "bitcoin://host/tx/%s|"
+        "ftp://example.org/tx/%s|"
+        "https://example.org/tx|"
+        "not-a-url|"
+        "https:///tx/%s");
 
     const QVariantList links = model.thirdPartyTransactionLinks("abc");
-    QCOMPARE(links.size(), 1);
-    const QVariantMap link = links.front().toMap();
-    QCOMPARE(link.value("host").toString(), QString("example.com"));
-    QCOMPARE(link.value("url").toString(), QString("https://example.com/tx/abc"));
+    QCOMPARE(links.size(), 2);
+    const QVariantMap https_link = links.at(0).toMap();
+    QCOMPARE(https_link.value("host").toString(), QString("example.com"));
+    QCOMPARE(https_link.value("url").toString(), QString("https://example.com/tx/abc"));
+    const QVariantMap http_link = links.at(1).toMap();
+    QCOMPARE(http_link.value("host").toString(), QString("example.net"));
+    QCOMPARE(http_link.value("url").toString(), QString("http://example.net/tx/abc"));
 
     if (had_urls_setting) {
         settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, previous_urls_setting);

@@ -91,6 +91,12 @@ int NormalizeDisplayUnit(int display_unit)
     return display_unit >= 0 && display_unit <= 3 ? display_unit : 0;
 }
 
+bool IsThirdPartyTransactionUrlSchemeAllowed(const QUrl& url)
+{
+    const QString scheme = url.scheme().toLower();
+    return scheme == QStringLiteral("http") || scheme == QStringLiteral("https");
+}
+
 QVariantMap CoreSettingStatusesForNames(const QVariantMap& statuses, const QStringList& names)
 {
     QVariantMap subset;
@@ -585,6 +591,7 @@ QVariantList OptionsQmlModel::thirdPartyTransactionLinks(const QString& txid) co
         url = url.trimmed();
         if (!url.contains(QStringLiteral("%s"))) continue;
         const QUrl parsed{url, QUrl::StrictMode};
+        if (!IsThirdPartyTransactionUrlSchemeAllowed(parsed)) continue;
         const QString host = parsed.host();
         if (host.isEmpty()) continue;
         QVariantMap link;
