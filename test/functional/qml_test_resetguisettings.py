@@ -64,7 +64,8 @@ def open_proxy_settings(gui):
 
 
 def close_proxy_settings(gui):
-    gui.click("settingsProxyBack")
+    gui.wait_for_property("settingsProxyDone", "enabled", True, timeout_ms=2000)
+    gui.click("settingsProxyDone")
     gui.wait_for_page("gotoProxy", timeout_ms=5000)
 
 
