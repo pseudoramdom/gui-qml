@@ -52,17 +52,9 @@ Info Evaluate(const State& state)
     if (state.result_valid) {
         info.available_text = QObject::tr("%1GB available").arg(info.available_gb);
         if (state.available_bytes < GBToBytes(info.selected_required_gb)) {
-            info.warning_text = QObject::tr("%1GB available. About %2GB is needed for the selected storage option.").arg(info.available_gb).arg(info.selected_required_gb);
+            info.warning_text = QObject::tr("About %1GB is needed for the selected storage option.").arg(info.selected_required_gb);
         } else if (info.available_gb - info.selected_required_gb < 10) {
-            info.warning_text = QObject::tr("%1GB available. About %2GB is needed, so this disk is close to the recommended minimum.").arg(info.available_gb).arg(info.selected_required_gb);
-        }
-
-        if (!info.enough_for_full && info.enough_for_selected && state.prune) {
-            info.recommendation_text = QObject::tr("Reduced storage is recommended for this disk.");
-        } else if (!info.enough_for_full) {
-            info.recommendation_text = QObject::tr("Choose a larger disk or use reduced storage.");
-        } else {
-            info.recommendation_text = QObject::tr("This disk has enough space for the full blockchain.");
+            info.warning_text = QObject::tr("About %1GB is needed, so this disk is close to the recommended minimum.").arg(info.selected_required_gb);
         }
     }
 

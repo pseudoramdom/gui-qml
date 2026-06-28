@@ -186,11 +186,6 @@ QString OnboardingOptionsModel::storageWarningText() const
     return storageInfo().warning_text;
 }
 
-QString OnboardingOptionsModel::storageRecommendationText() const
-{
-    return storageInfo().recommendation_text;
-}
-
 int OnboardingOptionsModel::fullStorageRequiredGB() const
 {
     return storageInfo().full_required_gb;

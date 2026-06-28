@@ -294,8 +294,10 @@ TestCase {
         verify(page !== null)
         const info = findChild(page, "onboardingStorageAmountPage")
         verify(info !== null)
-        verify(info.description.indexOf("123GB available") !== -1)
+        compare(info.headerText, "Storage amount")
+        compare(info.description, "Data retrieved from the Bitcoin network is stored on your device.\nYou have 123GB of storage available.")
         verify(info.description.indexOf("500GB") === -1)
+        compare(info.subtext, "")
     }
 
     function test_storage_amount_disables_full_storage_when_space_is_insufficient() {
@@ -307,8 +309,8 @@ TestCase {
         verify(fullOption !== null)
         compare(reduceOption.enabled, true)
         compare(fullOption.enabled, false)
-        compare(reduceOption.description, "Uses about 14GB. For simple wallet use. 123GB available.")
-        compare(fullOption.description, "Uses about 622GB. Support the network. 123GB available.")
+        compare(reduceOption.description, "Uses about 14GB. For regular wallet use.")
+        compare(fullOption.description, "Uses about 622GB. Support the network.")
     }
 
     function test_disabled_full_storage_does_not_hover() {
@@ -391,8 +393,8 @@ TestCase {
         verify(customOption !== null)
         verify(reduceOption !== null)
         compare(customOption.checked, true)
-        verify(customOption.text.indexOf("7GB") !== -1)
-        verify(customOption.description.indexOf("19GB") !== -1)
+        compare(customOption.text, "Custom")
+        compare(customOption.description, "Storing recent blocks up to 7 GB.")
         verify(reduceOption.description.indexOf("14GB") !== -1)
         verify(reduceOption.description.indexOf("19GB") === -1)
 
@@ -405,7 +407,7 @@ TestCase {
         compare(optionsModel.pruneSizeGB, 2)
         compare(reduceOption.checked, true)
         compare(customOption.checked, false)
-        verify(customOption.text.indexOf("7GB") !== -1)
+        compare(customOption.text, "Custom")
 
         customOption.clicked()
         wait(0)

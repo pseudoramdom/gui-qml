@@ -1842,7 +1842,6 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(QString storagePathMessage MEMBER m_storage_path_message NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageWarningText MEMBER m_storage_warning_text NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageErrorText MEMBER m_storage_error_text NOTIFY storageStatusChanged)
-    Q_PROPERTY(QString storageRecommendationText MEMBER m_storage_recommendation_text NOTIFY storageStatusChanged)
     Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
@@ -1879,7 +1878,6 @@ public:
     QString m_storage_path_message{QStringLiteral("Directory already exists.")};
     QString m_storage_warning_text;
     QString m_storage_error_text;
-    QString m_storage_recommendation_text{QStringLiteral("This disk has enough space for the full blockchain.")};
     QString m_third_party_transaction_urls;
     QString m_money_font_choice{QStringLiteral("embedded")};
     QString m_external_signer_path;

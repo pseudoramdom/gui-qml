@@ -58,7 +58,6 @@ class OnboardingOptionsModel : public QObject
     Q_PROPERTY(QString storagePathMessage READ storagePathMessage NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageWarningText READ storageWarningText NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageErrorText READ storageErrorText NOTIFY storageStatusChanged)
-    Q_PROPERTY(QString storageRecommendationText READ storageRecommendationText NOTIFY storageStatusChanged)
     Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
@@ -111,7 +110,6 @@ public:
     QString storagePathMessage() const { return m_storage_path_message; }
     QString storageWarningText() const;
     QString storageErrorText() const { return m_storage_error_text; }
-    QString storageRecommendationText() const;
     int fullStorageRequiredGB() const;
     int prunedStorageRequiredGB() const;
     int selectedStorageRequiredGB() const;

@@ -85,7 +85,6 @@ void OnboardingStorageTests::fullStorageEnoughReturnsOk()
     QVERIFY(info.enough_for_selected);
     QVERIFY(info.enough_for_full);
     QVERIFY(info.warning_text.isEmpty());
-    QCOMPARE(info.recommendation_text, QStringLiteral("This disk has enough space for the full blockchain."));
 }
 
 void OnboardingStorageTests::prunedSelectionUsesPrunedRequirement()
@@ -103,7 +102,6 @@ void OnboardingStorageTests::prunedSelectionUsesPrunedRequirement()
     QVERIFY(info.enough_for_selected);
     QVERIFY(!info.enough_for_full);
     QVERIFY(info.warning_text.isEmpty());
-    QCOMPARE(info.recommendation_text, QStringLiteral("Reduced storage is recommended for this disk."));
 }
 
 void OnboardingStorageTests::insufficientSelectedStorageWarns()
@@ -119,9 +117,7 @@ void OnboardingStorageTests::insufficientSelectedStorageWarns()
     QCOMPARE(info.selected_required_gb, 14);
     QVERIFY(!info.enough_for_selected);
     QVERIFY(!info.enough_for_full);
-    QVERIFY(info.warning_text.contains(QStringLiteral("10GB available")));
-    QVERIFY(info.warning_text.contains(QStringLiteral("14GB is needed")));
-    QCOMPARE(info.recommendation_text, QStringLiteral("Choose a larger disk or use reduced storage."));
+    QCOMPARE(info.warning_text, QStringLiteral("About 14GB is needed for the selected storage option."));
 }
 
 void OnboardingStorageTests::nearMinimumStorageWarns()
@@ -137,8 +133,7 @@ void OnboardingStorageTests::nearMinimumStorageWarns()
     QCOMPARE(info.selected_required_gb, 14);
     QVERIFY(info.enough_for_selected);
     QVERIFY(!info.enough_for_full);
-    QVERIFY(info.warning_text.contains(QStringLiteral("close to the recommended minimum")));
-    QCOMPARE(info.recommendation_text, QStringLiteral("Reduced storage is recommended for this disk."));
+    QCOMPARE(info.warning_text, QStringLiteral("About 14GB is needed, so this disk is close to the recommended minimum."));
 }
 
 void OnboardingStorageTests::pruneRecommendationUsesValidityAndMargin()

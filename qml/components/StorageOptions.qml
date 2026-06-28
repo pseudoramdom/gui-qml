@@ -28,6 +28,7 @@ ColumnLayout {
     readonly property bool storageOptionsEditable: root.pruneSetting.canEdit
     readonly property bool showCustomOption: root.customStorage || (root.pruneSetting.enabled && root.pruneSetting.value !== root.reducedStorageTargetGB)
     readonly property int effectiveCustomStorageAmount: root.customStorage ? root.customStorageAmount : root.pruneSetting.value
+    readonly property int customRequiredGB: root.effectiveCustomStorageAmount + root.assumedChainstateSize
 
     function hasEnoughStorage(requiredGB) {
         return !root.hasStorageResult || root.availableGB >= requiredGB
@@ -51,9 +52,7 @@ ColumnLayout {
         Layout.fillWidth: true
         ButtonGroup.group: group
         text: qsTr("Reduce storage")
-        description: root.hasStorageResult
-            ? qsTr("Uses about %1GB. For simple wallet use. %2GB available.").arg(root.reduceRequiredGB).arg(root.availableGB)
-            : qsTr("Uses about %1GB. For simple wallet use.").arg(root.reduceRequiredGB)
+        description: qsTr("Uses about %1GB. For regular wallet use.").arg(root.reduceRequiredGB)
         enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.reduceRequiredGB)
         recommended: root.storageOptionsEditable && !root.settingsModel.storageEnoughForFull && root.hasEnoughStorage(root.reduceRequiredGB)
         checked: root.pruneSetting.enabled && root.pruneSetting.value === root.reducedStorageTargetGB
@@ -69,9 +68,7 @@ ColumnLayout {
         ButtonGroup.group: group
         text: qsTr("Store all data")
         checked: !root.pruneSetting.enabled
-        description: root.hasStorageResult
-            ? qsTr("Uses about %1GB. Support the network. %2GB available.").arg(root.fullRequiredGB).arg(root.availableGB)
-            : qsTr("Uses about %1GB. Support the network.").arg(root.fullRequiredGB)
+        description: qsTr("Uses about %1GB. Support the network.").arg(root.fullRequiredGB)
         enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.fullRequiredGB)
         recommended: root.storageOptionsEditable && root.settingsModel.storageEnoughForFull
         onClicked: {
@@ -87,9 +84,9 @@ ColumnLayout {
             objectName: "storageCustomOption"
             ButtonGroup.group: group
             checked: root.pruneSetting.enabled && root.pruneSetting.value === root.effectiveCustomStorageAmount
-            text: qsTr("Custom (%1GB)").arg(root.effectiveCustomStorageAmount)
-            description: qsTr("Uses about %1GB including chainstate.").arg(root.effectiveCustomStorageAmount + root.assumedChainstateSize)
-            enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.effectiveCustomStorageAmount + root.assumedChainstateSize)
+            text: qsTr("Custom")
+            description: qsTr("Storing recent blocks up to %1 GB.").arg(root.effectiveCustomStorageAmount)
+            enabled: root.storageOptionsEditable && root.hasEnoughStorage(root.customRequiredGB)
             onClicked: {
                 root.storageSelectionChanged(true, root.effectiveCustomStorageAmount)
                 root.pruneSetting.enabled = true

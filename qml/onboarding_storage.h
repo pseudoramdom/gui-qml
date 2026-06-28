@@ -27,7 +27,6 @@ struct Info {
     int available_gb{0};
     QString available_text;
     QString warning_text;
-    QString recommendation_text;
     int full_required_gb{0};
     int pruned_required_gb{0};
     int selected_required_gb{0};

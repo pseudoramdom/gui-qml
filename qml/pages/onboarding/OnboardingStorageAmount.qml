@@ -19,10 +19,12 @@ Page {
     property int assumedChainstateSize: 0
     property bool customStorage: false
     property int customStorageAmount
+    readonly property bool storageCheckPending: root.settingsModel.storageCheckPending || false
+    readonly property int storageAvailableGB: root.settingsModel.storageAvailableGB || 0
     readonly property string storageAvailableText: root.settingsModel.storageAvailableText || ""
     readonly property string storageWarningText: root.settingsModel.storageWarningText || ""
     readonly property string storageErrorText: root.settingsModel.storageErrorText || ""
-    readonly property string storageRecommendationText: root.settingsModel.storageRecommendationText || ""
+    readonly property bool hasStorageResult: root.storageAvailableText.length > 0 && !root.storageCheckPending
     background: null
     clip: true
     PageStack {
@@ -38,17 +40,15 @@ Page {
                 navLeftDetail: backButton
                 bannerActive: false
                 bold: true
-                headerText: qsTr("Storage")
+                headerText: qsTr("Storage amount")
                 headerMargin: 0
-                description: root.storageAvailableText.length > 0
-                    ? qsTr("Data retrieved from the Bitcoin network is stored on your device.\n%1.").arg(root.storageAvailableText)
+                description: root.hasStorageResult
+                    ? qsTr("Data retrieved from the Bitcoin network is stored on your device.\nYou have %1GB of storage available.").arg(root.storageAvailableGB)
                     : qsTr("Data retrieved from the Bitcoin network is stored on your device.")
                 descriptionMargin: 10
                 subtext: root.storageErrorText.length > 0
                     ? root.storageErrorText
-                    : root.storageWarningText.length > 0
-                        ? root.storageWarningText
-                        : root.storageRecommendationText
+                    : root.storageWarningText
                 subtextMargin: 10
                 detailActive: true
                 detailItem: ColumnLayout {
@@ -75,7 +75,7 @@ Page {
                 }
                 buttonText: qsTr("Next")
                 buttonMargin: 20
-                buttonEnabled: !root.settingsModel.storageCheckPending && root.storageErrorText.length === 0 && root.settingsModel.storageEnoughForSelected
+                buttonEnabled: !root.storageCheckPending && root.storageErrorText.length === 0 && root.settingsModel.storageEnoughForSelected
                 onNext: root.next()
             }
         }
