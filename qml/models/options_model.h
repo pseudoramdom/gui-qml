@@ -63,6 +63,7 @@ class OptionsQmlModel : public QObject
     Q_PROPERTY(bool connectionSettingsDirty READ connectionSettingsDirty NOTIFY connectionSettingsDirtyChanged)
     Q_PROPERTY(bool storageSettingsDirty READ storageSettingsDirty NOTIFY storageSettingsDirtyChanged)
     Q_PROPERTY(bool developerSettingsDirty READ developerSettingsDirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool mempoolSettingsDirty READ mempoolSettingsDirty NOTIFY mempoolSettingsDirtyChanged)
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY restartRequiredChanged)
     Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
     Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
@@ -134,6 +135,9 @@ public:
     bool connectionSettingsDirty() const;
     bool storageSettingsDirty() const;
     bool developerSettingsDirty() const;
+    bool mempoolSettingsDirty() const {
+        return m_max_mempool_size_mb != m_initial_max_mempool_size_mb;
+    }
     bool restartRequired() const;
     QObject* coreSettings() { return &m_core_settings; }
     QVariantMap coreSettingStatuses() const;
@@ -184,6 +188,7 @@ Q_SIGNALS:
     void connectionSettingsDirtyChanged();
     void storageSettingsDirtyChanged();
     void developerSettingsDirtyChanged();
+    void mempoolSettingsDirtyChanged();
     void restartRequiredChanged();
     void coreSettingStatusesChanged();
     void languageChanged();
@@ -197,6 +202,7 @@ private:
         bool connection{false};
         bool storage{false};
         bool developer{false};
+        bool mempool{false};
         bool proxy{false};
         bool wallet{false};
         bool restart{false};

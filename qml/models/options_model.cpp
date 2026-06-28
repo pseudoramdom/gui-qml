@@ -178,7 +178,6 @@ bool OptionsQmlModel::storageSettingsDirty() const
 bool OptionsQmlModel::developerSettingsDirty() const
 {
     return m_dbcache_size_mib != m_initial_dbcache_size_mib ||
-           m_max_mempool_size_mb != m_initial_max_mempool_size_mb ||
            m_script_threads != m_initial_script_threads;
 }
 
@@ -187,6 +186,7 @@ bool OptionsQmlModel::restartRequired() const
     return connectionSettingsDirty() ||
            storageSettingsDirty() ||
            developerSettingsDirty() ||
+           mempoolSettingsDirty() ||
            proxySettingsDirty() ||
            walletSettingsDirty();
 }
@@ -220,6 +220,7 @@ OptionsQmlModel::DirtySnapshot OptionsQmlModel::dirtySnapshot() const
     snapshot.connection = connectionSettingsDirty();
     snapshot.storage = storageSettingsDirty();
     snapshot.developer = developerSettingsDirty();
+    snapshot.mempool = mempoolSettingsDirty();
     snapshot.proxy = proxySettingsDirty();
     snapshot.wallet = walletSettingsDirty();
     snapshot.restart = restartRequired();
@@ -231,6 +232,7 @@ void OptionsQmlModel::emitDirtySignals(const DirtySnapshot& before)
     if (connectionSettingsDirty() != before.connection) Q_EMIT connectionSettingsDirtyChanged();
     if (storageSettingsDirty() != before.storage) Q_EMIT storageSettingsDirtyChanged();
     if (developerSettingsDirty() != before.developer) Q_EMIT developerSettingsDirtyChanged();
+    if (mempoolSettingsDirty() != before.mempool) Q_EMIT mempoolSettingsDirtyChanged();
     if (proxySettingsDirty() != before.proxy) Q_EMIT proxySettingsDirtyChanged();
     if (walletSettingsDirty() != before.wallet) Q_EMIT walletSettingsDirtyChanged();
     if (restartRequired() != before.restart) Q_EMIT restartRequiredChanged();

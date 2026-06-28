@@ -35,6 +35,14 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
+            SettingsRestartNotice {
+                objectName: "walletRestartNotice"
+                visible: optionsModel.walletSettingsDirty
+                Layout.fillWidth: true
+                Layout.topMargin: 10
+                Layout.bottomMargin: 20
+            }
+
             WalletSettings {
                 Layout.fillWidth: true
             }

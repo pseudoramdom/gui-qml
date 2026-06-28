@@ -1825,7 +1825,9 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(bool connectionSettingsDirty MEMBER m_connection_settings_dirty NOTIFY connectionSettingsDirtyChanged)
     Q_PROPERTY(bool storageSettingsDirty MEMBER m_storage_settings_dirty NOTIFY storageSettingsDirtyChanged)
     Q_PROPERTY(bool developerSettingsDirty MEMBER m_developer_settings_dirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool mempoolSettingsDirty MEMBER m_mempool_settings_dirty NOTIFY mempoolSettingsDirtyChanged)
     Q_PROPERTY(bool proxySettingsDirty MEMBER m_proxy_settings_dirty NOTIFY proxySettingsDirtyChanged)
+    Q_PROPERTY(bool walletSettingsDirty MEMBER m_wallet_settings_dirty NOTIFY walletSettingsDirtyChanged)
     Q_PROPERTY(bool restartRequired MEMBER m_restart_required NOTIFY restartRequiredChanged)
     Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
     Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
@@ -1865,7 +1867,9 @@ public:
     bool m_connection_settings_dirty{false};
     bool m_storage_settings_dirty{false};
     bool m_developer_settings_dirty{false};
+    bool m_mempool_settings_dirty{false};
     bool m_proxy_settings_dirty{false};
+    bool m_wallet_settings_dirty{false};
     bool m_restart_required{false};
     QString m_preview_error;
     int m_assumed_blockchain_size{610};
@@ -2082,7 +2086,9 @@ Q_SIGNALS:
     void connectionSettingsDirtyChanged();
     void storageSettingsDirtyChanged();
     void developerSettingsDirtyChanged();
+    void mempoolSettingsDirtyChanged();
     void proxySettingsDirtyChanged();
+    void walletSettingsDirtyChanged();
     void restartRequiredChanged();
     void coreSettingStatusesChanged();
     void previewErrorChanged();

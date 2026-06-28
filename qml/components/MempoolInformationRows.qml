@@ -65,8 +65,6 @@ ColumnLayout {
         objectName: "mempoolSizeLimitRow"
         Layout.fillWidth: true
         header: qsTr("Mempool size limit")
-        description: qsTr("Applies after restart")
-        descriptionColor: Theme.color.neutral7
         state: root.maxMempoolStatus.canEdit === false ? "DISABLED" : "FILLED"
         errorText: qsTr("This is not a valid mempool size. Please choose a value between %1 and %2 MB.")
             .arg(optionsModel.minMaxMempoolSizeMB)

@@ -68,6 +68,7 @@ private Q_SLOTS:
     void storageDirtyIgnoresDisabledPruneSize();
     void pruneDisabledPreservesPreviousValue();
     void developerDirtyTracksRestartSettings();
+    void mempoolDirtyTracksRestartSettings();
     void proxyValidationAndCommit();
     void proxyDisabledPreservesPreviousValue();
     void customDataDirValidationRejectsFile();
@@ -825,13 +826,30 @@ void OptionsModelTests::developerDirtyTracksRestartSettings()
     model.setScriptThreads(model.scriptThreads() - 1);
     QVERIFY(!model.developerSettingsDirty());
     QVERIFY(!model.restartRequired());
+}
+
+void OptionsModelTests::mempoolDirtyTracksRestartSettings()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node);
+    QVERIFY(!model.developerSettingsDirty());
+    QVERIFY(!model.mempoolSettingsDirty());
+    QVERIFY(!model.restartRequired());
 
     model.setMaxMempoolSizeMB(model.maxMempoolSizeMB() + 1);
-    QVERIFY(model.developerSettingsDirty());
+    QVERIFY(!model.developerSettingsDirty());
+    QVERIFY(model.mempoolSettingsDirty());
     QVERIFY(model.restartRequired());
 
     model.setMaxMempoolSizeMB(model.maxMempoolSizeMB() - 1);
     QVERIFY(!model.developerSettingsDirty());
+    QVERIFY(!model.mempoolSettingsDirty());
     QVERIFY(!model.restartRequired());
 }
 

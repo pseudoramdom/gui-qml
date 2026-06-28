@@ -4,6 +4,7 @@
 
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 
 import "../../controls"
 import "../../components"
@@ -31,8 +32,20 @@ InformationPage {
     detailActive: true
     detailTopMargin: 0
     detailMaximumWidth: 450
-    detailItem: MempoolInformationRows {
-        id: mempoolInformationRows
+    detailItem: ColumnLayout {
+        spacing: 4
+
+        SettingsRestartNotice {
+            objectName: "mempoolRestartNotice"
+            visible: optionsModel.mempoolSettingsDirty
+            Layout.fillWidth: true
+            Layout.bottomMargin: visible ? 12 : 0
+        }
+
+        MempoolInformationRows {
+            id: mempoolInformationRows
+            Layout.fillWidth: true
+        }
     }
 
     Component.onCompleted: nodeModel.mempoolInfoPollingActive = visible
