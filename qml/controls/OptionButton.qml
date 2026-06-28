@@ -9,6 +9,8 @@ import QtQuick.Layouts 1.15
 Button {
     id: button
     property string description
+    property string errorText: ""
+    property bool showErrorText: errorText.length > 0
     property bool recommended: false
     property string image: ""
     property string customDir: ""
@@ -111,6 +113,23 @@ Button {
                         text: button.customDir
                         wrapMode: Text.WordWrap
                     }
+                }
+            }
+            Loader {
+                Layout.topMargin: 3
+                Layout.fillWidth: true
+                active: button.showErrorText && button.errorText.length > 0
+                visible: active
+                sourceComponent: Label {
+                    objectName: "optionButtonErrorText"
+                    Layout.fillWidth: true
+                    font.family: "BitcoinCoreSans"
+                    font.styleName: "Regular"
+                    font.pixelSize: 15
+                    color: Theme.color.red
+                    text: button.errorText
+                    horizontalAlignment: Text.AlignLeft
+                    wrapMode: Text.WordWrap
                 }
             }
         }

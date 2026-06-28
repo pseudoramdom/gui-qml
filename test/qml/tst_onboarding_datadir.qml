@@ -74,6 +74,7 @@ TestCase {
         StorageLocations {
             width: 640
             settingsModel: optionsModel
+            minimumStorageRequiredGB: 10
         }
     }
 
@@ -146,7 +147,7 @@ TestCase {
     function test_storage_location_uses_injected_chainstate_size() {
         const page = createTemporaryObject(storageLocation, this)
         verify(page !== null)
-        verify(page.description.indexOf("9GB") !== -1)
+        verify(page.description.indexOf("10GB") !== -1)
     }
 
     function test_connection_final_button_labels_start_commit_point() {
@@ -194,6 +195,98 @@ TestCase {
         compare(defaultOption.checked, true)
         compare(customOption.checked, false)
         compare(customOption.customDir, "")
+    }
+
+    function test_storage_location_shows_default_location_insufficient_storage_error() {
+        optionsModel.useDefaultDataDir()
+        optionsModel.setStorageStatusForTest(false, 8, "", "")
+
+        const page = createTemporaryObject(storageLocations, this)
+        verify(page !== null)
+
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        const customOption = findChild(page, "storageCustomLocationOption")
+        verify(defaultOption !== null)
+        verify(customOption !== null)
+
+        compare(defaultOption.checked, true)
+        compare(defaultOption.description, "Your application directory.\n8GB available.")
+        compare(defaultOption.showErrorText, true)
+        compare(defaultOption.errorText, "Not enough storage available.")
+        compare(customOption.showErrorText, false)
+        compare(page.validSelection, false)
+    }
+
+    function test_storage_location_shows_custom_location_insufficient_storage_error() {
+        optionsModel.selectCustomDataDir("/tmp/probe-custom")
+        optionsModel.setStorageStatusForTest(false, 8, "", "")
+
+        const page = createTemporaryObject(storageLocations, this)
+        verify(page !== null)
+
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        const customOption = findChild(page, "storageCustomLocationOption")
+        verify(defaultOption !== null)
+        verify(customOption !== null)
+
+        compare(defaultOption.checked, false)
+        compare(defaultOption.showErrorText, false)
+        compare(customOption.checked, true)
+        compare(customOption.description, "Choose the directory and storage device.\n8GB available.")
+        compare(customOption.customDir, "/tmp/probe-custom")
+        compare(customOption.showErrorText, true)
+        compare(customOption.errorText, "Not enough storage available.")
+        compare(page.validSelection, false)
+    }
+
+    function test_storage_location_uses_minimum_storage_for_selection_validity() {
+        optionsModel.useDefaultDataDir()
+        optionsModel.setStorageStatusForTest(false, 12, "", "")
+
+        const page = createTemporaryObject(storageLocations, this)
+        verify(page !== null)
+
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        verify(defaultOption !== null)
+
+        compare(defaultOption.description, "Your application directory.\n12GB available.")
+        compare(defaultOption.showErrorText, false)
+        compare(page.validSelection, true)
+        compare(optionsModel.storageEnoughForSelected, false)
+    }
+
+    function test_storage_location_pending_check_disables_without_stale_error() {
+        optionsModel.useDefaultDataDir()
+        optionsModel.setStorageStatusForTest(true, 8, "", "")
+
+        const page = createTemporaryObject(storageLocations, this)
+        verify(page !== null)
+
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        verify(defaultOption !== null)
+
+        compare(defaultOption.description, "Your application directory.")
+        compare(defaultOption.showErrorText, false)
+        compare(defaultOption.errorText, "")
+        compare(page.validSelection, false)
+    }
+
+    function test_storage_location_page_disables_next_when_location_below_minimum() {
+        optionsModel.useDefaultDataDir()
+        optionsModel.setStorageStatusForTest(false, 8, "", "")
+
+        const page = createTemporaryObject(storageLocation, this)
+        verify(page !== null)
+
+        const button = findChild(page, "onboardingStorageLocationButton")
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        verify(button !== null)
+        verify(defaultOption !== null)
+
+        compare(page.description, "Where do you want to store the downloaded block data?\nYou need a minimum of 10GB of storage.")
+        compare(button.enabled, false)
+        compare(defaultOption.showErrorText, true)
+        compare(defaultOption.errorText, "Not enough storage available.")
     }
 
     function test_storage_amount_uses_detected_available_space() {
