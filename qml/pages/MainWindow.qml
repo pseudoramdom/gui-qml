@@ -35,18 +35,6 @@ ApplicationWindow {
     readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
     readonly property bool waitForPostOnboardingWalletRoute: preInitOnboardingRanForUi && desktopWalletMode
     property bool postOnboardingWalletRouteResolved: false
-    property bool postOnboardingWalletWizardShown: false
-
-    function showPostOnboardingWalletWizard() {
-        if (!appWindow.waitForPostOnboardingWalletRoute || appWindow.postOnboardingWalletWizardShown) {
-            return
-        }
-        appWindow.postOnboardingWalletWizardShown = true
-        main.push(createWalletWizard, {
-            "launchContext": CreateWalletWizard.Context.Onboarding,
-            "waitForWalletDiscovery": true
-        }, StackView.Immediate)
-    }
 
     function resolvePostOnboardingWalletRoute() {
         if (appWindow.postOnboardingWalletRouteResolved) {
@@ -59,8 +47,11 @@ ApplicationWindow {
             return
         }
         appWindow.postOnboardingWalletRouteResolved = true
-        if (!walletController.noWalletsFound && appWindow.postOnboardingWalletWizardShown && main.depth > 1) {
-            main.pop(StackView.Immediate)
+        main.replace(desktopWallets, {}, StackView.Immediate)
+        if (walletController.noWalletsFound) {
+            main.push(createWalletWizard, {
+                "launchContext": CreateWalletWizard.Context.Onboarding
+            }, StackView.Immediate)
         }
     }
 
@@ -152,7 +143,9 @@ ApplicationWindow {
     PageStack {
         id: main
         objectName: "mainPageStack"
-        initialItem: appWindow.desktopWalletMode ? desktopWallets : node
+        initialItem: appWindow.waitForPostOnboardingWalletRoute
+            ? postOnboardingStartup
+            : (appWindow.desktopWalletMode ? desktopWallets : node)
         anchors.fill: parent
         focus: true
         Keys.onReleased: (event) => {
@@ -197,6 +190,22 @@ ApplicationWindow {
     }
 
     Component {
+        id: postOnboardingStartup
+        Page {
+            objectName: "postOnboardingStartupPage"
+            background: Rectangle {
+                color: "black"
+            }
+
+            BusyIndicator {
+                objectName: "postOnboardingStartupBusyIndicator"
+                anchors.centerIn: parent
+                running: true
+            }
+        }
+    }
+
+    Component {
         id: desktopWallets
         DesktopWallets {
             objectName: "desktopWalletsPage"
@@ -213,9 +222,6 @@ ApplicationWindow {
         id: createWalletWizard
         CreateWalletWizard {
             onFinished: {
-                if (waitForWalletDiscovery) {
-                    appWindow.postOnboardingWalletRouteResolved = true
-                }
                 main.pop()
             }
         }
@@ -278,9 +284,10 @@ ApplicationWindow {
         }
         visible = true
         if (appWindow.desktopWalletMode) {
-            appWindow.showPostOnboardingWalletWizard()
             nodeModel.startNodeInitializionThread()
-            Qt.callLater(appWindow.resolvePostOnboardingWalletRoute)
+            if (appWindow.waitForPostOnboardingWalletRoute) {
+                Qt.callLater(appWindow.resolvePostOnboardingWalletRoute)
+            }
         }
     }
 

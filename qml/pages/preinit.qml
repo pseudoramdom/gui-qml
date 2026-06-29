@@ -58,8 +58,7 @@ ApplicationWindow {
 
         Rectangle {
             anchors.fill: parent
-            color: Theme.color.background
-            opacity: 0.16
+            color: "black"
         }
 
         MouseArea {
@@ -70,9 +69,7 @@ ApplicationWindow {
 
         BusyIndicator {
             objectName: "preInitStartupBusyIndicator"
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 56
+            anchors.centerIn: parent
             running: appWindow.starting
         }
 

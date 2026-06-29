@@ -167,7 +167,7 @@ TestCase {
         verify(page !== null)
         const button = findChild(page, "onboardingConnectionButton")
         verify(button !== null)
-        compare(button.text, "Start Bitcoin Core")
+        compare(button.text, "Start")
     }
 
     function test_storage_location_uses_folder_dialog_for_custom_directory() {
