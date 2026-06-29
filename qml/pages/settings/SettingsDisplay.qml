@@ -37,6 +37,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 Setting {
                     id: gotoTheme
+                    objectName: "gotoTheme"
                     Layout.fillWidth: true
                     header: qsTr("Theme")
                     actionItem: CaretRightIcon {
@@ -64,7 +65,6 @@ Item {
                     objectName: "gotoDisplayUnit"
                     Layout.fillWidth: true
                     header: qsTr("Display unit")
-                    description: optionsModel.displayUnitLabel
                     actionItem: CaretRightIcon {
                         color: gotoDisplayUnit.stateColor
                     }
@@ -79,10 +79,6 @@ Item {
                     readonly property var settingStatus: (optionsModel.coreSettingStatuses || ({})).lang || ({})
                     Layout.fillWidth: true
                     header: qsTr("Language")
-                    // Use qsTr() directly for the system-default label so engine.retranslate()
-                    // refreshes it when switching back from a non-default language. C++ tr()
-                    // calls in property getters are not re-evaluated by retranslate().
-                    description: optionsModel.language === "" ? qsTr("System default") : optionsModel.languageSummary
                     state: settingStatus.canEdit === false ? "DISABLED" : "FILLED"
                     infoText: settingStatus.infoText || ""
                     showInfoText: infoText.length > 0
@@ -99,8 +95,6 @@ Item {
                     objectName: "gotoThirdPartyTransactionUrls"
                     Layout.fillWidth: true
                     header: qsTr("Third-party transaction URLs")
-                    description: optionsModel.thirdPartyTransactionUrls.length > 0 ? optionsModel.thirdPartyTransactionUrls : qsTr("None")
-                    descriptionTextFormat: Text.PlainText
                     actionItem: CaretRightIcon {
                         color: gotoThirdPartyUrls.stateColor
                     }
@@ -112,7 +106,6 @@ Item {
                     objectName: "gotoMoneyFont"
                     Layout.fillWidth: true
                     header: qsTr("Money font")
-                    description: optionsModel.moneyFontChoice === "best_system" ? qsTr("System fixed-width font") : qsTr("Embedded fixed-width font")
                     actionItem: CaretRightIcon {
                         color: gotoMoneyFont.stateColor
                     }
