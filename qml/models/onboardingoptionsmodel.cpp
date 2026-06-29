@@ -18,11 +18,21 @@
 #include <QVariantMap>
 
 
+namespace {
+QString InitialDataDir(const std::vector<std::string>& argv, bool can_listen_ipc)
+{
+    const QmlOnboardingSettings::OnboardingStartupStatus status{
+        QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, can_listen_ipc)
+    };
+    return status.active_data_dir.isEmpty() ? QmlDataDir::ReadGuiDataDir() : status.active_data_dir;
+}
+} // namespace
+
 OnboardingOptionsModel::OnboardingOptionsModel(std::vector<std::string> argv, bool can_listen_ipc, QObject* parent)
     : QObject{parent}
     , m_argv{std::move(argv)}
     , m_can_listen_ipc{can_listen_ipc}
-    , m_data_dir{QmlDataDir::ReadGuiDataDir()}
+    , m_data_dir{InitialDataDir(m_argv, m_can_listen_ipc)}
 {
     m_core_settings.setAfterChangeHandler([this](const QmlCoreSettings::Change& change, CoreSettingsModel::ChangeOrigin origin) {
         QmlCoreSettings::EmitCoreSettingSignals(*this, change);

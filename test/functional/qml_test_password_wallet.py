@@ -358,7 +358,7 @@ def case_created_wallet_send(harness, checkpoints):
     wallet_name = "created_password_wallet"
     recipient_addr = create_recipient_wallet(harness)
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -412,7 +412,7 @@ def case_locked_review_fallback(harness, checkpoints):
     configure_fallback_wallet(harness, wallet_name)
     checkpoints.checkpoint("fallback wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -453,7 +453,7 @@ def case_import_encrypted_wallet(harness, checkpoints):
     harness.stop_source_node()
     checkpoints.checkpoint("encrypted backup fixture created")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -482,7 +482,7 @@ def case_managed_legacy_migration(harness, checkpoints):
         return
     checkpoints.checkpoint("managed legacy wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -530,7 +530,7 @@ def case_close_loaded_wallet_from_selector(harness, checkpoints):
         stop_node(process, harness.gui_rpc_port)
     checkpoints.checkpoint("two managed wallets prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()

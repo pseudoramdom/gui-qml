@@ -476,7 +476,7 @@ def run_tests(args):
     try:
         print(f"[{case_name}] starting")
         wallet_name = "send_review"
-        harness.start_gui(reset_gui_settings=True)
+        harness.start_gui()
         gui = harness.driver
         checkpoints.checkpoint("GUI launched", gui)
         harness.finish_onboarding()

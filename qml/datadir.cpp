@@ -273,7 +273,8 @@ bool ShouldShowDataDirChooser(const ArgsManager& args)
            !data_dir_info.isDir() ||
            args.GetBoolArg("-choosedatadir", false) ||
            args.GetBoolArg("-resetguisettings", false) ||
-           settings.value(RESET_GUI_SETTINGS_KEY, false).toBool();
+           settings.value(RESET_GUI_SETTINGS_KEY, false).toBool() ||
+           QmlLegacySettings::ReadLegacyGuiReset();
 }
 
 bool ApplyDataDirArg(ArgsManager& args, const QString& path)

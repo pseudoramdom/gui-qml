@@ -120,7 +120,7 @@ def create_payment_request_from_first_unused_address(gui, expected_address):
 def run_test():
     harness = WalletFlowHarness("qml_addresses", port_offset=70)
     try:
-        harness.start_gui(reset_gui_settings=True)
+        harness.start_gui()
         gui = harness.driver
         create_wallet_through_gui(harness, gui)
         fund_wallet_for_send_context(harness)

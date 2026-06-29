@@ -486,7 +486,7 @@ def run_test(args):
         no_signer_path = find_mock_signer_path("no_signer")
 
         print(f"[{case_name}] starting")
-        harness.start_gui(reset_gui_settings=True, cwd=harness.tmpdir)
+        harness.start_gui(cwd=harness.tmpdir)
         checkpoints.checkpoint("GUI launched", harness.driver)
         harness.finish_onboarding()
         wait_for_rpc(harness.gui_rpc_port)

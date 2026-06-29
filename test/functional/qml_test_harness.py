@@ -91,6 +91,26 @@ def qml_qpa_platform():
     return os.getenv("QML_TEST_QPA_PLATFORM", os.getenv("QT_QPA_PLATFORM", "offscreen"))
 
 
+def has_cli_arg(args, name):
+    """Return whether args includes a command-line option by exact name."""
+    prefix = f"{name}="
+    return any(arg == name or arg.startswith(prefix) for arg in args)
+
+
+def qml_onboarded_args(extra_args, reset_settings=False, start_onboarded=True):
+    """Return hidden args that make managed tests start in the runtime shell."""
+    extra_args = extra_args or []
+    if (
+        not start_onboarded
+        or reset_settings
+        or has_cli_arg(extra_args, "-resetguisettings")
+        or has_cli_arg(extra_args, "-choosedatadir")
+        or has_cli_arg(extra_args, "-qml_onboarded")
+    ):
+        return []
+    return ["-qml_onboarded=1"]
+
+
 def parse_args():
     """Parse common CLI arguments for QML test scripts."""
     parser = argparse.ArgumentParser(
@@ -113,12 +133,13 @@ class QmlTestHarness:
     instead of launching a new one.
     """
 
-    def __init__(self, socket_path=None, extra_args=None, reset_settings=True, datadir=None, use_datadir_arg=True, tmpdir=None, no_listen_arg=True):
+    def __init__(self, socket_path=None, extra_args=None, reset_settings=False, start_onboarded=True, datadir=None, use_datadir_arg=True, tmpdir=None, no_listen_arg=True):
         self.external = socket_path is not None
         self.process = None
         self.driver = None
         self.extra_args = extra_args or []
         self.reset_settings = reset_settings
+        self.start_onboarded = start_onboarded
         self.use_datadir_arg = use_datadir_arg
         self.no_listen_arg = no_listen_arg
         self.config_home = None
@@ -173,7 +194,11 @@ class QmlTestHarness:
         args = [
             self.gui_binary,
             f"-test-automation={self.socket_path}",
-        ] + settings_args + (["-resetguisettings"] if self.reset_settings else []) + [
+        ] + settings_args + (["-resetguisettings"] if self.reset_settings else []) + qml_onboarded_args(
+            self.extra_args,
+            reset_settings=self.reset_settings,
+            start_onboarded=self.start_onboarded,
+        ) + [
             "-logtimemicros",
             "-debug",
             "-debugexclude=libevent",
@@ -325,14 +350,17 @@ def walk_onboarding_to_connection(gui):
 def complete_visible_onboarding(gui):
     """Finish onboarding if it is visible on the current QML engine.
 
-    Runtime onboarding was removed; datadir-specified launches now start
-    directly in the main shell. Keep this helper as a compatibility no-op for
-    older smoke tests that only need to be past onboarding before continuing.
-    Full pre-init onboarding still destroys the first bridge and should use
+    Managed runtime tests should start with qml_onboarded=true and treat this
+    as a no-op. Full pre-init onboarding destroys the first bridge and must use
     complete_preinit_onboarding() followed by wait_for_main_window_reconnect().
     """
     if not gui.object_exists("onboardingCover"):
         return
+    if gui.object_exists("preInitWindow"):
+        raise QmlDriverError(
+            "Connected to pre-init onboarding; use complete_preinit_onboarding() "
+            "and QmlTestHarness.wait_for_main_window_reconnect() instead."
+        )
     walk_onboarding_to_connection(gui)
     gui.click("onboardingConnectionButton")
     time.sleep(1)  # Allow navigation to the post-onboarding screen to settle.

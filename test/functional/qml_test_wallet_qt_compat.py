@@ -214,7 +214,7 @@ def run_test():
     qt_process = None
     try:
         print(f"[qml_wallet_qt_compat] bitcoin-qt located: {bitcoin_qt}")
-        harness.start_gui(reset_gui_settings=True)
+        harness.start_gui()
         gui = harness.driver
         print("[qml_wallet_qt_compat] QML GUI launched")
         harness.finish_onboarding()

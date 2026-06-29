@@ -224,7 +224,8 @@ def test_settings_persistence(datadir):
         gui2 = harness2.driver
 
         try:
-            # After a normal restart (no -resetguisettings) onboarding is skipped.
+            # Runtime restart tests launch as onboarded so they stay focused on
+            # display setting persistence, not first-run onboarding.
             gui2.wait_for_page("nodeSettingsButton", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
             print("  Reached NodeRunner main screen after restart")
 

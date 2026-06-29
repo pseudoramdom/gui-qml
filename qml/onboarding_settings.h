@@ -27,8 +27,19 @@ struct PreviewResult {
     int assumed_chainstate_size{0};
 };
 
+struct OnboardingStartupStatus {
+    bool ok{false};
+    QString error;
+    QString active_data_dir;
+    bool settings_enabled{true};
+    bool qml_onboarded{false};
+    bool should_show_onboarding{true};
+};
+
 bool PrepareArgs(ArgsManager& args, const std::vector<std::string>& argv, bool can_listen_ipc, std::string& error);
+OnboardingStartupStatus ResolveOnboardingStartupStatus(const std::vector<std::string>& argv, bool can_listen_ipc);
 PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc, const QString& data_dir);
+bool MarkQmlOnboarded(ArgsManager& args, QString* error = nullptr);
 bool ApplyToArgs(ArgsManager& args, const QString& data_dir, const QSet<QString>& touched_settings, const QmlCoreSettings::Values& values, QString* error = nullptr);
 
 } // namespace QmlOnboardingSettings

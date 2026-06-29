@@ -20,6 +20,8 @@ def run_tests():
     args = parse_args()
     harness = QmlTestHarness(
         socket_path=args.socket_path,
+        reset_settings=not bool(args.socket_path),
+        start_onboarded=False,
         use_datadir_arg=bool(args.socket_path),
         extra_args=[] if args.socket_path else ["-regtest"],
     )
@@ -28,8 +30,7 @@ def run_tests():
         harness.start()
         gui = harness.driver
 
-        # The app starts fresh (-resetguisettings), so we should land on
-        # the onboarding cover page.
+        # The app starts fresh, so we should land on the onboarding cover page.
         gui.wait_for_page("onboardingCover", timeout_ms=10000)
         print("Initial page: onboardingCover")
 

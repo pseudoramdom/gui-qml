@@ -25,6 +25,7 @@
 #include <qml/datadir.h>
 #include <qml/guiargs.h>
 #include <qml/legacy_settings_migration.h>
+#include <qml/onboarding_settings.h>
 #ifdef __ANDROID__
 #include <qml/androidnotifier.h>
 #endif
@@ -80,7 +81,6 @@
 #include <QApplication>
 #include <QDebug>
 #include <QEventLoop>
-#include <QFileInfo>
 #include <QFontDatabase>
 #include <QIcon>
 #include <QPixmap>
@@ -192,26 +192,6 @@ void DebugMessageHandler(QtMsgType type, const QMessageLogContext& context, cons
     } else {
         LogPrintf("GUI: %s\n", msg.toStdString());
     }
-}
-
-bool ConfigurationFileExists(ArgsManager& argsman)
-{
-    fs::path settings_path;
-    if (!argsman.GetSettingsPath(&settings_path)) {
-        // settings file is disabled
-        return true;
-    }
-    if (fs::exists(settings_path)) {
-        return true;
-    }
-
-    const fs::path rel_config_path = argsman.GetPathArg("-conf", BITCOIN_CONF_FILENAME);
-    const fs::path abs_config_path = AbsPathForConfigVal(argsman, rel_config_path, true);
-    if (fs::exists(abs_config_path)) {
-        return true;
-    }
-
-    return false;
 }
 
 void setupChainQSettings(QGuiApplication* app, QString chain)
@@ -337,30 +317,10 @@ struct PreInitOnboardingContext {
 
 bool ShouldShowPreInitOnboarding(const std::vector<std::string>& argv, bool can_listen_ipc)
 {
-    if (QmlDataDir::HasExplicitDataDirArg(gArgs)) return false;
-    if (QmlDataDir::ShouldShowDataDirChooser(gArgs)) return true;
-
-    ArgsManager preview_args;
-    SetupServerArgs(preview_args, can_listen_ipc);
-    SetupQmlGuiArgs(preview_args);
-    std::vector<const char*> raw_argv;
-    raw_argv.reserve(argv.size());
-    for (const std::string& arg : argv) raw_argv.push_back(arg.c_str());
-    std::string error;
-    if (!preview_args.ParseParameters(static_cast<int>(raw_argv.size()), raw_argv.data(), error)) {
-        return true;
-    }
-
-    try {
-        SelectParams(preview_args.GetChainType());
-    } catch (const std::exception&) {
-        return true;
-    }
-    const QString gui_data_dir = QmlDataDir::ReadGuiDataDir();
-    if (!QmlDataDir::IsDefaultDataDir(gui_data_dir) && QFileInfo::exists(gui_data_dir)) {
-        QmlDataDir::ApplyDataDirArg(preview_args, gui_data_dir);
-    }
-    return !ConfigurationFileExists(preview_args);
+    const QmlOnboardingSettings::OnboardingStartupStatus status{
+        QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, can_listen_ipc)
+    };
+    return !status.ok || status.should_show_onboarding;
 }
 
 PreInitOnboardingStatus RunPreInitOnboarding(PreInitOnboardingContext& context, const std::vector<std::string>& argv, bool can_listen_ipc)

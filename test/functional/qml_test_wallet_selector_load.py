@@ -160,7 +160,7 @@ def case_selector_loads_closed_wallet(harness, checkpoints):
     precreate_closed_wallet(harness, wallet_name)
     checkpoints.checkpoint("closed wallet prepared on disk")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
 
@@ -250,7 +250,7 @@ def case_selector_surfaces_load_error(harness, checkpoints):
     plant_readonly_wallet(harness, wallet_name)
     checkpoints.checkpoint("read-only wallet planted on disk")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     harness.finish_onboarding()
     dismiss_create_wallet_wizard(gui)
@@ -316,7 +316,7 @@ def case_selector_skips_load_for_already_open_wallet(harness, checkpoints):
         stop_node(process, harness.gui_rpc_port)
     checkpoints.checkpoint("two managed wallets prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     harness.finish_onboarding()
     dismiss_create_wallet_wizard(gui)

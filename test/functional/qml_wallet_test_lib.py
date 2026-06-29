@@ -16,7 +16,7 @@ import tempfile
 import time
 
 from qml_driver import QmlDriver, QmlDriverError
-from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qml_qpa_platform, qsettings_sandbox_args
+from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qml_onboarded_args, qml_qpa_platform, qsettings_sandbox_args
 
 
 RPC_USER = "qmlwallettest"
@@ -212,15 +212,20 @@ class WalletFlowHarness:
                 self.source_process.wait()
         self.source_process = None
 
-    def start_gui(self, reset_gui_settings=False, extra_args=None, cwd=None):
+    def start_gui(self, reset_gui_settings=False, start_onboarded=True, extra_args=None, cwd=None):
         env = dict(os.environ)
         env["QT_QPA_PLATFORM"] = qml_qpa_platform()
         settings_args = qsettings_sandbox_args(env, self.config_home)
+        extra_args = extra_args or []
         args = [
             self.gui_binary,
             f"-datadir={self.gui_datadir}",
             f"-test-automation={self.socket_path}",
-        ] + settings_args + [
+        ] + settings_args + qml_onboarded_args(
+            extra_args,
+            reset_settings=reset_gui_settings,
+            start_onboarded=start_onboarded,
+        ) + [
             "-logtimemicros",
             "-debug",
             "-debugexclude=libevent",
@@ -229,8 +234,7 @@ class WalletFlowHarness:
         ]
         if reset_gui_settings:
             args.insert(3, "-resetguisettings")
-        if extra_args:
-            args.extend(extra_args)
+        args.extend(extra_args)
         self.gui_process = subprocess.Popen(
             args,
             env=env,

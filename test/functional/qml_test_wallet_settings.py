@@ -229,7 +229,7 @@ def case_rename_persists_across_restart(harness, checkpoints):
     prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("managed wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -278,7 +278,7 @@ def case_backup_uses_automation_path(harness, checkpoints):
     prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("managed wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -304,7 +304,7 @@ def case_sign_verify_message(harness, checkpoints):
     prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("managed wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -355,7 +355,7 @@ def case_subpages_close_when_wallet_becomes_unselected(harness, checkpoints):
     prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("managed wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -391,7 +391,7 @@ def case_password_page_closes_when_selected_wallet_changes(harness, checkpoints)
         prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("two managed wallets prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -422,7 +422,7 @@ def case_wrong_current_password_clears_current_field(harness, checkpoints):
     prepare_managed_wallet(harness, wallet_name, WALLET_PASSWORD)
     checkpoints.checkpoint("managed wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()

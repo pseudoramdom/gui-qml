@@ -75,6 +75,7 @@ constexpr const char* QT_APP_NAME_TESTNET{"Bitcoin-Qt-testnet"};
 constexpr const char* QT_APP_NAME_TESTNET4{"Bitcoin-Qt-testnet4"};
 constexpr const char* QT_APP_NAME_SIGNET{"Bitcoin-Qt-signet"};
 constexpr const char* QT_APP_NAME_REGTEST{"Bitcoin-Qt-regtest"};
+constexpr const char* RESET_GUI_SETTINGS_KEY{"fReset"};
 
 QString AppNameForChain(const QString& chain, bool legacy_qt)
 {
@@ -391,6 +392,12 @@ QString ReadLegacyGuiDataDir()
     return settings->value(SettingsKeys::DATA_DIR).toString();
 }
 
+bool ReadLegacyGuiReset()
+{
+    const std::unique_ptr<QSettings> settings = OpenLegacyDataDirSettings();
+    return settings->value(QString::fromUtf8(RESET_GUI_SETTINGS_KEY), false).toBool();
+}
+
 int ReadLegacyGuiDisplayUnit(const QString& chain, int fallback)
 {
     RegisterLegacyBitcoinUnitMetaType();
@@ -430,6 +437,7 @@ void ClearLegacyGuiSettings(const QString& chain)
 
     const std::unique_ptr<QSettings> legacy_default_settings = OpenLegacyDataDirSettings();
     legacy_default_settings->remove(SettingsKeys::DATA_DIR);
+    legacy_default_settings->remove(QString::fromUtf8(RESET_GUI_SETTINGS_KEY));
     legacy_default_settings->sync();
 }
 

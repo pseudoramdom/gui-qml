@@ -28,13 +28,7 @@ from qml_driver import QmlDriver, QmlDriverError
 # ── Harness ───────────────────────────────────────────────────────────────────
 
 class DebugLogHarness:
-    """Launches the GUI node without -resetguisettings so the app starts
-    directly on NodeRunner.
-
-    Since the debug log test only needs to navigate within a running node,
-    we omit that flag and rely on the datadir existing to skip pre-init
-    onboarding.
-    """
+    """Launches the GUI node as an onboarded profile on NodeRunner."""
 
     def __init__(self):
         self.gui_binary = find_gui_binary()
@@ -51,10 +45,10 @@ class DebugLogHarness:
             self.gui_binary,
             f"-datadir={self.datadir}",
             f"-test-automation={self.socket_path}",
-            # Intentionally omit -resetguisettings: the datadir already
-            # exists so pre-init onboarding is skipped and NodeRunner loads.
+            # Runtime tests are not exercising first-run onboarding.
             # -disablewallet forces AppMode.walletEnabled=false so MainWindow
             # routes to the node/NodeRunner stack instead of desktopWallets.
+            "-qml_onboarded=1",
             "-disablewallet",
             "-logtimemicros",
             "-debug",
