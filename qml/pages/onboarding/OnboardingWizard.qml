@@ -20,7 +20,6 @@ PageStack {
     Component {
         id: cover
         OnboardingCover {
-            preInit: root.preInit
             onNext: root.push(strengthen)
         }
     }

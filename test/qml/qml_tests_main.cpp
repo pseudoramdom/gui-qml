@@ -68,6 +68,17 @@ private:
     QString m_state{QStringLiteral("DESKTOP")};
 };
 
+class MockBuildInfo : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool isDebug READ isDebug CONSTANT)
+    Q_PROPERTY(QString fullClientVersion READ fullClientVersion CONSTANT)
+
+public:
+    bool isDebug() const { return false; }
+    QString fullClientVersion() const { return QStringLiteral("v0.0.0-test"); }
+};
+
 class MockPeerDetailsModel : public QObject
 {
     Q_OBJECT
@@ -3026,6 +3037,7 @@ public Q_SLOTS:
     {
         engine->addImportPath(QStringLiteral(BITCOINQML_QML_TEST_MOCKS_DIR));
         static MockAppMode app_mode;
+        static MockBuildInfo build_info;
         static MockOptionsModel options_model;
         static MockChainModel chain_model;
         static MockNodeModel node_model;
@@ -3055,6 +3067,7 @@ public Q_SLOTS:
         wallet_model.setCurrentPaymentRequest(&payment_request);
         wallet_controller.setSelectedWalletObject(&wallet_model);
         qmlRegisterSingletonInstance<MockAppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
+        qmlRegisterSingletonInstance<MockBuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
         qmlRegisterUncreatableType<MockPeerDetailsModel>(
             "org.bitcoincore.qt",
             1,

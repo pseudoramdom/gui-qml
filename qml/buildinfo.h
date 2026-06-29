@@ -5,12 +5,16 @@
 #ifndef BITCOIN_QML_BUILDINFO_H
 #define BITCOIN_QML_BUILDINFO_H
 
+#include <clientversion.h>
+
 #include <QObject>
+#include <QString>
 
 class BuildInfo : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool isDebug READ isDebug CONSTANT)
+    Q_PROPERTY(QString fullClientVersion READ fullClientVersion CONSTANT)
 
 public:
     explicit BuildInfo(QObject* parent = nullptr) : QObject(parent) {}
@@ -23,6 +27,8 @@ public:
         return false;
 #endif
     }
+
+    QString fullClientVersion() const { return QString::fromStdString(FormatFullVersion()); }
 };
 
 #endif // BITCOIN_QML_BUILDINFO_H

@@ -43,9 +43,18 @@ def assert_create_wallet_onboarding_shown(gui, timeout_ms=30000):
         gui.wait_for_property("importWalletButton", "enabled", False, timeout_ms=timeout_ms)
 
 
+def assert_preinit_cover_about_available(gui):
+    gui.wait_for_object("onboardingCoverInfoButton", timeout_ms=10000)
+    gui.click("onboardingCoverInfoButton")
+    gui.wait_for_page("settingsAbout", timeout_ms=10000)
+    gui.click("settingsAboutBack")
+    gui.wait_for_page("onboardingCover", timeout_ms=10000)
+
+
 def finish_preinit_and_reconnect(harness):
     gui = harness.driver
     gui.wait_for_page("onboardingCover", timeout_ms=10000)
+    assert_preinit_cover_about_available(gui)
     complete_preinit_onboarding(gui)
     return harness.wait_for_main_window_reconnect()
 

@@ -115,6 +115,18 @@ TestCase {
         compare(wizard.currentItem.objectName, "onboardingCover")
     }
 
+    function test_preinit_cover_info_button_opens_about() {
+        const wizard = createTemporaryObject(fullPreInitWizard, this)
+        verify(wizard !== null)
+        compare(wizard.currentItem.objectName, "onboardingCover")
+
+        const infoButton = findChild(wizard.currentItem, "onboardingCoverInfoButton")
+        verify(infoButton !== null)
+
+        infoButton.clicked()
+        tryVerify(function() { return findChild(wizard.currentItem, "settingsAbout") !== null })
+    }
+
     function test_normal_onboarding_starts_at_cover() {
         const wizard = createTemporaryObject(fullWizard, this)
         verify(wizard !== null)

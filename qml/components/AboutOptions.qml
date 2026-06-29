@@ -5,6 +5,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import org.bitcoincore.qt 1.0
 import "../controls"
 
 ColumnLayout {
@@ -53,7 +54,7 @@ ColumnLayout {
         header: qsTr("Version")
         actionItem: ExternalLink {
             parentState: versionLink.visualState
-            description: nodeModel.fullClientVersion
+            description: BuildInfo.fullClientVersion
             link: "https://bitcoin.org/en/download"
             iconSource: "image://images/caret-right"
             iconWidth: 18
