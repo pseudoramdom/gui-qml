@@ -10,6 +10,7 @@ import "../../components"
 
 InformationPage {
     property bool onboarding: false
+    property bool showBackButton: true
     id: root
     objectName: "settingsAbout"
     bannerActive: false
@@ -25,41 +26,12 @@ InformationPage {
         onNext: root.StackView.view.push(developerSettings)
     }
 
-    states: [
-        State {
-            when: root.onboarding
-            PropertyChanges {
-                target: root
-                navLeftDetail: backButton
-                navMiddleDetail: null
-            }
-        },
-        State {
-            when: !root.onboarding
-            PropertyChanges {
-                target: root
-                navLeftDetail: backButton
-                navMiddleDetail: header
-            }
-        }
-    ]
-
-    Component {
-        id: backButton
-        NavButton {
-            objectName: "settingsAboutBack"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-    }
-    Component {
-        id: header
-        Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("About")
-        }
+    showNavBar: false
+    header: SettingsHeader {
+        title: root.onboarding ? "" : qsTr("About")
+        showBackButton: root.onboarding || root.showBackButton
+        backButtonObjectName: "settingsAboutBack"
+        onBack: root.back()
     }
 
     Component {

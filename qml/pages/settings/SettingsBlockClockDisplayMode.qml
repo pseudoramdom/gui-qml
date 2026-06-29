@@ -13,22 +13,13 @@ Page {
 
     id: root
     background: null
-    implicitWidth: 450
     leftPadding: 20
     rightPadding: 20
     topPadding: 30
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Block clock display mode")
-        }
+    header: SettingsHeader {
+        title: qsTr("Block clock display mode")
+        onBack: root.back()
     }
     BlockClockDisplayMode {
         width: Math.min(parent.width, 450)

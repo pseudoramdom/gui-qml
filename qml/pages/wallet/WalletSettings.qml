@@ -20,6 +20,8 @@ Page {
     property bool editingName: false
     property string pendingDisplayName: ""
 
+    property bool showBackButton: true
+
     signal back()
     signal selectWalletRequested()
     signal passwordRequested()
@@ -100,19 +102,11 @@ Page {
         }
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "walletSettingsBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            objectName: "walletSettingsHeader"
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Wallet settings")
-        }
+    header: SettingsHeader {
+        title: qsTr("Wallet settings")
+        showBackButton: root.showBackButton
+        backButtonObjectName: "walletSettingsBackButton"
+        onBack: root.back()
     }
 
     FileDialog {
@@ -283,9 +277,10 @@ Page {
         }
 
         Rectangle {
+            objectName: "walletSettingsPasswordDivider"
             visible: root.canManagePassphrase
             Layout.fillWidth: true
-            height: visible ? 1 : 0
+            height: 1
             color: Theme.color.neutral4
         }
 
@@ -326,7 +321,7 @@ Page {
             id: signVerifyMessageSetting
             objectName: "walletSettingsSignVerifyMessageRow"
             Layout.fillWidth: true
-            header: qsTr("Sign or Verify Message")
+            header: qsTr("Sign or verify message")
             filledStateColor: Theme.color.neutral7
             hoverStateColor: Theme.color.orange
             activeStateColor: Theme.color.orange

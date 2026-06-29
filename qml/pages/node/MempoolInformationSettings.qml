@@ -11,19 +11,14 @@ import "../../components"
 InformationPage {
     id: root
     objectName: "mempoolInformationSettingsPage"
+    property bool showBackButton: true
 
-    navLeftDetail: NavButton {
-        objectName: "mempoolInformationBackButton"
-        iconSource: "image://images/caret-left"
-        text: qsTr("Back")
-        onClicked: root.back()
-    }
-
-    navMiddleDetail: Header {
-        objectName: "mempoolInformationHeader"
-        headerBold: true
-        headerSize: 18
-        header: qsTr("Mempool Information")
+    showNavBar: false
+    header: SettingsHeader {
+        title: qsTr("Mempool information")
+        showBackButton: root.showBackButton
+        backButtonObjectName: "mempoolInformationBackButton"
+        onBack: root.back()
     }
 
     bannerActive: false

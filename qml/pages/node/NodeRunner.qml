@@ -6,10 +6,13 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../../controls"
+import "../../controls/utils.js" as Utils
 import "../../components"
 
 Page {
     signal settingsClicked
+    signal peersClicked
+    signal consoleClicked
     id: root
     objectName: "nodeRunner"
     background: null
@@ -29,6 +32,26 @@ Page {
 
                 NodeStatusActions {
                     Layout.alignment: Qt.AlignVCenter
+                }
+                IconButton {
+                    objectName: "peersTabButton"
+                    iconSource: Utils.nodeConnectionIcon(nodeModel.numPeers)
+                    iconColor: Theme.color.neutral7
+                    hoverColor: Theme.color.neutral9
+                    size: 34
+                    iconSize: 24
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.peersClicked()
+                }
+                IconButton {
+                    objectName: "consoleTabButton"
+                    iconSource: "image://images/console"
+                    iconColor: Theme.color.neutral7
+                    hoverColor: Theme.color.neutral9
+                    size: 34
+                    iconSize: 24
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.consoleClicked()
                 }
                 IconButton {
                     objectName: "nodeSettingsButton"

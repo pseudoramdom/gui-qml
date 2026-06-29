@@ -55,6 +55,15 @@ Button {
             }
         },
         State {
+            name: "TESTNET4"
+            PropertyChanges {
+                target: root
+                visible: true
+                text: shorten ? qsTr("Testnet4") : qsTr("Test Network (v4)")
+                bgColor: Theme.color.green
+            }
+        },
+        State {
             name: "SIGNET"
             PropertyChanges {
                 target: root

@@ -23,10 +23,14 @@ def run_tests():
         complete_onboarding(gui)
         gui.wait_for_page("nodeSettingsButton", timeout_ms=30000)
         gui.click("nodeSettingsButton")
-        gui.wait_for_page("gotoAboutSetting", timeout_ms=10000)
-        gui.wait_for_property("nodeSettingsStack", "busy", False, timeout_ms=10000)
+        # Node settings now uses a sidebar layout that lands on the About
+        # section; each sidebar row has objectName "settings_<section>".
+        gui.wait_for_page("settings_about", timeout_ms=10000)
 
-        mempool_visible = gui.get_property("settingsMempoolInformation", "visible")
+        # The Mempool Information sidebar row is gated on
+        # nodeModel.mempoolInformationAvailable, which is false in -blocksonly
+        # mode, so the row must be hidden.
+        mempool_visible = gui.get_property("settings_mempool", "visible")
         assert mempool_visible is False, (
             "Mempool Information settings row should be hidden in -blocksonly mode, "
             f"got {mempool_visible!r}"

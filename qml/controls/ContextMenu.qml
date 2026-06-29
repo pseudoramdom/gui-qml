@@ -24,6 +24,17 @@ Popup {
         _column.implicitWidth + 2 * root.menuPadding)
     implicitHeight: _column.implicitHeight + 2 * root.menuPadding
 
+    // Pin the actual size to the implicit size. The menu items have fixed-width
+    // content (CoreText with wrap: false), so the implicit size is stable, and
+    // an explicit width/height stops Qt from re-deriving the Popup width from
+    // the contentItem on every polish pass. Without this, the Popup <->
+    // ColumnLayout implicit-size round-trip (the layout's fillWidth children
+    // feed back into the Popup width) can spin QQuickItem::polish() into an
+    // infinite loop on Qt 6.4 when the popup is clamped against a narrow window
+    // edge.
+    width: implicitWidth
+    height: implicitHeight
+
     background: Rectangle {
         color: Theme.color.neutral1
         border.color: Theme.dark ? Theme.color.neutral2 : Theme.color.neutral3

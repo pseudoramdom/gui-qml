@@ -88,6 +88,7 @@
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>
         <file>controls/Setting.qml</file>
+        <file>controls/SettingsHeader.qml</file>
         <file>controls/Skeleton.qml</file>
         <file>controls/SpinningIndicator.qml</file>
         <file>controls/TextButton.qml</file>
@@ -99,6 +100,7 @@
         <file>pages/initerrormessage.qml</file>
         <file>pages/main.qml</file>
         <file>pages/node/BannedPeers.qml</file>
+        <file>pages/node/CommandConsole.qml</file>
         <file>pages/node/NetworkTraffic.qml</file>
         <file>pages/node/MempoolInformationSettings.qml</file>
         <file>pages/node/NodeRunner.qml</file>
@@ -116,6 +118,7 @@
         <file>pages/settings/SettingsAbout.qml</file>
         <file>pages/settings/SettingsDisplayUnit.qml</file>
         <file>pages/settings/SettingsLanguage.qml</file>
+        <file>pages/settings/SettingsWindowBehavior.qml</file>
         <file>pages/settings/SettingsBlockClockDisplayMode.qml</file>
         <file>pages/settings/SettingsConnection.qml</file>
         <file>pages/settings/SettingsDebugLog.qml</file>
@@ -179,6 +182,7 @@
         <file alias="circle-green-check">res/icons/circle-green-check.png</file>
         <file alias="circle-red-cross">res/icons/circle-red-cross.png</file>
         <file alias="coinbase">res/icons/coinbase.png</file>
+        <file alias="console">res/icons/console.png</file>
         <file alias="cross">res/icons/cross.png</file>
         <file alias="cross-filled">res/icons/cross-filled.png</file>
         <file alias="devices-filled">res/icons/devices-filled.png</file>
@@ -199,6 +203,11 @@
         <file alias="lock">res/icons/lock.png</file>
         <file alias="minus">res/icons/minus.png</file>
         <file alias="network-dark">res/icons/network-dark.png</file>
+        <file alias="node-0-connections">res/icons/node-0-connections.png</file>
+        <file alias="node-1-connection">res/icons/node-1-connection.png</file>
+        <file alias="node-2-connections">res/icons/node-2-connections.png</file>
+        <file alias="node-3-connections">res/icons/node-3-connections.png</file>
+        <file alias="node-4-connections">res/icons/node-4-connections.png</file>
         <file alias="network-light">res/icons/network-light.png</file>
         <file alias="pending-dark">res/icons/pending-dark.png</file>
         <file alias="pending-light">res/icons/pending-light.png</file>

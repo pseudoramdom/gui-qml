@@ -2366,6 +2366,61 @@ private:
     int m_display_unit{0};
 };
 
+class MockDesktopWindowBehaviorModel : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool desktopPlatform READ desktopPlatform CONSTANT)
+    Q_PROPERTY(bool showTrayIcon READ showTrayIcon WRITE setShowTrayIcon NOTIFY showTrayIconChanged)
+    Q_PROPERTY(bool minimizeToTray READ minimizeToTray WRITE setMinimizeToTray NOTIFY minimizeToTrayChanged)
+    Q_PROPERTY(bool minimizeOnClose READ minimizeOnClose WRITE setMinimizeOnClose NOTIFY minimizeOnCloseChanged)
+
+public:
+    bool desktopPlatform() const { return m_desktop_platform; }
+
+    bool showTrayIcon() const { return m_show_tray_icon; }
+    void setShowTrayIcon(bool show) {
+        if (m_show_tray_icon == show) return;
+        m_show_tray_icon = show;
+        if (!show && m_minimize_to_tray) {
+            setMinimizeToTray(false);
+        }
+        Q_EMIT showTrayIconChanged(show);
+    }
+
+    bool minimizeToTray() const { return m_minimize_to_tray; }
+    void setMinimizeToTray(bool minimize) {
+        if (!m_show_tray_icon && minimize) return;
+        if (m_minimize_to_tray == minimize) return;
+        m_minimize_to_tray = minimize;
+        Q_EMIT minimizeToTrayChanged(minimize);
+    }
+
+    bool minimizeOnClose() const { return m_minimize_on_close; }
+    void setMinimizeOnClose(bool minimize) {
+        if (m_minimize_on_close == minimize) return;
+        m_minimize_on_close = minimize;
+        Q_EMIT minimizeOnCloseChanged(minimize);
+    }
+
+    Q_INVOKABLE bool shouldHideToTrayOnMinimize() const {
+        return m_desktop_platform && m_show_tray_icon && m_minimize_to_tray;
+    }
+    Q_INVOKABLE bool shouldMinimizeWindowOnClose() const {
+        return m_desktop_platform && m_minimize_on_close;
+    }
+
+Q_SIGNALS:
+    void showTrayIconChanged(bool show);
+    void minimizeToTrayChanged(bool minimize);
+    void minimizeOnCloseChanged(bool minimize);
+
+private:
+    bool m_desktop_platform{true};
+    bool m_show_tray_icon{true};
+    bool m_minimize_to_tray{false};
+    bool m_minimize_on_close{false};
+};
+
 class QmlTestsSetup : public QObject
 {
     Q_OBJECT
@@ -2394,6 +2449,7 @@ public Q_SLOTS:
         static MockWalletListModel wallet_list_model;
         static MockActivityListModel activity_list_model;
         static MockBumpTransactionModel bump_model;
+        static MockDesktopWindowBehaviorModel desktop_window_behavior_model;
         recipients_model.setCurrent(&send_recipient);
         wallet_model.setActivityListModel(&activity_list_model);
         wallet_model.setBumpModel(&bump_model);
@@ -2450,6 +2506,7 @@ public Q_SLOTS:
         engine->rootContext()->setContextProperty(QStringLiteral("testRecipientsModel"), &recipients_model);
         engine->rootContext()->setContextProperty(QStringLiteral("testCoinsListModel"), &coins_list_model);
         engine->rootContext()->setContextProperty(QStringLiteral("testBumpModel"), &bump_model);
+        engine->rootContext()->setContextProperty(QStringLiteral("desktopWindowBehaviorModel"), &desktop_window_behavior_model);
         engine->addImportPath(QStringLiteral(BITCOINQML_QML_SOURCE_DIR));
     }
 };

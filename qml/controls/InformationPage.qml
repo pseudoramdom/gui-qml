@@ -40,12 +40,14 @@ Page {
     property string buttonObjectName: "continueButton"
     property real maximumWidth: 600
     property real detailMaximumWidth: 450
+    property bool showNavBar: true
 
     background: null
     clip: true
 
     header: NavigationBar {
       id: navbar
+      visible: root.showNavBar
     }
 
     ScrollView {

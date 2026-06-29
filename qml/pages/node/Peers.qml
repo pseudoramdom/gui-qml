@@ -18,10 +18,14 @@ Page {
     id: root
     objectName: "peers"
     background: null
+    property bool showHeader: true
+    property bool showBackButton: true
 
     header: NavigationBar2 {
+        visible: root.showHeader
         leftItem: NavButton {
             objectName: "peersBackButton"
+            visible: root.showBackButton
             iconSource: "image://images/caret-left"
             text: qsTr("Back")
             onClicked: root.back()

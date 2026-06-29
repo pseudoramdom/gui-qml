@@ -11,42 +11,25 @@ import "../../components"
 import "../wallet"
 import "../settings"
 
-PageStack {
+Page {
     signal doneClicked
     signal selectWalletRequested
     signal receiveRequested
 
     property alias showDoneButton: doneButton.visible
-    property bool closingWalletSettingsSubpage: false
 
     id: root
     objectName: "nodeSettingsStack"
+    background: null
 
-    function isWalletSettingsSubpage(page_name) {
-        return page_name === "walletPasswordSettingsPage"
-            || page_name === "addressListPage"
-            || page_name === "signVerifyMessagePage"
-    }
-
-    function closeWalletSettingsSubpage() {
-        const current_name = root.currentItem && root.currentItem.objectName ? root.currentItem.objectName : ""
-        if (root.closingWalletSettingsSubpage || root.depth <= 1 || !isWalletSettingsSubpage(current_name)) {
-            return
-        }
-        root.closingWalletSettingsSubpage = true
-        root.pop()
-        Qt.callLater(function() {
-            root.closingWalletSettingsSubpage = false
-        })
-    }
+    property int currentSection: 0
 
     function openWalletSettings() {
-        while (root.depth > 1) {
-            root.pop()
-        }
-        const current_name = root.currentItem && root.currentItem.objectName ? root.currentItem.objectName : ""
-        if (current_name !== "walletSettingsPage") {
-            root.push(wallet_settings_page)
+        for (var i = 0; i < sidebarModel.count; i++) {
+            if (sidebarModel.get(i).section === "wallet") {
+                root.currentSection = i
+                return
+            }
         }
     }
 
@@ -55,11 +38,11 @@ PageStack {
             return
         }
         walletController.selectedWallet.addressListModel.refresh()
-        root.push(addresses_page)
+        openWalletSettings()
+        walletStack.push(addressListComp)
     }
 
     function openWalletAddressHistory() {
-        root.openWalletSettings()
         root.openAddressHistory()
     }
 
@@ -69,297 +52,225 @@ PageStack {
             root.openWalletSettings()
         }
         function onSelectedWalletChanged() {
-            root.closeWalletSettingsSubpage()
+            if (walletStack.depth > 1) walletStack.pop(null)
         }
         function onIsWalletLoadedChanged() {
-            if (!walletController.isWalletLoaded) {
-                root.closeWalletSettingsSubpage()
-            }
-        }
-    }
-    initialItem: Page {
-        background: null
-        header: NavigationBar2 {
-            centerItem: Header {
-                headerBold: true
-                headerSize: 18
-                header: qsTr("Settings")
-            }
-            rightItem: NavButton {
-                id: doneButton
-                objectName: "nodeSettingsDoneButton"
-                text: qsTr("Done")
-                onClicked: root.doneClicked()
-            }
-        }
-        contentItem: RowLayout {
-            ColumnLayout {
-                Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
-                Layout.fillHeight: false
-                Layout.fillWidth: true
-                Layout.margins: 20
-                Layout.maximumWidth: 450
-                spacing: 4
-                Setting {
-                    id: gotoDisplay
-                    objectName: "gotoDisplay"
-                    Layout.fillWidth: true
-                    header: qsTr("Display")
-                    actionItem: CaretRightIcon {
-                        color: gotoDisplay.stateColor
-                    }
-                    onClicked: {
-                        root.push(display_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoWallet
-                    objectName: "settingsWallet"
-                    visible: AppMode.walletEnabled
-                    Layout.fillWidth: true
-                    header: qsTr("Wallet")
-                    actionItem: CaretRightIcon {
-                        color: gotoWallet.stateColor
-                    }
-                    onClicked: {
-                        root.openWalletSettings()
-                    }
-                }
-                Separator {
-                    visible: gotoWallet.visible
-                    Layout.fillWidth: true
-                }
-                Setting {
-                    id: gotoStorage
-                    objectName: "gotoStorage"
-                    Layout.fillWidth: true
-                    header: qsTr("Storage")
-                    actionItem: CaretRightIcon {
-                        color: gotoStorage.stateColor
-                    }
-                    onClicked: {
-                        root.push(storage_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoExternalSigner
-                    objectName: "settingsExternalSigner"
-                    visible: AppMode.walletEnabled
-                    Layout.fillWidth: true
-                    header: qsTr("External Signer")
-                    actionItem: CaretRightIcon {
-                        color: gotoExternalSigner.stateColor
-                    }
-                    onClicked: {
-                        root.push(wallet_page)
-                    }
-                }
-                Separator {
-                    visible: gotoExternalSigner.visible
-                    Layout.fillWidth: true
-                }
-                Setting {
-                    id: gotoConnection
-                    objectName: "settingsConnection"
-                    Layout.fillWidth: true
-                    header: qsTr("Connection")
-                    actionItem: CaretRightIcon {
-                        color: gotoConnection.stateColor
-                    }
-                    onClicked: {
-                        root.push(connection_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoPeers
-                    objectName: "settingsPeers"
-                    Layout.fillWidth: true
-                    header: qsTr("Peers")
-                    actionItem: CaretRightIcon {
-                        color: gotoPeers.stateColor
-                    }
-                    onClicked: {
-                        peerTableModel.startAutoRefresh();
-                        root.push(peers_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoNetworkTraffic
-                    objectName: "settingsNetworkTraffic"
-                    Layout.fillWidth: true
-                    header: qsTr("Network Traffic")
-                    actionItem: CaretRightIcon {
-                        color: gotoNetworkTraffic.stateColor
-                    }
-                    onClicked: {
-                        root.push(networktraffic_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoMempoolInformation
-                    objectName: "settingsMempoolInformation"
-                    visible: nodeModel.mempoolInformationAvailable
-                    Layout.fillWidth: true
-                    header: qsTr("Mempool Information")
-                    actionItem: CaretRightIcon {
-                        color: gotoMempoolInformation.stateColor
-                    }
-                    onClicked: {
-                        root.push(mempool_information_page)
-                    }
-                }
-                Separator {
-                    visible: gotoMempoolInformation.visible
-                    Layout.fillWidth: true
-                }
-                Setting {
-                    id: gotoDebugLog
-                    objectName: "settingsDebugLog"
-                    Layout.fillWidth: true
-                    header: qsTr("Debug Log")
-                    actionItem: CaretRightIcon {
-                        color: gotoDebugLog.stateColor
-                    }
-                    onClicked: {
-                        root.push(debug_log_page)
-                    }
-                }
-                Separator { Layout.fillWidth: true }
-                Setting {
-                    id: gotoAbout
-                    objectName: "gotoAboutSetting"
-                    Layout.fillWidth: true
-                    header: qsTr("About")
-                    actionItem: CaretRightIcon {
-                        color: gotoAbout.stateColor
-                    }
-                    onClicked: {
-                        root.push(about_page)
-                    }
-                }
-                Item {
-                    Layout.fillHeight: true
-                }
-            }
+            if (!walletController.isWalletLoaded && walletStack.depth > 1) walletStack.pop(null)
         }
     }
 
-    Component {
-        id: about_page
-        SettingsAbout {
-            onBack: root.pop()
+    ListModel { id: sidebarModel }
+
+    Component.onCompleted: {
+        // Display order and grouping follow the desktop settings design
+        // (BitcoinDesign/Bitcoin-Core-App#163). Row order is kept in lockstep
+        // with the contentStack page order below, so a row's index is its page
+        // index. Peers and Console live on the main nav bar, not in settings.
+        sidebarModel.append({ label: qsTr("Wallet"), section: "wallet", group: "wallet", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("External signer"), section: "externalsigner", group: "wallet", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Display"), section: "display", group: "display", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Window behavior"), section: "windowbehavior", group: "display", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Storage"), section: "storage", group: "display", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Connection"), section: "connection", group: "network", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Network traffic"), section: "networktraffic", group: "network", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("Mempool information"), section: "mempool", group: "network", alwaysVisible: false })
+        sidebarModel.append({ label: qsTr("Debug log"), section: "debuglog", group: "developer", alwaysVisible: true })
+        sidebarModel.append({ label: qsTr("About"), section: "about", group: "about", alwaysVisible: true })
+        root.selectFirstVisibleSection()
+    }
+
+    function isSectionVisible(index) {
+        var item = sidebarModel.get(index)
+        if (item.alwaysVisible) return true
+        if (item.section === "wallet" || item.section === "externalsigner")
+            return AppMode.walletEnabled
+        if (item.section === "mempool")
+            return nodeModel.mempoolInformationAvailable
+        if (item.section === "windowbehavior")
+            return AppMode.isDesktop
+        return true
+    }
+
+    // Land on the first visible row so node-only mode (where Wallet/External
+    // Signer are hidden) never opens on a hidden section.
+    function selectFirstVisibleSection() {
+        for (var i = 0; i < sidebarModel.count; i++) {
+            if (isSectionVisible(i)) { root.currentSection = i; return }
         }
     }
-    Component {
-        id: display_page
-        SettingsDisplay {
-            onBack: {
-                root.pop()
+
+    // True when this row begins a new group relative to the previous *visible*
+    // row, so the delegate can add leading space between groups while skipping
+    // hidden rows.
+    function isFirstVisibleInGroup(index) {
+        var group = sidebarModel.get(index).group
+        for (var j = index - 1; j >= 0; j--) {
+            if (!isSectionVisible(j)) continue
+            return sidebarModel.get(j).group !== group
+        }
+        return false
+    }
+
+    contentItem: RowLayout {
+        spacing: 0
+
+        ColumnLayout {
+            Layout.preferredWidth: 200
+            Layout.maximumWidth: 200
+            Layout.minimumWidth: 200
+            Layout.fillWidth: false
+            Layout.fillHeight: true
+            Layout.topMargin: 20
+            // Keep the sidebar off the window edge for breathing room, but drop
+            // the margin near the minimum window width so content is not squeezed.
+            Layout.leftMargin: root.width > 700 ? 20 : 0
+            spacing: 0
+
+            Repeater {
+                model: sidebarModel
+                delegate: AbstractButton {
+                    objectName: "settings_" + model.section
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 44
+                    Layout.topMargin: root.isFirstVisibleInGroup(index) ? 16 : 0
+                    visible: root.isSectionVisible(index)
+                    hoverEnabled: AppMode.isDesktop
+                    focusPolicy: Qt.TabFocus
+                    leftPadding: 16
+                    rightPadding: 16
+                    Accessible.name: model.label
+                    Accessible.role: Accessible.ListItem
+
+                    onClicked: root.currentSection = index
+
+                    background: Item {
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            anchors.topMargin: 2
+                            anchors.bottomMargin: 2
+                            radius: 8
+                            // Highlight the selected row with a filled pill rather
+                            // than an accent bar; a fainter fill marks hover.
+                            color: root.currentSection === index
+                                ? Theme.color.neutral3
+                                : parent.parent.hovered
+                                    ? Theme.color.neutral2
+                                    : "transparent"
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                        }
+                        FocusBorder {
+                            visible: parent.parent.visualFocus
+                        }
+                    }
+
+                    contentItem: CoreText {
+                        horizontalAlignment: Text.AlignLeft
+                        verticalAlignment: Text.AlignVCenter
+                        text: model.label
+                        font.pixelSize: 15
+                        color: root.currentSection === index
+                            ? Theme.color.orange
+                            : parent.hovered
+                                ? Theme.color.orangeLight1
+                                : Theme.color.neutral7
+                    }
+
+                    HoverHandler {
+                        cursorShape: Qt.PointingHandCursor
+                    }
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
+            NavButton {
+                id: doneButton
+                objectName: "nodeSettingsDoneButton"
+                text: qsTr("Done")
+                Layout.alignment: Qt.AlignHCenter
+                Layout.bottomMargin: 20
+                onClicked: root.doneClicked()
             }
         }
-    }
-    Component {
-        id: storage_page
-        SettingsStorage {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: wallet_page
-        SettingsWallet {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: connection_page
-        SettingsConnection {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: addresses_page
-        AddressList {
-            onBack: root.pop()
-            onReceiveRequested: {
-                root.pop()
-                root.receiveRequested()
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.rightMargin: 20
+            color: "transparent"
+            clip: true
+
+            StackLayout {
+                id: contentStack
+                anchors.fill: parent
+                // Content order is kept in lockstep with the sidebar row order
+                // so the selected row maps directly to its page.
+                currentIndex: root.currentSection
+
+                PageStack {
+                    id: walletStack
+                    objectName: "walletSettingsStack"
+                    initialItem: WalletSettings {
+                        objectName: "walletSettingsPage"
+                        // Reached from the settings sidebar, like the other
+                        // sections, so it has no back button of its own; the
+                        // pushed sub-pages carry theirs. Binding this to
+                        // depth > 1 turned the back button on as soon as a
+                        // sub-page was pushed, flashing it on this page for the
+                        // duration of the push transition.
+                        showBackButton: false
+                        onBack: walletStack.pop()
+                        onSelectWalletRequested: root.selectWalletRequested()
+                        onPasswordRequested: walletStack.push(walletPasswordComp, { "updating": walletController.selectedWallet.isEncrypted })
+                        onSignVerifyMessageRequested: walletStack.push(signVerifyComp)
+                        onAddressesRequested: {
+                            if (walletController.isWalletLoaded && walletController.selectedWallet) {
+                                walletController.selectedWallet.addressListModel.refresh()
+                                walletStack.push(addressListComp)
+                            }
+                        }
+                    }
+                    Component {
+                        id: walletPasswordComp
+                        WalletPasswordSettings {
+                            onBack: walletStack.pop()
+                            onSaved: walletStack.pop()
+                        }
+                    }
+                    Component {
+                        id: signVerifyComp
+                        SignVerifyMessage {
+                            onBack: walletStack.pop()
+                        }
+                    }
+                    Component {
+                        id: addressListComp
+                        AddressList {
+                            onBack: walletStack.pop()
+                            onReceiveRequested: {
+                                walletStack.pop()
+                                root.receiveRequested()
+                            }
+                        }
+                    }
+                }
+                SettingsWallet { showBackButton: false }
+                SettingsDisplay { showBackButton: false }
+                SettingsWindowBehavior { showBackButton: false }
+                SettingsStorage { showBackButton: false }
+                SettingsConnection { showBackButton: false }
+                NetworkTraffic { showBackButton: false; showHeader: false }
+                MempoolInformationSettings { showBackButton: false }
+                SettingsDebugLog { showBackButton: false }
+                PageStack {
+                    id: aboutStack
+                    initialItem: SettingsAbout {
+                        showBackButton: false
+                    }
+                }
             }
-        }
-    }
-    Component {
-        id: peers_page
-        Peers {
-            onBack: {
-                root.pop()
-                peerTableModel.stopAutoRefresh();
-            }
-            onPeerSelected: (peerDetails) => {
-                root.push(peer_details, {"details": peerDetails})
-            }
-            onBannedPeers: {
-                root.push(banned_peers_page)
-            }
-        }
-    }
-    Component {
-        id: peer_details
-        PeerDetails {
-            onBack: {
-                root.pop()
-            }
-        }
-    }
-    Component {
-        id: banned_peers_page
-        BannedPeers {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: networktraffic_page
-        NetworkTraffic {
-            showHeader: false
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: mempool_information_page
-        MempoolInformationSettings {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: debug_log_page
-        SettingsDebugLog {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: wallet_settings_page
-        WalletSettings {
-            onBack: root.pop()
-            onSelectWalletRequested: root.selectWalletRequested()
-            onPasswordRequested: root.push(wallet_password_page, { "updating": walletController.selectedWallet.isEncrypted })
-            onSignVerifyMessageRequested: root.push(sign_verify_message_page)
-            onAddressesRequested: root.openAddressHistory()
-        }
-    }
-    Component {
-        id: sign_verify_message_page
-        SignVerifyMessage {
-            onBack: root.pop()
-        }
-    }
-    Component {
-        id: wallet_password_page
-        WalletPasswordSettings {
-            onBack: root.pop()
-            onSaved: root.pop()
         }
     }
 }

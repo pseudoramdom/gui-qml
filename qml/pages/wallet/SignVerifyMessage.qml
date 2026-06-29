@@ -71,18 +71,10 @@ Page {
         root.verifyResultText = verified ? qsTr("Message verified successfully.") : qsTr("Message verification failed.");
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "signVerifyMessageBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Sign or Verify Message")
-        }
+    header: SettingsHeader {
+        title: qsTr("Sign or verify message")
+        backButtonObjectName: "signVerifyMessageBackButton"
+        onBack: root.back()
     }
 
     ScrollView {
@@ -96,8 +88,10 @@ Page {
             spacing: 0
 
             RowLayout {
-                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
                 Layout.topMargin: 18
+                Layout.maximumWidth: 508
+                Layout.alignment: Qt.AlignHCenter
                 spacing: 0
 
                 NavigationTab {
@@ -105,7 +99,7 @@ Page {
                     objectName: "signMessageTab"
                     text: qsTr("Sign Message")
                     checked: true
-                    Layout.preferredWidth: 254
+                    Layout.fillWidth: true
                     property int index: 0
                     ButtonGroup.group: messageTabs
                 }
@@ -113,7 +107,7 @@ Page {
                 NavigationTab {
                     objectName: "verifyMessageTab"
                     text: qsTr("Verify Message")
-                    Layout.preferredWidth: 254
+                    Layout.fillWidth: true
                     property int index: 1
                     ButtonGroup.group: messageTabs
                 }

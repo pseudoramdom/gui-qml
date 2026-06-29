@@ -226,8 +226,8 @@ def close_wallet_from_selector(gui, wallet_name):
 
 def open_wallet_settings_page(gui):
     gui.click("desktopWalletSettingsTabButton")
-    gui.wait_for_property("settingsWallet", "visible", True, timeout_ms=10000)
-    gui.click("settingsWallet")
+    gui.wait_for_property("settings_wallet", "visible", True, timeout_ms=10000)
+    gui.click("settings_wallet")
     gui.wait_for_page("walletSettingsPage", timeout_ms=10000)
 
 

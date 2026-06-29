@@ -59,14 +59,4 @@ ColumnLayout {
             loadedItem.forceActiveFocus()
         }
     }
-    Separator { Layout.fillWidth: true }
-    Setting {
-        Layout.fillWidth: true
-        header: qsTr("Dark Mode")
-        actionItem: OptionSwitch {
-            checked: Theme.dark
-            onToggled: Theme.toggleDark()
-        }
-        onClicked: loadedItem.toggled()
-    }
 }

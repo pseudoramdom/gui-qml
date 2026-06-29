@@ -10,6 +10,7 @@ import "../../components"
 
 Item {
     signal back
+    property bool showBackButton: true
 
     id: root
 
@@ -20,23 +21,15 @@ Item {
         initialItem: Page {
             id: displaySettings
             background: null
-            implicitWidth: 450
             leftPadding: 20
             rightPadding: 20
             topPadding: 30
 
-            header: NavigationBar2 {
-                leftItem: NavButton {
-                    objectName: "settingsDisplayBack"
-                    iconSource: "image://images/caret-left"
-                    text: qsTr("Back")
-                    onClicked: root.back()
-                }
-                centerItem: Header {
-                    headerBold: true
-                    headerSize: 18
-                    header: qsTr("Display")
-                }
+            header: SettingsHeader {
+                title: qsTr("Display")
+                showBackButton: root.showBackButton
+                backButtonObjectName: "settingsDisplayBack"
+                onBack: root.back()
             }
             ColumnLayout {
                 spacing: 4

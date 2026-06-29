@@ -74,6 +74,11 @@ list(FILTER QML_SOURCES EXCLUDE REGEX "androidnotifier\\.(cpp|h)$")
 if(NOT ENABLE_TEST_AUTOMATION)
   list(FILTER QML_SOURCES EXCLUDE REGEX "qml/test/")
 endif()
+if(APPLE)
+  enable_language(OBJCXX)
+  list(APPEND QML_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/qml/models/macdockiconhandler.mm")
+endif()
+
 set(QML_QRC "${CMAKE_CURRENT_SOURCE_DIR}/qml/bitcoin_qml.qrc")
 qt6_add_resources(QML_QRC_CPP ${QML_QRC})
 list(APPEND QML_SOURCES ${QML_QRC_CPP})
@@ -114,6 +119,9 @@ target_link_libraries(bitcoinqml
     Qt6::QuickControls2
     Qt6::Network
     Qt6::Widgets
+  PRIVATE
+    bitcoin_cli
+    $<$<PLATFORM_ID:Darwin>:-framework\ AppKit>
 )
 
 # Compile QML-app-specific translations (.ts → .qm) and embed as resources.

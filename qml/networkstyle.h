@@ -21,15 +21,18 @@ public:
     const QString& getAppName() const { return appName; }
     const QIcon& getAppIcon() const { return appIcon; }
     const QIcon& getTrayAndWindowIcon() const { return trayAndWindowIcon; }
+    const QString& getTitleAddText() const { return titleAddText; }
 
 private:
     NetworkStyle(const QString& appName,
                  int iconColorHueShift,
-                 int iconColorSaturationReduction);
+                 int iconColorSaturationReduction,
+                 const char* titleAddText);
 
     QString appName;
     QIcon appIcon;
     QIcon trayAndWindowIcon;
+    QString titleAddText;
 };
 
 #endif // BITCOIN_QML_NETWORKSTYLE_H

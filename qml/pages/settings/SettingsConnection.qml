@@ -12,6 +12,7 @@ Page {
     id: root
     signal back
     property bool onboarding: false
+    property bool showBackButton: true
     background: null
     PageStack {
         id: stack
@@ -29,57 +30,21 @@ Page {
                 headerText: qsTr("Connection settings")
                 headerMargin: 0
                 detailActive: true
-                detailItem: ConnectionSettings {
-                    onNext: stack.push(proxySettings)
-                }
-
-                states: [
-                    State {
-                        when: root.onboarding
-                        PropertyChanges {
-                            target: connection_settings
-                            navLeftDetail: null
-                            navMiddleDetail: null
-                            navRightDetail: doneButton
-                        }
-                    },
-                    State {
-                        when: !root.onboarding
-                        PropertyChanges {
-                            target: connection_settings
-                            navLeftDetail: backButton
-                            navMiddleDetail: header
-                            navRightDetail: null
-                        }
-                    }
-
-                ]
-
-                Component {
-                    id: backButton
-                    NavButton {
-                        objectName: "settingsConnectionBack"
-                        iconSource: "image://images/caret-left"
-                        text: qsTr("Back")
-                        onClicked: root.back()
-                    }
-                }
-                Component {
-                    id: header
-                    Header {
-                        headerBold: true
-                        headerSize: 18
-                        header: qsTr("Connection settings")
-                    }
-                }
-
-                Component {
-                    id: doneButton
-                    NavButton {
+                showNavBar: false
+                header: SettingsHeader {
+                    title: root.onboarding ? "" : qsTr("Connection settings")
+                    showBackButton: !root.onboarding && root.showBackButton
+                    backButtonObjectName: "settingsConnectionBack"
+                    onBack: root.back()
+                    rightItem: NavButton {
                         objectName: "connectionSettingsDoneButton"
+                        visible: root.onboarding
                         text: qsTr("Done")
                         onClicked: root.back()
                     }
+                }
+                detailItem: ConnectionSettings {
+                    onNext: stack.push(proxySettings)
                 }
             }
         }

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Tests for the QML/Qt6 app
 
-find_package(Qt 6.2 MODULE REQUIRED COMPONENTS Core Gui Network Test Qml Quick QuickTest)
+find_package(Qt 6.2 MODULE REQUIRED COMPONENTS Core Gui Network Test Qml Quick QuickTest Widgets)
 find_package(GTest REQUIRED)
 
 if(NOT TARGET GTest::gmock)
@@ -16,6 +16,9 @@ add_executable(bitcoinqml_unit_tests
   test_blockclockdial.cpp
   test_bitcoinuri.cpp
   test_bitcoinamount.cpp
+  test_debuglogmodel.cpp
+  test_desktoptrayiconcontroller.cpp
+  test_desktopwindowbehaviormodel.cpp
   test_peerlistmodel.cpp
   test_peerstatsutil.cpp
   test_psbtqmlmodel.cpp
@@ -38,6 +41,8 @@ add_executable(bitcoinqml_unit_tests
   test_transaction.cpp
   test_activityfilterproxymodel.cpp
   test_qtmessagefilter.cpp
+  test_rpccommandexecutor.cpp
+  test_rpcconsolemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../bitcoin/src/util/chaintype.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../qml/models/bitcoinuri.cpp
 )
@@ -68,6 +73,7 @@ target_link_libraries(bitcoinqml_unit_tests
     Qt6::Quick
     Qt6::Network
     Qt6::Test
+    Qt6::Widgets
 )
 
 add_test(NAME bitcoinqml_unit_tests COMMAND bitcoinqml_unit_tests -platform offscreen)

@@ -18,18 +18,10 @@ Page {
 
     background: null
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "settingsProxyBack"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Proxy Settings")
-        }
+    header: SettingsHeader {
+        title: qsTr("Proxy settings")
+        backButtonObjectName: "settingsProxyBack"
+        onBack: root.back()
     }
 
     ScrollView {

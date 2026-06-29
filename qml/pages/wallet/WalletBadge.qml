@@ -52,7 +52,7 @@ Button {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 5
+            anchors.leftMargin: 0
             anchors.rightMargin: 5
             spacing: 5
 
@@ -92,7 +92,7 @@ Button {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 5
+            anchors.leftMargin: 0
             anchors.rightMargin: 5
             clip: true
             spacing: 5
@@ -127,7 +127,7 @@ Button {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 5
+            anchors.leftMargin: 0
             anchors.rightMargin: 5
             clip: true
             spacing: 5

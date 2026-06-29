@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <bitcoin-build-config.h> // IWYU pragma: keep
+
 #include <qml/bitcoin.h>
 
 #include <common/args.h>
@@ -40,11 +42,14 @@
 #include <qml/models/networktraffictower.h>
 #include <qml/models/networkstatusmodel.h>
 #include <qml/models/nodemodel.h>
+#include <qml/models/desktoptrayiconcontroller.h>
+#include <qml/models/desktopwindowbehaviormodel.h>
 #include <qml/models/options_model.h>
 #include <qml/models/paymentrequest.h>
 #include <qml/models/peerdetailsmodel.h>
 #include <qml/models/peerlistsortproxy.h>
 #include <qml/models/peerlistmodel.h>
+#include <qml/models/rpcconsolemodel.h>
 #include <qml/models/sendrecipient.h>
 #include <qml/models/walletlistmodel.h>
 #include <qml/models/walletqmlmodel.h>
@@ -64,9 +69,11 @@
 #include <memory>
 #include <tuple>
 
+#include <QApplication>
 #include <QDebug>
 #include <QFontDatabase>
-#include <QGuiApplication>
+#include <QIcon>
+#include <QPixmap>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -204,6 +211,8 @@ void setupChainQSettings(QGuiApplication* app, QString chain)
         app->setApplicationName(QAPP_APP_NAME_DEFAULT);
     } else if (chain.compare("TEST") == 0) {
         app->setApplicationName(QAPP_APP_NAME_TESTNET);
+    } else if (chain.compare("TESTNET4") == 0) {
+        app->setApplicationName(QAPP_APP_NAME_TESTNET4);
     } else if (chain.compare("SIGNET") == 0) {
         app->setApplicationName(QAPP_APP_NAME_SIGNET);
     } else if (chain.compare("REGTEST") == 0) {
@@ -244,7 +253,7 @@ int QmlGuiMain(int argc, char* argv[])
     qRegisterMetaType<interfaces::BlockAndHeaderTipInfo>("interfaces::BlockAndHeaderTipInfo");
 
     QGuiApplication::styleHints()->setTabFocusBehavior(Qt::TabFocusAllControls);
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     std::unique_ptr<interfaces::Init> init = interfaces::MakeGuiInit(argc, argv);
@@ -390,13 +399,26 @@ int QmlGuiMain(int argc, char* argv[])
     ChainModel chain_model{*chain};
     chain_model.setCurrentNetworkName(QString::fromStdString(gArgs.GetChainTypeString()));
     setupChainQSettings(&app, chain_model.currentNetworkName());
+    // Settings reset must happen before model instantiation so the models
+    // read clean defaults from QSettings.
+    if (gArgs.IsArgSet("-resetguisettings")) {
+        QSettings settings;
+        settings.remove(QStringLiteral("fHideTrayIcon"));
+        settings.remove(QStringLiteral("fMinimizeToTray"));
+        settings.remove(QStringLiteral("fMinimizeOnClose"));
+    }
 
     QObject::connect(&node_model, &NodeModel::setTimeRatioList, &chain_model, &ChainModel::setTimeRatioList);
     QObject::connect(&node_model, &NodeModel::setTimeRatioListInitial, &chain_model, &ChainModel::setTimeRatioListInitial);
 
 
+    DesktopWindowBehaviorModel desktop_window_behavior_model;
+    DesktopTrayIconController desktop_tray_icon_controller;
+
     qGuiApp->setQuitOnLastWindowClosed(false);
     QObject::connect(qGuiApp, &QGuiApplication::lastWindowClosed, [&] {
+        // When the tray icon is visible the node keeps running in the background.
+        if (desktop_tray_icon_controller.visible()) return;
         node_model.requestShutdown();
     });
 
@@ -431,6 +453,11 @@ int QmlGuiMain(int argc, char* argv[])
 
     DebugLogModel debug_log_model{gArgs.GetDataDirNet() / "debug.log"};
     engine.rootContext()->setContextProperty("debugLogModel", &debug_log_model);
+
+    RpcConsoleModel rpc_console_model{*node};
+    QObject::connect(&node_model, &NodeModel::nodeInitialized,
+                     &rpc_console_model, &RpcConsoleModel::onNodeInitialized);
+    engine.rootContext()->setContextProperty("rpcConsoleModel", &rpc_console_model);
 
 #ifdef ENABLE_WALLET
     std::unique_ptr<WalletListModel> wallet_list_model;
@@ -497,6 +524,19 @@ int QmlGuiMain(int argc, char* argv[])
     Clipboard clipboard;
     BitcoinUriModel bitcoin_uri_model;
 
+    desktop_tray_icon_controller.setBasePixmap(
+        network_style->getTrayAndWindowIcon().pixmap(QSize(256, 256)));
+    desktop_tray_icon_controller.setToolTip(
+        QString(QObject::tr("%1 client").arg(CLIENT_NAME) + " " + network_style->getTitleAddText()).trimmed());
+    desktop_tray_icon_controller.setVisible(
+        app_mode.isDesktop() && desktop_window_behavior_model.showTrayIcon());
+    QObject::connect(&desktop_tray_icon_controller, &DesktopTrayIconController::supportedChanged,
+        [&desktop_window_behavior_model](bool supported) {
+            if (!supported) desktop_window_behavior_model.setShowTrayIcon(false);
+        });
+    engine.rootContext()->setContextProperty("desktopWindowBehaviorModel", &desktop_window_behavior_model);
+    engine.rootContext()->setContextProperty("desktopTrayIconController", &desktop_tray_icon_controller);
+
     qmlRegisterSingletonInstance<AppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
     qmlRegisterSingletonInstance<BuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
     qmlRegisterSingletonInstance<Clipboard>("org.bitcoincore.qt", 1, 0, "Clipboard", &clipboard);
@@ -505,6 +545,7 @@ int QmlGuiMain(int argc, char* argv[])
     qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
     qmlRegisterUncreatableType<PeerDetailsModel>("org.bitcoincore.qt", 1, 0, "PeerDetailsModel", "");
     qmlRegisterUncreatableType<DebugLogModel>("org.bitcoincore.qt", 1, 0, "DebugLogModel", "");
+    qmlRegisterUncreatableType<RpcConsoleModel>("org.bitcoincore.qt", 1, 0, "RpcConsoleModel", "");
     qmlRegisterType<BitcoinAmount>("org.bitcoincore.qt", 1, 0, "BitcoinAmount");
     qmlRegisterType<BitcoinAddress>("org.bitcoincore.qt", 1, 0, "BitcoinAddress");
     qmlRegisterType<ActivityFilterProxyModel>("org.bitcoincore.qt", 1, 0, "ActivityFilterProxyModel");
@@ -533,6 +574,7 @@ int QmlGuiMain(int argc, char* argv[])
     if (!window) {
         return EXIT_FAILURE;
     }
+    desktop_tray_icon_controller.setMainWindow(window);
 
 #ifdef ENABLE_TEST_AUTOMATION
     std::unique_ptr<TestBridge> test_bridge;

@@ -52,19 +52,10 @@ Page {
         root.errorText = qsTr("This address is no longer available.");
     }
 
-    header: NavigationBar2 {
-        leftItem: NavButton {
-            objectName: "addressListBackButton"
-            iconSource: "image://images/caret-left"
-            text: qsTr("Back")
-            onClicked: root.back()
-        }
-        centerItem: Header {
-            objectName: "addressListHeader"
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Addresses")
-        }
+    header: SettingsHeader {
+        title: qsTr("Addresses")
+        backButtonObjectName: "addressListBackButton"
+        onBack: root.back()
         rightItem: IconButton {
             objectName: "addressesMenuButton"
             iconSource: "image://images/ellipsis"
@@ -97,7 +88,7 @@ Page {
         id: labelPopup
         objectName: "addressLabelPopup"
         anchors.centerIn: Overlay.overlay
-        width: 420
+        width: Math.min(420, root.width - 40)
         modal: true
         focus: true
         leftPadding: 40
@@ -146,7 +137,7 @@ Page {
     Popup {
         id: detailsPopup
         anchors.centerIn: Overlay.overlay
-        width: 560
+        width: Math.min(560, root.width - 40)
         modal: true
         focus: true
         leftPadding: 40
@@ -181,7 +172,7 @@ Page {
         contentWidth: width
 
         ColumnLayout {
-            width: 520
+            width: Math.min(520, parent.width)
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 26
 

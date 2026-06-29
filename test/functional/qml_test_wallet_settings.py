@@ -142,8 +142,8 @@ def load_wallet(gui, harness, wallet_name):
 def open_wallet_settings(gui):
     gui.click("desktopWalletSettingsTabButton")
     gui.settle()
-    gui.wait_for_property("settingsWallet", "visible", True, timeout_ms=5000)
-    gui.click("settingsWallet")
+    gui.wait_for_property("settings_wallet", "visible", True, timeout_ms=5000)
+    gui.click("settings_wallet")
     gui.wait_for_page("walletSettingsPage", timeout_ms=10000)
 
 
@@ -236,6 +236,17 @@ def case_rename_persists_across_restart(harness, checkpoints):
 
     open_wallet_settings(gui)
     checkpoints.checkpoint("wallet settings opened", gui)
+
+    # Regression: the divider between Addresses and Set password used
+    # height: visible ? 1 : 0, which left it laid out at height 0 even though it
+    # was visible, so the line never rendered. On a passphrase-managed wallet it
+    # must have a real, non-zero height.
+    gui.wait_for_property("walletSettingsPasswordDivider", "visible", True, timeout_ms=5000)
+    divider_height = gui.get_property("walletSettingsPasswordDivider", "height")
+    assert divider_height and divider_height > 0, (
+        f"Addresses/Set password divider should render with a non-zero height, got {divider_height!r}"
+    )
+    checkpoints.checkpoint("password divider renders", gui)
 
     gui.click("walletSettingsNameEditButton")
     gui.wait_for_property("walletSettingsNameEditField", "visible", True, timeout_ms=5000)

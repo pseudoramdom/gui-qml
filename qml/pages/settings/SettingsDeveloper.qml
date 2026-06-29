@@ -12,13 +12,12 @@ InformationPage {
     id: root
     objectName: "settingsDeveloper"
     property bool onboarding: false
-    navLeftDetail: NavButton {
-        objectName: "settingsDeveloperBack"
-        iconSource: "image://images/caret-left"
-        text: qsTr("Back")
-        onClicked: {
-            root.back()
-        }
+    showNavBar: false
+    header: SettingsHeader {
+        title: root.onboarding ? "" : qsTr("Developer settings")
+        showBackButton: true
+        backButtonObjectName: "settingsDeveloperBack"
+        onBack: root.back()
     }
     bannerActive: false
     bold: true
@@ -27,30 +26,4 @@ InformationPage {
     headerMargin: 0
     detailActive: true
     detailItem: DeveloperOptions {}
-
-    states: [
-        State {
-            when: root.onboarding
-            PropertyChanges {
-                target: root
-                navMiddleDetail: null
-            }
-        },
-        State {
-            when: !root.onboarding
-            PropertyChanges {
-                target: root
-                navMiddleDetail: header
-            }
-        }
-    ]
-
-    Component {
-        id: header
-        Header {
-            headerBold: true
-            headerSize: 18
-            header: qsTr("Developer settings")
-        }
-    }
 }
