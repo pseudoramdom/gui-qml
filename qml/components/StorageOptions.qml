@@ -37,7 +37,7 @@ ColumnLayout {
     ButtonGroup {
         id: group
     }
-    spacing: 15
+    spacing: 10
     CoreText {
         objectName: "storagePruneCommandLineInfo"
         Layout.fillWidth: true

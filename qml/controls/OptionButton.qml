@@ -134,11 +134,14 @@ Button {
             }
         }
         Item {
-            height: parent.height
-            width: 40
+            visible: button.checked
+            Layout.alignment: Qt.AlignVCenter
+            Layout.minimumWidth: visible ? 30 : 0
+            Layout.preferredWidth: visible ? 30 : 0
+            Layout.maximumWidth: visible ? 30 : 0
+            Layout.preferredHeight: 30
             Icon {
                 anchors.centerIn: parent
-                visible: button.checked
                 source: "image://images/check"
                 color: Theme.color.neutral9
                 size: 24

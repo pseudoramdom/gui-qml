@@ -50,7 +50,7 @@ ColumnLayout {
     ButtonGroup {
         id: group
     }
-    spacing: 15
+    spacing: 10
     OptionButton {
         id: defaultDirOption
         objectName: "storageDefaultLocationOption"
