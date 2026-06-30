@@ -53,7 +53,10 @@ def leave_proxy_settings_with_done(gui):
 
 def navigate_back_from_connection_settings(gui):
     """Navigate back from Connection settings to the runtime settings shell."""
-    gui.click("settingsConnectionBack")
+    if gui.object_exists("nodeSettingsDoneButton"):
+        gui.click("nodeSettingsDoneButton")
+    else:
+        gui.click("settingsConnectionBack")
     gui.settle()
     if gui.object_exists("desktopWalletSettingsTabButton"):
         gui.wait_for_property("desktopWalletSettingsTabButton", "visible", True, timeout_ms=5000)

@@ -11,7 +11,7 @@ import "../controls"
 ColumnLayout {
     id: root
     signal next
-    spacing: 4
+    spacing: 0
     Setting {
         id: websiteLink
         Layout.fillWidth: true
@@ -69,8 +69,10 @@ ColumnLayout {
         Layout.fillWidth: true
         header: qsTr("Developer options")
         description: qsTr("Only use these if you have development experience")
-        actionItem: CaretRightIcon {
+        actionItem: RightContentIcon {
             color: gotoDeveloper.stateColor
+            source: "image://images/caret-right"
+            iconSize: 18
         }
         onClicked: {
             root.next()

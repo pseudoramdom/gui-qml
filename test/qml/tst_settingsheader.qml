@@ -33,6 +33,16 @@ TestCase {
         }
     }
 
+    Component {
+        id: labeledBackHeader
+        SettingsHeader {
+            width: 400
+            title: "About"
+            backButtonObjectName: "settingsAboutBack"
+            backButtonText: "Back"
+        }
+    }
+
     // Regression: the right section must show its actions once visible. The
     // previous binding also read contentItem.visible, the child's *effective*
     // visibility, which includes the section's own Pane. Built while the parent
@@ -47,5 +57,16 @@ TestCase {
 
         container.visible = true
         tryVerify(function() { return rightSection.visible })
+    }
+
+    function test_backButtonCanShowLabel() {
+        const header = createTemporaryObject(labeledBackHeader, testCase)
+        verify(header !== null)
+        const backButton = findChild(header, "settingsAboutBack")
+        verify(backButton !== null)
+
+        compare(backButton.text, "Back")
+        compare(backButton.iconSource.toString(), "image://images/caret-left")
+        tryVerify(function() { return backButton.width > 40 })
     }
 }

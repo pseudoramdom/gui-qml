@@ -85,6 +85,7 @@
         <file>controls/ProgressIndicator.qml</file>
         <file>controls/ProxyLocationInput.qml</file>
         <file>controls/QRImage.qml</file>
+        <file>controls/RightContentIcon.qml</file>
         <file>controls/qmldir</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>

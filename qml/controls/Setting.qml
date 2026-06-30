@@ -14,30 +14,41 @@ AbstractButton {
     property alias actionItem: action_loader.sourceComponent
     property alias loadedItem: action_loader.item
     property string description
-    property color descriptionColor: Theme.color.neutral8
+    property color descriptionColor: Theme.color.neutral7
     property int descriptionSize: 15
     property int descriptionTextFormat: Text.AutoText
     property string errorText: ""
     property bool showErrorText: false
     property string infoText: ""
     property bool showInfoText: false
+    property bool interactive: true
     // Keep state caller-owned so model bindings survive hover and click feedback.
     readonly property bool effectivelyDisabled: root.disabled || root.state === "DISABLED"
     readonly property string visualState: root.effectivelyDisabled ? "DISABLED" : (root._interactionState.length > 0 ? root._interactionState : root.state)
+    property color labelStateColor: {
+        if (root.visualState === "DISABLED") return root.disabledLabelStateColor
+        if (root.visualState === "ACTIVE") return root.activeStateColor
+        if (root.visualState === "HOVER") return root.hoverStateColor
+        return root.filledLabelStateColor
+    }
+    // Right-side value/action color. Left row text uses labelStateColor.
     property color stateColor: {
         if (root.visualState === "DISABLED") return root.disabledStateColor
         if (root.visualState === "ACTIVE") return root.activeStateColor
         if (root.visualState === "HOVER") return root.hoverStateColor
         return root.filledStateColor
     }
-    property color stateDescriptionColor: root.visualState === "DISABLED" ? (Theme.dark ? Theme.color.neutral4 : Theme.color.neutral6) : Theme.color.neutral8
+    property color stateDescriptionColor: root.visualState === "DISABLED" ? root.disabledDescriptionStateColor : root.descriptionColor
+    property color filledLabelStateColor: Theme.color.neutral7
     property color filledStateColor: Theme.color.neutral9
     property color hoverStateColor: Theme.color.orangeLight1
     property color activeStateColor: Theme.color.orange
+    property color disabledLabelStateColor: Theme.color.neutral4
+    property color disabledDescriptionStateColor: Theme.dark ? Theme.color.neutral4 : Theme.color.neutral6
     property color disabledStateColor: Theme.color.neutral4
     property bool disabled: false
     property string _interactionState: ""
-    hoverEnabled: AppMode.isDesktop
+    hoverEnabled: root.interactive && AppMode.isDesktop
     enabled: !root.effectivelyDisabled
     state: "FILLED"
 
@@ -67,19 +78,19 @@ AbstractButton {
         id: mouseArea
         anchors.fill: root
         enabled: root.enabled
-        hoverEnabled: AppMode.isDesktop
-        cursorShape: AppMode.isDesktop && root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        hoverEnabled: root.interactive && AppMode.isDesktop
+        cursorShape: AppMode.isDesktop && root.interactive && root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onEntered: {
-            if (!root.effectivelyDisabled) root._interactionState = "HOVER"
+            if (root.interactive && !root.effectivelyDisabled) root._interactionState = "HOVER"
         }
         onExited: {
             root._interactionState = ""
         }
         onPressed: {
-            if (!root.effectivelyDisabled) root._interactionState = "ACTIVE"
+            if (root.interactive && !root.effectivelyDisabled) root._interactionState = "ACTIVE"
         }
         onReleased: {
-            if (root.effectivelyDisabled) return
+            if (!root.interactive || root.effectivelyDisabled) return
             if (mouseArea.containsMouse) {
                 root._interactionState = "HOVER"
                 root.clicked()
@@ -97,14 +108,14 @@ AbstractButton {
             center: false
             header: root.header
             headerSize: 18
-            headerColor: root.stateColor
+            headerColor: root.labelStateColor
             description: root.description
             descriptionSize: root.descriptionSize
             descriptionColor: root.stateDescriptionColor
             descriptionTextFormat: root.descriptionTextFormat
             descriptionMargin: 0
             subtext: root.showErrorText ? root.errorText : (root.showInfoText ? root.infoText : "")
-            subtextColor: root.showErrorText ? Theme.color.blue : Theme.color.neutral7
+            subtextColor: (root.showErrorText || root.showInfoText) ? Theme.color.blue : Theme.color.neutral7
         }
         Loader {
             id: action_loader

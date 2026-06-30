@@ -19,8 +19,8 @@ InformationPage {
     showHeader: root.onboarding
     headerText: qsTr("About")
     headerMargin: 0
-    description: qsTr("Bitcoin Core is an open source project.\nIf you find it useful, please contribute.\n\n This is experimental software.")
-    descriptionMargin: 20
+    description: qsTr("Bitcoin Core is an open source project.\nIf you find it useful, please contribute.\n\nThis is experimental software.")
+    descriptionMargin: 10
     detailActive: true
     detailItem: AboutOptions {
         onNext: root.StackView.view.push(developerSettings)
@@ -31,6 +31,7 @@ InformationPage {
         title: root.onboarding ? "" : qsTr("About")
         showBackButton: root.onboarding || root.showBackButton
         backButtonObjectName: "settingsAboutBack"
+        backButtonText: qsTr("Back")
         onBack: root.back()
     }
 

@@ -111,7 +111,6 @@ def run_tests():
         # ── Test 2: Required controls are present ─────────────────────────────
         print("Test 2: Verify expected controls exist on the page ...")
         required_controls = [
-            "windowBehaviorBack",
             "showTrayIconSwitch",
             "minimizeToTraySwitch",
             "minimizeOnCloseSwitch",

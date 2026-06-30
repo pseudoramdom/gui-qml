@@ -23,12 +23,11 @@ ColumnLayout {
     Setting {
         objectName: "mempoolTransactionsRow"
         Layout.fillWidth: true
-        state: "DISABLED"
-        disabledStateColor: Theme.color.neutral9
+        interactive: false
         header: qsTr("Transactions")
         actionItem: CoreText {
             text: Number(nodeModel.mempoolTransactionCount).toLocaleString(Qt.locale(), 'f', 0)
-            color: Theme.color.neutral7
+            color: Theme.color.neutral9
             font.pixelSize: 18
             fontStyleName: "Regular"
             horizontalAlignment: Text.AlignRight
@@ -42,14 +41,13 @@ ColumnLayout {
     Setting {
         objectName: "mempoolMemoryUsedRow"
         Layout.fillWidth: true
-        state: "DISABLED"
-        disabledStateColor: Theme.color.neutral9
+        interactive: false
         header: qsTr("Memory used")
         actionItem: CoreText {
             text: qsTr("%1 / %2")
                 .arg(root.formatMegabytes(nodeModel.mempoolUsageMB))
                 .arg(root.formatMegabytes(nodeModel.mempoolMaxUsageMB))
-            color: Theme.color.neutral7
+            color: Theme.color.neutral9
             font.pixelSize: 18
             fontStyleName: "Regular"
             horizontalAlignment: Text.AlignRight

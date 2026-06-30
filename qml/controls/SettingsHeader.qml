@@ -13,6 +13,7 @@ Pane {
     property string title: ""
     property bool showBackButton: true
     property string backButtonObjectName: ""
+    property string backButtonText: ""
     property alias rightItem: rightSection.contentItem
 
     signal back()
@@ -21,65 +22,88 @@ Pane {
     padding: 4
 
     contentItem: Item {
-        implicitHeight: 40
+        implicitHeight: root.backButtonText.length > 0 ? 46 : 40
 
-        AbstractButton {
+        Loader {
             id: backButton
-            objectName: root.backButtonObjectName
             visible: root.showBackButton
+            active: root.showBackButton
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            implicitWidth: 40
-            implicitHeight: 40
-            hoverEnabled: AppMode.isDesktop
-            focusPolicy: Qt.TabFocus
-            Accessible.name: qsTr("Back")
-            Accessible.role: Accessible.Button
+            width: status === Loader.Ready && item ? item.implicitWidth : 0
+            height: status === Loader.Ready && item ? item.implicitHeight : 0
+            sourceComponent: root.backButtonText.length > 0 ? labeledBackButton : compactBackButton
+        }
 
-            onClicked: root.back()
+        Component {
+            id: compactBackButton
 
-            background: Rectangle {
-                id: backBg
-                radius: 10
-                color: "transparent"
+            AbstractButton {
+                id: compactButton
+                objectName: root.backButtonObjectName
+                implicitWidth: 40
+                implicitHeight: 40
+                hoverEnabled: AppMode.isDesktop
+                focusPolicy: Qt.TabFocus
+                Accessible.name: qsTr("Back")
+                Accessible.role: Accessible.Button
 
-                FocusBorder {
-                    visible: backButton.visualFocus
-                    borderRadius: 12
-                    topMargin: -2
-                    bottomMargin: -2
-                    leftMargin: -2
-                    rightMargin: -2
-                    border.color: Theme.color.orange
+                onClicked: root.back()
+
+                background: Rectangle {
+                    id: backBg
+                    radius: 10
+                    color: "transparent"
+
+                    FocusBorder {
+                        visible: compactButton.visualFocus
+                        borderRadius: 12
+                        topMargin: -2
+                        bottomMargin: -2
+                        leftMargin: -2
+                        rightMargin: -2
+                        border.color: Theme.color.orange
+                    }
+
+                    Behavior on color {
+                        ColorAnimation { duration: 150 }
+                    }
                 }
 
-                Behavior on color {
-                    ColorAnimation { duration: 150 }
+                contentItem: Icon {
+                    source: "image://images/caret-left"
+                    color: Theme.color.neutral9
+                    size: 24
                 }
-            }
 
-            contentItem: Icon {
-                source: "image://images/caret-left"
-                color: Theme.color.neutral9
-                size: 24
-            }
-
-            HoverHandler {
-                cursorShape: Qt.PointingHandCursor
-            }
-
-            states: [
-                State {
-                    name: "HOVER"
-                    when: backButton.hovered && !backButton.pressed
-                    PropertyChanges { target: backBg; color: Theme.color.neutral2 }
-                },
-                State {
-                    name: "PRESSED"
-                    when: backButton.pressed
-                    PropertyChanges { target: backBg; color: Theme.color.neutral3 }
+                HoverHandler {
+                    cursorShape: Qt.PointingHandCursor
                 }
-            ]
+
+                states: [
+                    State {
+                        name: "HOVER"
+                        when: compactButton.hovered && !compactButton.pressed
+                        PropertyChanges { target: backBg; color: Theme.color.neutral2 }
+                    },
+                    State {
+                        name: "PRESSED"
+                        when: compactButton.pressed
+                        PropertyChanges { target: backBg; color: Theme.color.neutral3 }
+                    }
+                ]
+            }
+        }
+
+        Component {
+            id: labeledBackButton
+
+            NavButton {
+                objectName: root.backButtonObjectName
+                iconSource: "image://images/caret-left"
+                text: root.backButtonText
+                onClicked: root.back()
+            }
         }
 
         CoreText {

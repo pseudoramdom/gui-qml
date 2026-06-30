@@ -15,8 +15,10 @@ AbstractButton {
     property url iconSource: "image://images/export"
     property int iconWidth: 22
     property int iconHeight: 22
+    property int iconSlotSize: 30
     property color iconColor: Theme.color.neutral9
-    property color textColor: Theme.color.neutral7
+    property color textColor: Theme.color.neutral9
+    enabled: root.parentState !== "DISABLED"
     state: root.parentState
 
     states: [
@@ -34,6 +36,14 @@ AbstractButton {
                 target: root
                 iconColor: Theme.color.orangeLight1
                 textColor: Theme.color.orangeLight1
+            }
+        },
+        State {
+            name: "DISABLED"
+            PropertyChanges {
+                target: root
+                iconColor: Theme.color.neutral4
+                textColor: Theme.color.neutral4
             }
         }
     ]
@@ -57,20 +67,13 @@ AbstractButton {
                 }
             }
         }
-        Button {
-            leftPadding: 0
-            topPadding: 0
-            bottomPadding: 0
-            icon.source: root.iconSource
-            icon.color: root.iconColor
-            icon.height: root.iconHeight
-            icon.width: root.iconWidth
-            background: null
-            onClicked: root.clicked()
-
-            Behavior on icon.color {
-                ColorAnimation { duration: 150 }
-            }
+        RightContentIcon {
+            objectName: "externalLinkIconSlot"
+            Layout.alignment: Qt.AlignVCenter
+            source: root.iconSource
+            color: root.iconColor
+            iconSize: Math.max(root.iconWidth, root.iconHeight)
+            slotSize: root.iconSlotSize
         }
     }
     onClicked: Qt.openUrlExternally(link)

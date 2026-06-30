@@ -156,11 +156,11 @@ def test_auto_refresh(gui, datadir, current_count):
 
 
 def test_back_navigation(gui):
-    """Clicking Back returns to the node settings page."""
+    """Clicking Done exits the desktop settings shell."""
     print("\n── test_back_navigation ──────────────────────────────────────────")
-    gui.click("debugLogBackButton")
-    gui.wait_for_page("nodeSettingsStack", timeout_ms=5000)
-    print("  PASSED: back navigation returned to nodeSettingsStack")
+    gui.click("nodeSettingsDoneButton")
+    gui.wait_for_page("nodeSettingsButton", timeout_ms=5000)
+    print("  PASSED: Done closed node settings")
 
 
 def test_search_filter(gui, total_count):

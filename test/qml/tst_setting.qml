@@ -69,6 +69,33 @@ TestCase {
         verify(item.enabled)
     }
 
+    function test_default_state_uses_design_system_color_split() {
+        const item = createTemporaryObject(settingComponent, this)
+        verify(item !== null)
+
+        compare(item.labelStateColor, Theme.color.neutral7)
+        compare(item.stateColor, Theme.color.neutral9)
+        compare(item.stateDescriptionColor, Theme.color.neutral7)
+
+        const header = item.contentItem.children[0]
+        compare(header.headerColor, Theme.color.neutral7)
+        compare(header.descriptionColor, Theme.color.neutral7)
+    }
+
+    function test_hover_state_applies_to_label_and_action_colors() {
+        const item = createTemporaryObject(settingComponent, this)
+        verify(item !== null)
+
+        const mouseArea = mouseAreaFor(item)
+        verify(mouseArea !== null)
+        mouseArea.entered()
+
+        compare(item.state, "FILLED")
+        compare(item.visualState, "HOVER")
+        compare(item.labelStateColor, Theme.color.orangeLight1)
+        compare(item.stateColor, Theme.color.orangeLight1)
+    }
+
     function test_disabled_state_disables_component() {
         const item = createTemporaryObject(settingComponent, this)
         verify(item !== null)
@@ -77,6 +104,32 @@ TestCase {
         compare(item.state, "DISABLED")
         compare(item.visualState, "DISABLED")
         verify(!item.enabled)
+        compare(item.labelStateColor, Theme.color.neutral4)
+        compare(item.stateColor, Theme.color.neutral4)
+        compare(item.stateDescriptionColor, Theme.dark ? Theme.color.neutral4 : Theme.color.neutral6)
+    }
+
+    function test_non_interactive_row_keeps_filled_visuals() {
+        const item = createTemporaryObject(settingComponent, this)
+        verify(item !== null)
+        let clicked = false
+        item.clicked.connect(function() {
+            clicked = true
+        })
+
+        item.interactive = false
+        wait(0)
+
+        compare(item.state, "FILLED")
+        compare(item.visualState, "FILLED")
+        verify(item.enabled)
+        compare(item.labelStateColor, Theme.color.neutral7)
+        compare(item.stateColor, Theme.color.neutral9)
+
+        mouseClick(item, item.width / 2, item.height / 2)
+
+        verify(!clicked)
+        compare(item.visualState, "FILLED")
     }
 
     // Verifies the fix for the hover-overrides-DISABLED bug in Setting.qml.
@@ -174,6 +227,7 @@ TestCase {
 
         const header = item.contentItem.children[0]
         compare(header.subtext, "Loaded from bitcoin.conf")
+        compare(header.subtextColor, Theme.color.blue)
     }
 
     function test_error_text_has_priority_over_info_text() {
