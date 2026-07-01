@@ -77,6 +77,26 @@ TestCase {
         compare(balanceText.font.weight, optionsModel.moneyFont.weight)
     }
 
+    function test_desktop_top_nav_icon_buttons_match_design_size() {
+        const page = createDesktopWallets()
+        const tabs = [
+            findChild(page, "blockClockTabButton"),
+            findChild(page, "peersTabButton"),
+            findChild(page, "consoleTabButton"),
+            findChild(page, "desktopWalletSettingsTabButton")
+        ]
+
+        for (let i = 0; i < tabs.length; ++i) {
+            verify(tabs[i] !== null)
+            tryCompare(tabs[i], "width", 30)
+            compare(tabs[i].height, 60)
+        }
+
+        compare(tabs[1].iconSize, 24)
+        compare(tabs[2].iconSize, 24)
+        compare(tabs[3].iconSize, 30)
+    }
+
     function test_receive_options_view_address_history_opens_settings_address_stack() {
         const page = createDesktopWallets()
         const receiveTab = findChild(page, "receiveTabButton")

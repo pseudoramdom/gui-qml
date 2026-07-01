@@ -13,6 +13,7 @@ Button {
     property color textActiveColor: Theme.color.orange
     property color iconColor: "transparent"
     property string iconSource: ""
+    property int iconSize: 30
     property Component customContent: null
 
     id: root
@@ -50,6 +51,7 @@ Button {
             id: icon
             source: root.iconSource
             color: iconColor
+            size: root.iconSize
             visible: !customContentLoader.active && root.iconSource !== ""
             anchors.centerIn: parent
         }
