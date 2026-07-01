@@ -3,15 +3,25 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 import QtQuick.Layouts 1.15
+import "../controls"
 
 InfoBanner {
     id: root
     Layout.fillWidth: true
-    Layout.leftMargin: 10
-    Layout.rightMargin: 10
+    Layout.maximumWidth: 450
+    Layout.alignment: Qt.AlignHCenter
+    radius: 15
     iconSource: "image://images/info-filled"
     message: qsTr("Restart the application for these changes to take effect.")
     bannerLayout: InfoBanner.Layout.Horizontal
-    contentMargin: 10
-    contentSpacing: 8
+    horizontalContentMargin: 15
+    verticalContentMargin: 10
+    contentSpacing: 10
+    iconSize: 24
+    textRightMargin: iconSize
+    messageFontPixelSize: 15
+    messageLineHeight: 21
+    backgroundColor: Qt.rgba(Theme.color.blue.r, Theme.color.blue.g, Theme.color.blue.b, 0.25)
+    iconColor: Theme.color.blue
+    messageColor: Theme.color.blue
 }

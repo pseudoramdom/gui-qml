@@ -27,22 +27,32 @@ Rectangle {
     property bool showsCloseButton: false
     property int bannerLayout: InfoBanner.Layout.Horizontal
     property int contentMargin: 30
+    property int horizontalContentMargin: contentMargin
+    property int verticalContentMargin: contentMargin
     property int contentSpacing: 15
+    property int iconSize: 24
+    property int textRightMargin: 0
+    property int messageFontPixelSize: 13
+    property int messageLineHeight: 0
+    property color backgroundColor: Qt.rgba(Theme.color.blue.r, Theme.color.blue.g, Theme.color.blue.b, 0.2)
+    property color iconColor: Theme.color.neutral7
+    property color titleColor: Theme.color.neutral9
+    property color messageColor: Theme.color.neutral7
 
     signal primaryClicked()
     signal dismissClicked()
 
     radius: 10
-    color: Qt.rgba(Theme.color.blue.r, Theme.color.blue.g, Theme.color.blue.b, 0.2)
-    implicitHeight: contentLoader.item ? contentLoader.item.height + 2 * contentMargin : 2 * contentMargin
+    color: backgroundColor
+    implicitHeight: contentLoader.item ? contentLoader.item.height + 2 * verticalContentMargin : 2 * verticalContentMargin
 
     Loader {
         id: contentLoader
         anchors.left: parent.left
         anchors.right: root.showsCloseButton ? closeButton.left : parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: root.contentMargin
-        anchors.rightMargin: root.showsCloseButton ? 8 : root.contentMargin
+        anchors.leftMargin: root.horizontalContentMargin
+        anchors.rightMargin: root.showsCloseButton ? 8 : root.horizontalContentMargin
         sourceComponent: root.bannerLayout === InfoBanner.Layout.Vertical
             ? verticalContent : horizontalContent
     }
@@ -70,12 +80,15 @@ Rectangle {
             Icon {
                 visible: root.iconSource != ""
                 source: root.iconSource
-                color: Theme.color.neutral7
-                size: 24
+                color: root.iconColor
+                size: root.iconSize
+                Layout.preferredWidth: root.iconSize
+                Layout.preferredHeight: root.iconSize
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.rightMargin: root.textRightMargin
                 spacing: 4
 
                 CoreText {
@@ -84,7 +97,7 @@ Rectangle {
                     text: root.title
                     font.pixelSize: 15
                     bold: true
-                    color: Theme.color.neutral9
+                    color: root.titleColor
                     horizontalAlignment: Text.AlignLeft
                     Layout.fillWidth: true
                 }
@@ -93,8 +106,10 @@ Rectangle {
                     objectName: root.messageObjectName
                     visible: root.message !== ""
                     text: root.message
-                    font.pixelSize: 13
-                    color: Theme.color.neutral7
+                    font.pixelSize: root.messageFontPixelSize
+                    lineHeightMode: root.messageLineHeight > 0 ? Text.FixedHeight : Text.ProportionalHeight
+                    lineHeight: root.messageLineHeight > 0 ? root.messageLineHeight : 1.0
+                    color: root.messageColor
                     horizontalAlignment: Text.AlignLeft
                     Layout.fillWidth: true
                     wrap: true
@@ -129,8 +144,10 @@ Rectangle {
             Icon {
                 visible: root.iconSource != ""
                 source: root.iconSource
-                color: Theme.color.neutral7
-                size: 24
+                color: root.iconColor
+                size: root.iconSize
+                Layout.preferredWidth: root.iconSize
+                Layout.preferredHeight: root.iconSize
                 Layout.alignment: Qt.AlignHCenter
             }
 
@@ -140,7 +157,7 @@ Rectangle {
                 text: root.title
                 font.pixelSize: 15
                 bold: true
-                color: Theme.color.neutral9
+                color: root.titleColor
                 horizontalAlignment: Text.AlignHCenter
                 Layout.fillWidth: true
             }
@@ -149,8 +166,10 @@ Rectangle {
                 objectName: root.messageObjectName
                 visible: root.message !== ""
                 text: root.message
-                font.pixelSize: 13
-                color: Theme.color.neutral7
+                font.pixelSize: root.messageFontPixelSize
+                lineHeightMode: root.messageLineHeight > 0 ? Text.FixedHeight : Text.ProportionalHeight
+                lineHeight: root.messageLineHeight > 0 ? root.messageLineHeight : 1.0
+                color: root.messageColor
                 horizontalAlignment: Text.AlignHCenter
                 Layout.fillWidth: true
                 Layout.bottomMargin: 10
