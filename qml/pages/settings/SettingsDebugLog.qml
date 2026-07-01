@@ -54,57 +54,6 @@ Page {
         onBack: root.back()
         rightItem: RowLayout {
             spacing: 0
-            // Both buttons are AbstractButtons with a centred Icon (not
-            // NavButton). Rationale: NavButton's contentItem is a RowLayout
-            // that fills the button, placing its 24×24 icon at the left edge —
-            // the icon is visually off-centre inside the hover background, and
-            // rotating the NavButton swings it in an arc. A centred Icon rotates
-            // in place and keeps the visible symbol aligned with the hover box.
-            // AbstractButton (vs a bare Item + MouseArea) gives keyboard focus,
-            // an Accessible role, and a real click() pipeline.
-            AbstractButton {
-                id: refreshBtn
-                objectName: "debugLogRefreshButton"
-                implicitWidth: 52
-                implicitHeight: 52
-                hoverEnabled: true
-                focusPolicy: Qt.TabFocus
-                Accessible.name: qsTr("Refresh")
-                Accessible.role: Accessible.Button
-
-                background: Rectangle {
-                    radius: 5
-                    color: refreshBtn.hovered ? Theme.color.neutral2
-                                              : Theme.color.background
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                }
-
-                contentItem: Item {
-                    Icon {
-                        id: refreshIcon
-                        anchors.centerIn: parent
-                        source: "image://images/refresh"
-                        color: Theme.color.neutral9
-                        size: 28
-
-                        RotationAnimation on rotation {
-                            id: spinAnimation
-                            from: 0
-                            to: 360
-                            duration: 600
-                            running: false
-                            easing.type: Easing.InOutQuad
-                        }
-                    }
-                }
-
-                onClicked: {
-                    debugLogModel.refresh()
-                    spinAnimation.restart()
-                }
-
-                HoverHandler { cursorShape: Qt.PointingHandCursor }
-            }
 
             AbstractButton {
                 id: exportBtn
@@ -140,146 +89,116 @@ Page {
     }
 
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 20
-        spacing: 10
-
-        TextField {
-            id: searchField
-            objectName: "debugLogSearchField"
-            Layout.fillWidth: true
-            implicitHeight: 40
-            leftPadding: 40
-            rightPadding: 12
-            font.family: "Inter"
-            font.styleName: "Regular"
-            font.pixelSize: 15
-            color: Theme.color.neutral9
-            placeholderTextColor: Theme.color.neutral5
-            placeholderText: qsTr("Search...")
-            Accessible.name: qsTr("Search debug log")
-            Accessible.role: Accessible.EditableText
-            onTextChanged: searchDebounce.restart()
-            background: Rectangle {
-                color: Theme.color.neutral2
-                radius: 10
-                Icon {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    source: "qrc:/icons/search"
-                    color: Theme.color.neutral5
-                    size: 16
-                }
-            }
+        id: contentLayout
+        objectName: "debugLogContentLayout"
+        width: Math.max(0, Math.min(parent.width - 40, 600))
+        anchors {
+            top: parent.top
+            bottom: parent.bottom
+            horizontalCenter: parent.horizontalCenter
+            topMargin: 20
+            bottomMargin: 20
         }
+        spacing: 0
 
-        Item {
+        RowLayout {
+            id: searchRow
+            objectName: "debugLogSearchRow"
             Layout.fillWidth: true
-            height: 48
+            Layout.preferredHeight: 44
+            spacing: 10
 
-            Rectangle {
-                id: newEntriesPill
-                anchors.centerIn: parent
+            Icon {
+                objectName: "debugLogSearchIcon"
+                source: "image://images/search"
+                color: Theme.color.neutral5
+                size: 24
 
-                visible: opacity > 0
-                opacity: (root.pendingNewLines > 0 && root.userIsScrolled) ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                Layout.alignment: Qt.AlignVCenter
+            }
 
-                width: 16 + arrowText.implicitWidth + 8 + countText.implicitWidth + 24 + closeText.width + 24
-                height: 32
-                radius: 16
+            TextField {
+                id: searchField
+                objectName: "debugLogSearchField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                leftPadding: 0
+                rightPadding: 0
+                topPadding: 0
+                bottomPadding: 0
+                font: Theme.text.description.font
+                color: Theme.color.neutral9
+                placeholderTextColor: Theme.color.neutral5
+                placeholderText: qsTr("Search...")
+                verticalAlignment: TextInput.AlignVCenter
+                selectByMouse: true
+                Accessible.name: qsTr("Search debug log")
+                Accessible.role: Accessible.EditableText
+                onTextChanged: searchDebounce.restart()
 
-                Behavior on color { ColorAnimation { duration: 150 } }
-                color: pressHandler.pressed ? Theme.color.orangeLight2
-                    : hoverHandler.hovered ? Theme.color.orangeLight1
-                    : Theme.color.orange
+                background: Item {}
+            }
 
-                Text {
-                    id: arrowText
-                    text: "↑"
-                    color: "white"
-                    font.pixelSize: 15
-                    font.family: "Inter"
-                    font.bold: true
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                }
+            AbstractButton {
+                id: refreshBtn
+                objectName: "debugLogRefreshButton"
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+                implicitWidth: 20
+                implicitHeight: 20
+                padding: 0
+                hoverEnabled: AppMode.isDesktop
+                focusPolicy: Qt.TabFocus
+                Accessible.name: qsTr("Refresh debug log")
+                Accessible.role: Accessible.Button
 
-                Text {
-                    id: countText
-                    text: root.displayedLines === 1
-                        ? qsTr("1 new entry")
-                        : qsTr("%1 new entries").arg(root.displayedLines)
-                    color: "white"
-                    font.pixelSize: 13
-                    font.family: "Inter"
-                    anchors.left: arrowText.right
-                    anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                }
+                background: Item {}
 
-                Text {
-                    id: closeText
-                    text: "×"
-                    color: "white"
-                    font.pixelSize: 20
-                    font.bold: true
-                    anchors.right: parent.right
-                    anchors.rightMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    opacity: closeArea.containsMouse ? 1.0 : 0.85
-                }
+                contentItem: Icon {
+                    id: refreshIcon
+                    objectName: "debugLogRefreshIcon"
+                    source: "image://images/refresh"
+                    color: refreshBtn.enabled ? Theme.color.neutral9 : Theme.color.neutral4
+                    size: 20
+                    opacity: refreshBtn.hovered && refreshBtn.enabled ? 0.75 : 1
 
-                MouseArea {
-                    id: closeArea
-                    anchors {
-                        right: parent.right
-                        top: parent.top
-                        bottom: parent.bottom
-                        rightMargin: 6
+                    RotationAnimation on rotation {
+                        id: spinAnimation
+                        from: 0
+                        to: 360
+                        duration: 600
+                        running: false
+                        easing.type: Easing.InOutQuad
                     }
-                    width: 32
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.pendingNewLines = 0
+                }
+
+                onClicked: {
+                    debugLogModel.refresh()
+                    spinAnimation.restart()
                 }
 
                 HoverHandler {
-                    id: hoverHandler
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                TapHandler {
-                    id: pressHandler
-                    acceptedButtons: Qt.LeftButton
-                    onTapped: {
-                        logView.scrollToTop()
-                        root.pendingNewLines = 0
-                    }
+                    cursorShape: refreshBtn.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 }
             }
         }
 
-        MonospaceOutputView {
+        Separator {
+            objectName: "debugLogSearchDivider"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+        }
+
+        DebugLogOutputView {
             id: logView
             objectName: "debugLogListView"
             Layout.fillWidth: true
             Layout.fillHeight: true
 
             listModel: debugLogModel
-            contentRole: "content"
-            contentTextFormat: Text.RichText
-            leftColumnRole: "lineNumber"
-            rightColumnRole: "relativeTime"
-            leftColumnSample: "99999"
-            rightColumnSample: "99 hr ago"
-            fontPixelSize: 11
-            contentColor: Theme.color.neutral9
-            leftColumnColor: Theme.color.neutral5
-            rightColumnColor: Theme.color.neutral5
+            topPadding: 10
             accessibleName: qsTr("Debug log entries")
             autoScrollToBottom: false
             // DebugLogModel renders newest-first at the top, so y > 0 means
@@ -307,6 +226,96 @@ Page {
                 bold: false
                 visible: debugLogModel.hasMoreLines && logView.atBottom
                 onClicked: debugLogModel.loadMore()
+            }
+        }
+    }
+
+    Item {
+        anchors.fill: contentLayout
+        z: 10
+
+        Rectangle {
+            id: newEntriesPill
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: logView.y + 10
+
+            visible: opacity > 0
+            opacity: (root.pendingNewLines > 0 && root.userIsScrolled) ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            width: 16 + arrowText.implicitWidth + 8 + countText.implicitWidth + 24 + closeText.width + 24
+            height: 32
+            radius: 16
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+            color: pressHandler.pressed ? Theme.color.orangeLight2
+                : hoverHandler.hovered ? Theme.color.orangeLight1
+                : Theme.color.orange
+
+            Text {
+                id: arrowText
+                text: "↑"
+                color: "white"
+                font.pixelSize: 15
+                font.family: "Inter"
+                font.bold: true
+                anchors.left: parent.left
+                anchors.leftMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                id: countText
+                text: root.displayedLines === 1
+                    ? qsTr("1 new entry")
+                    : qsTr("%1 new entries").arg(root.displayedLines)
+                color: "white"
+                font.pixelSize: 13
+                font.family: "Inter"
+                anchors.left: arrowText.right
+                anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                id: closeText
+                text: "×"
+                color: "white"
+                font.pixelSize: 20
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: closeArea.containsMouse ? 1.0 : 0.85
+            }
+
+            MouseArea {
+                id: closeArea
+                anchors {
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                    rightMargin: 6
+                }
+                width: 32
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.pendingNewLines = 0
+            }
+
+            HoverHandler {
+                id: hoverHandler
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            TapHandler {
+                id: pressHandler
+                acceptedButtons: Qt.LeftButton
+                onTapped: {
+                    logView.scrollToTop()
+                    root.pendingNewLines = 0
+                }
             }
         }
     }

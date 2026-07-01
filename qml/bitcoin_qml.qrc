@@ -13,6 +13,7 @@
         <file>components/BlockCounter.qml</file>
         <file>components/ConnectionOptions.qml</file>
         <file>components/ConnectionSettings.qml</file>
+        <file>components/DebugLogOutputView.qml</file>
         <file>components/MempoolInformationRows.qml</file>
         <file>components/DeveloperOptions.qml</file>
         <file>components/ExternalSignerReviewActions.qml</file>

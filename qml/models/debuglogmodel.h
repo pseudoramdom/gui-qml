@@ -15,12 +15,16 @@
 
 //! List model for the in-app debug.log viewer.
 //!
-//! Exposes log lines as list items with three roles:
+//! Exposes log lines as list items with display roles:
 //!   - LineNumberRole  — 1-based line number as a display string ("1", "2", …)
 //!   - ContentRole     — HTML-escaped message text (no inline style; colours
 //!                       are applied by the QML delegate)
 //!   - RelativeTimeRole — human-readable age string ("just now", "3 min ago",
 //!                        …) updated by updateRelativeTimes()
+//!   - CommandRole      — parsed message prefix before ":" when present
+//!   - MessageRole      — parsed message body after the prefix
+//!   - DateLabelRole    — label shown in the row's right-hand date slot
+//!   - SeverityRole     — display severity used by the QML delegate
 //!
 //! Pagination: only the most recent `loadLimit` lines are kept in memory.
 //! Call loadMore() to increase the limit by 1000, up to kMaxLoadLimit.
@@ -43,8 +47,19 @@ public:
         LineNumberRole  = Qt::UserRole + 1,
         ContentRole,
         RelativeTimeRole,
+        CommandRole,
+        MessageRole,
+        DateLabelRole,
+        SeverityRole,
     };
     Q_ENUM(Role)
+
+    enum Severity {
+        InfoSeverity = 0,
+        WarningSeverity,
+        ErrorSeverity,
+    };
+    Q_ENUM(Severity)
 
     //! Hard ceiling on loadLimit to protect against unbounded memory growth.
     static constexpr int kMaxLoadLimit = 50'000;
@@ -82,9 +97,13 @@ Q_SIGNALS:
 private:
     struct LogLine {
         QString lineNumber;
-        QString content;      // HTML-escaped message text
+        QString content;      // HTML-escaped full message text
+        QString command;      // parsed message prefix, plain text
+        QString message;      // parsed message body, plain text
+        QString identity;     // stable identity for incremental refresh matching
         qint64  timestamp_ms; // epoch ms, -1 if not parseable
         QString relativeTime; // cached human-readable age
+        Severity severity{InfoSeverity};
 
         // Identity for change detection in buildDisplayLines(). relativeTime is
         // derived (refreshed separately by the relative-time timer) and so is
@@ -93,6 +112,10 @@ private:
         {
             return lineNumber == o.lineNumber
                 && content == o.content
+                && command == o.command
+                && message == o.message
+                && identity == o.identity
+                && severity == o.severity
                 && timestamp_ms == o.timestamp_ms;
         }
     };
@@ -118,13 +141,14 @@ private:
     //! Completion handler invoked on the GUI thread after ReadAndFilter
     //! returns. Applies the result to m_all_lines and rebuilds the display.
     void onReadCompleted(const ReadResult& result,
-                         const QString& prev_top_content,
+                         const QString& prev_top_identity,
                          bool full_load);
 
     void connectFileWatcher();
     void buildDisplayLines();
     QString relativeTimeLabel(qint64 timestamp_ms, qint64 now_ms) const;
 
+    static void PopulateParsedFields(LogLine& entry, const QString& raw_message);
     static QString RelativeTimeLabelStatic(qint64 timestamp_ms, qint64 now_ms);
 
     fs::path m_log_path;
