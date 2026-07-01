@@ -263,6 +263,15 @@ static void submitAndSettle(RpcConsoleModel& model, const QString& command)
     QTRY_VERIFY(!model.executing());
 }
 
+static int roleForName(QAbstractItemModel* model, const QByteArray& name)
+{
+    const auto roles = model->roleNames();
+    for (auto it = roles.constBegin(); it != roles.constEnd(); ++it) {
+        if (it.value() == name) return it.key();
+    }
+    return -1;
+}
+
 class RpcConsoleModelTests : public QObject
 {
     Q_OBJECT
@@ -276,6 +285,9 @@ private Q_SLOTS:
     void submitRefusedWhileExecuting();
     void stopRunsSynchronouslyWhileExecuting();
     void walletNameScopesRpcToWalletUri();
+    void outputRowsExposeCategoryAndRawTimestamp();
+    void welcomeMessageAddedOnce();
+    void clearRestoresWelcomeMessageWithFreshTimestamp();
     void outputTruncatedWhenResultTooLong();
     void jsonReplyKeyColoringSkipsStringsContainingColons();
     void availableCommandsIncludesHelpVariants();
@@ -434,6 +446,109 @@ void RpcConsoleModelTests::walletNameScopesRpcToWalletUri()
     QCOMPARE(mock.lastUri(), QString());
 }
 
+void RpcConsoleModelTests::outputRowsExposeCategoryAndRawTimestamp()
+{
+    RpcTestStubNode mock;
+    RpcConsoleModel model{mock};
+
+    auto* out = qobject_cast<QAbstractListModel*>(model.outputModel());
+    QVERIFY(out != nullptr);
+    const int timestamp_role = roleForName(out, "timestamp");
+    const int content_role = roleForName(out, "content");
+    const int category_role = roleForName(out, "category");
+    QVERIFY(timestamp_role != -1);
+    QVERIFY(content_role != -1);
+    QVERIFY(category_role != -1);
+
+    QVERIFY(model.submitCommand("getblockcount"));
+    QCOMPARE(out->rowCount(), 1);
+
+    const QModelIndex request_index = out->index(0, 0);
+    const QString timestamp = out->data(request_index, timestamp_role).toString();
+    QCOMPARE(timestamp.size(), 8);
+    QVERIFY(!timestamp.startsWith("["));
+    QVERIFY(!timestamp.endsWith("]"));
+    QCOMPARE(out->data(request_index, category_role).toInt(), int(RpcConsoleModel::CMD_REQUEST));
+
+    const QString request_html = out->data(request_index, content_role).toString();
+    QVERIFY(request_html.contains("getblockcount"));
+    QVERIFY(!request_html.contains("&gt;&gt;"));
+
+    QTRY_VERIFY(!model.executing());
+    QCOMPARE(out->rowCount(), 2);
+    QCOMPARE(out->data(out->index(1, 0), category_role).toInt(), int(RpcConsoleModel::CMD_REPLY));
+}
+
+void RpcConsoleModelTests::welcomeMessageAddedOnce()
+{
+    RpcTestStubNode mock;
+    RpcConsoleModel model{mock};
+
+    auto* out = qobject_cast<QAbstractListModel*>(model.outputModel());
+    QVERIFY(out != nullptr);
+    const int timestamp_role = roleForName(out, "timestamp");
+    const int content_role = roleForName(out, "content");
+    const int category_role = roleForName(out, "category");
+    QVERIFY(timestamp_role != -1);
+    QVERIFY(content_role != -1);
+    QVERIFY(category_role != -1);
+
+    model.ensureWelcomeMessage();
+    QCOMPARE(out->rowCount(), 1);
+    model.ensureWelcomeMessage();
+    QCOMPARE(out->rowCount(), 1);
+
+    const QModelIndex welcome_index = out->index(0, 0);
+    QCOMPARE(out->data(welcome_index, category_role).toInt(), int(RpcConsoleModel::CMD_REPLY));
+    const QString timestamp = out->data(welcome_index, timestamp_role).toString();
+    QCOMPARE(timestamp.size(), 8);
+    QVERIFY(!timestamp.startsWith("["));
+    QVERIFY(!timestamp.endsWith("]"));
+
+    const QString welcome_html = out->data(welcome_index, content_role).toString();
+    QVERIFY(welcome_html.contains("Use"));
+    QVERIFY(welcome_html.contains("help-console"));
+    QVERIFY(welcome_html.contains("Scammers and thieves"));
+    QVERIFY(welcome_html.contains("<span"));
+}
+
+void RpcConsoleModelTests::clearRestoresWelcomeMessageWithFreshTimestamp()
+{
+    RpcTestStubNode mock;
+    RpcConsoleModel model{mock};
+
+    auto* out = qobject_cast<QAbstractListModel*>(model.outputModel());
+    QVERIFY(out != nullptr);
+    const int timestamp_role = roleForName(out, "timestamp");
+    const int content_role = roleForName(out, "content");
+    const int category_role = roleForName(out, "category");
+    QVERIFY(timestamp_role != -1);
+    QVERIFY(content_role != -1);
+    QVERIFY(category_role != -1);
+
+    model.ensureWelcomeMessage();
+    QCOMPARE(out->rowCount(), 1);
+    const QString first_timestamp = out->data(out->index(0, 0), timestamp_role).toString();
+
+    submitAndSettle(model, "getblockcount");
+    QVERIFY(out->rowCount() > 1);
+
+    QTest::qWait(1100);
+    model.clear();
+    QCOMPARE(out->rowCount(), 1);
+
+    const QModelIndex welcome_index = out->index(0, 0);
+    QCOMPARE(out->data(welcome_index, category_role).toInt(), int(RpcConsoleModel::CMD_REPLY));
+    const QString second_timestamp = out->data(welcome_index, timestamp_role).toString();
+    QCOMPARE(second_timestamp.size(), 8);
+    QVERIFY2(first_timestamp != second_timestamp, "clearing the console should re-add the welcome row with the current time");
+
+    const QString welcome_html = out->data(welcome_index, content_role).toString();
+    QVERIFY(welcome_html.contains("Use"));
+    QVERIFY(welcome_html.contains("help-console"));
+    QVERIFY(welcome_html.contains("Scammers and thieves"));
+}
+
 void RpcConsoleModelTests::outputTruncatedWhenResultTooLong()
 {
     LargeResultNode mock;
@@ -455,11 +570,7 @@ void RpcConsoleModelTests::outputTruncatedWhenResultTooLong()
 
     // Look up the content role dynamically — the model's roleNames map
     // "content" to the ContentRole integer.
-    const auto roles = out->roleNames();
-    int content_role = -1;
-    for (auto it = roles.constBegin(); it != roles.constEnd(); ++it) {
-        if (it.value() == "content") { content_role = it.key(); break; }
-    }
+    int content_role = roleForName(out, "content");
     QVERIFY(content_role != -1);
 
     const QString reply_html = out->data(out->index(1, 0), content_role).toString();
@@ -486,11 +597,7 @@ void RpcConsoleModelTests::jsonReplyKeyColoringSkipsStringsContainingColons()
     QVERIFY(spy.wait(5000));
     QCOMPARE(out->rowCount(), 2);
 
-    const auto roles = out->roleNames();
-    int content_role = -1;
-    for (auto it = roles.constBegin(); it != roles.constEnd(); ++it) {
-        if (it.value() == "content") { content_role = it.key(); break; }
-    }
+    int content_role = roleForName(out, "content");
     QVERIFY(content_role != -1);
 
     const QString html = out->data(out->index(1, 0), content_role).toString();
