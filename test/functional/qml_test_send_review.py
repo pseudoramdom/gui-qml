@@ -139,20 +139,55 @@ def assert_review_has_no_transaction_side_effects(harness, wallet_name, expected
 
 
 def open_send_page(gui):
+    gui.wait_for_property("sendTabButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_property("sendTabButton", "enabled", True, timeout_ms=10000)
     gui.click("sendTabButton")
     gui.wait_for_page("sendPage", timeout_ms=10000)
-    gui.settle(timeout_ms=10000)
+    wait_for_send_form(gui)
+
+
+def wait_for_send_form(gui):
+    gui.wait_for_property("sendPage", "busy", False, timeout_ms=10000)
+    gui.wait_for_property("sendPage", "depth", 1, timeout_ms=10000)
+    gui.wait_for_property("sendOptionsButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_property("sendOptionsButton", "enabled", True, timeout_ms=10000)
+
+
+def open_send_options(gui):
+    wait_for_send_form(gui)
+    if gui.get_property("sendOptionsPopup", "opened") is True:
+        return
+    gui.click("sendOptionsButton")
+    try:
+        gui.wait_for_property("sendOptionsPopup", "opened", True, timeout_ms=5000)
+    except QmlDriverError as err:
+        page = gui.get_current_page()
+        depth = gui.get_property("sendPage", "depth")
+        busy = gui.get_property("sendPage", "busy")
+        button_visible = gui.get_property("sendOptionsButton", "visible")
+        button_enabled = gui.get_property("sendOptionsButton", "enabled")
+        raise AssertionError(
+            "Send options popup did not open "
+            f"(page={page!r}, sendPage.depth={depth!r}, sendPage.busy={busy!r}, "
+            f"sendOptionsButton.visible={button_visible!r}, "
+            f"sendOptionsButton.enabled={button_enabled!r})"
+        ) from err
+
+
+def close_send_options(gui):
+    if gui.get_property("sendOptionsPopup", "opened") is not True:
+        return
+    gui.click("sendOptionsButton")
+    gui.wait_for_property("sendOptionsPopup", "opened", False, timeout_ms=5000)
 
 
 def set_multiple_recipients(gui, enabled):
-    gui.click("sendOptionsButton")
-    gui.wait_for_property("sendOptionsPopup", "opened", True, timeout_ms=5000)
+    open_send_options(gui)
     current = gui.get_property("sendOptionsMultipleRecipientsToggle", "checked")
     if bool(current) != enabled:
         gui.click("sendOptionsMultipleRecipientsToggle")
         gui.wait_for_property("sendOptionsMultipleRecipientsToggle", "checked", enabled, timeout_ms=5000)
-    gui.click("sendOptionsButton")
-    gui.wait_for_property("sendOptionsPopup", "opened", False, timeout_ms=5000)
+    close_send_options(gui)
 
 
 def set_amount_unit(gui, unit_label):
@@ -263,7 +298,7 @@ def assert_address_expand(gui, short_object_name, full_object_name, address, che
 def return_to_send_page(gui, back_button):
     gui.click(back_button)
     gui.wait_for_page("sendPage", timeout_ms=10000)
-    gui.settle(timeout_ms=10000)
+    wait_for_send_form(gui)
 
 
 def case_single_btc(harness, gui, wallet_name, checkpoints):

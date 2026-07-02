@@ -54,29 +54,27 @@ QByteArray clickObject(QObject* obj)
         if (meta->method(idx).invoke(obj, Qt::DirectConnection)) return okResponse();
     }
 
-    // Fallback for Qt < 6.8 (no QQuickAbstractButton::click()): invoke both
-    // toggle() (if checkable) and the clicked() signal. We can't tell which
-    // one a given control needs - NavigationTab + ButtonGroup react to
-    // `checked` changes via toggle(), while NavButton / ContinueButton react
-    // to QML-defined onClicked handlers via the clicked() signal. Firing
-    // both covers both shapes without per-component special cases.
-    bool invoked_any{false};
-    if (obj->property("checkable").toBool()) {
-        if (int idx = meta->indexOfMethod("toggle()"); idx >= 0) {
-            invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
-        }
-    }
-    if (int idx = meta->indexOfSignal("clicked()"); idx >= 0) {
-        invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
-    }
-    if (invoked_any) return okResponse();
-
-    // Last resort for items without click()/trigger()/toggle()/clicked()
-    // (bare Item + MouseArea, etc.): synthesize a real mouse press + release
-    // at the item's center.
+    // Qt < 6.8 does not expose QQuickAbstractButton::click(). Prefer a real
+    // mouse press/release before falling back to raw signal emission so QML
+    // handlers run the same way they do for user clicks.
     if (auto* item = qobject_cast<QQuickItem*>(obj)) {
         QQuickWindow* window = item->window();
-        if (window && item->isVisible() && item->width() > 0 && item->height() > 0) {
+        if (window && item->isVisible() && item->isEnabled() &&
+            item->width() > 0 && item->height() > 0) {
+            QTimer clicked_timer;
+            QMetaObject::Connection clicked_connection;
+            if (meta->indexOfSignal("clicked()") >= 0) {
+                clicked_timer.setSingleShot(true);
+                clicked_timer.setInterval(10000);
+                clicked_connection = QObject::connect(
+                    obj,
+                    SIGNAL(clicked()),
+                    &clicked_timer,
+                    SLOT(stop()),
+                    Qt::DirectConnection);
+                if (clicked_connection) clicked_timer.start();
+            }
+
             const QPointF center = item->mapToScene(
                 QPointF(item->width() / 2.0, item->height() / 2.0));
             const QPoint pos = center.toPoint();
@@ -88,9 +86,61 @@ QByteArray clickObject(QObject* obj)
 
             QCoreApplication::sendEvent(window, &press);
             QCoreApplication::sendEvent(window, &release);
-            return okResponse();
+            QCoreApplication::processEvents();
+
+            if (clicked_connection) {
+                const bool clicked_emitted{!clicked_timer.isActive()};
+                QObject::disconnect(clicked_connection);
+                clicked_timer.stop();
+                if (clicked_emitted) return okResponse();
+            } else {
+                return okResponse();
+            }
         }
     }
+
+    // Last resort: invoke the same user-action signals a checkable button
+    // would normally emit. Qt < 6.8 does not expose AbstractButton::click(),
+    // and the synthetic mouse path is not reliable for every control/backend.
+    // `toggle()` updates `checked`, while `toggled()` and `clicked()` run QML
+    // handlers such as onToggled/onClicked.
+    bool invoked_any{false};
+    if (obj->property("checkable").toBool()) {
+        QTimer toggled_timer;
+        QMetaObject::Connection toggled_connection;
+        if (meta->indexOfSignal("toggled()") >= 0) {
+            toggled_timer.setSingleShot(true);
+            toggled_timer.setInterval(10000);
+            toggled_connection = QObject::connect(
+                obj,
+                SIGNAL(toggled()),
+                &toggled_timer,
+                SLOT(stop()),
+                Qt::DirectConnection);
+            if (toggled_connection) toggled_timer.start();
+        }
+
+        bool toggled_checked{false};
+        if (int idx = meta->indexOfMethod("toggle()"); idx >= 0) {
+            toggled_checked = meta->method(idx).invoke(obj, Qt::DirectConnection);
+            invoked_any |= toggled_checked;
+        }
+
+        if (toggled_connection) {
+            const bool toggled_emitted{!toggled_timer.isActive()};
+            QObject::disconnect(toggled_connection);
+            toggled_timer.stop();
+            if (toggled_checked && !toggled_emitted) {
+                if (int idx = meta->indexOfSignal("toggled()"); idx >= 0) {
+                    invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
+                }
+            }
+        }
+    }
+    if (int idx = meta->indexOfSignal("clicked()"); idx >= 0) {
+        invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
+    }
+    if (invoked_any) return okResponse();
 
     QJsonObject resp;
     resp[QStringLiteral("error")] = QStringLiteral("Cannot click object");
