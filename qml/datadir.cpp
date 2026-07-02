@@ -179,8 +179,9 @@ bool EnsureDataDir(const QString& path, QString* error)
 
     try {
         const fs::path data_dir_path = QStringToPath(local_path);
-        TryCreateDirectories(data_dir_path);
-        TryCreateDirectories(data_dir_path / "wallets");
+        if (TryCreateDirectories(data_dir_path)) {
+            TryCreateDirectories(data_dir_path / "wallets");
+        }
     } catch (const fs::filesystem_error&) {
         if (error) *error = DataDirTr("The selected data directory could not be created.");
         return false;

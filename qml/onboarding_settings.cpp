@@ -80,6 +80,22 @@ bool ReadSettingsFileIfPresent(ArgsManager& args, QString* error)
     return true;
 }
 
+bool EnsureSettingsDirectory(ArgsManager& args, const fs::path& settings_path, QString* error)
+{
+    try {
+        const fs::path network_data_dir{args.GetDataDirNet()};
+        if (TryCreateDirectories(network_data_dir)) {
+            TryCreateDirectories(network_data_dir / "wallets");
+        }
+        TryCreateDirectories(settings_path.parent_path());
+    } catch (const fs::filesystem_error& e) {
+        if (error) *error = QString::fromStdString(e.what());
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+}
+
 bool WriteSettingsFile(ArgsManager& args, QString* error)
 {
     fs::path settings_path;
@@ -87,12 +103,7 @@ bool WriteSettingsFile(ArgsManager& args, QString* error)
         if (error) error->clear();
         return true;
     }
-    try {
-        TryCreateDirectories(settings_path.parent_path());
-    } catch (const fs::filesystem_error& e) {
-        if (error) *error = QString::fromStdString(e.what());
-        return false;
-    }
+    if (!EnsureSettingsDirectory(args, settings_path, error)) return false;
     std::vector<std::string> settings_errors;
     if (!args.WriteSettingsFile(&settings_errors)) {
         if (error) *error = QString::fromStdString(settings_errors.empty() ? std::string{"Settings file could not be written."} : settings_errors.front());

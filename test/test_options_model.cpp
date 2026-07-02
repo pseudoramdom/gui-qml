@@ -73,8 +73,10 @@ private Q_SLOTS:
     void proxyDisabledPreservesPreviousValue();
     void customDataDirValidationRejectsFile();
     void customDataDirSelectionCreatesDirectoryAndPersists();
+    void customDataDirSelectionPreservesExistingWalletDiscovery();
     void guiDataDirSettingSoftSetsCustomPath();
     void guiDataDirSettingAbsolutizesSavedRelativePath();
+    void guiDataDirSettingPreservesExistingWalletDiscovery();
     void guiDataDirSettingSkipsUnusableConfiguredDir();
     void guiDataDirSettingSkipsExplicitDatadir();
     void guiDataDirSettingLeavesDefaultOverridable();
@@ -100,6 +102,8 @@ private Q_SLOTS:
     void existingCoreProfileShowsFullOnboardingWithCurrentSettings();
     void freshExplicitDatadirShowsFullOnboarding();
     void onboardingApplyWithoutTouchedSettingsOnlyAddsQmlOnboardedMarker();
+    void onboardingApplyCreatesWalletSubdirectoryForNewNetworkDataDir();
+    void onboardingApplyPreservesExistingNetworkWalletDiscovery();
     void fullOnboardingApplyWritesQmlOnboardedMarker();
     void onboardingPreviewAppliesParameterInteractions();
     void storageSpaceCheckAcceptsExistingDirectory();
@@ -973,6 +977,38 @@ void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
     QCOMPARE(settings.value("fReset").toBool(), false);
 }
 
+void OptionsModelTests::customDataDirSelectionPreservesExistingWalletDiscovery()
+{
+    using ::testing::_;
+    using ::testing::NiceMock;
+    using ::testing::Return;
+
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    settings.remove(SettingsKeys::DATA_DIR);
+    settings.remove("fReset");
+
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString data_dir = QDir(temp_dir.path()).filePath("existing-data-dir");
+    QVERIFY(QDir().mkpath(data_dir));
+    const QString wallets_dir = QDir(data_dir).filePath("wallets");
+    QVERIFY(!QFileInfo::exists(wallets_dir));
+
+    NiceMock<MockNode> node;
+    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+
+    OptionsQmlModel model(node);
+    QVERIFY(model.validateCustomDataDir(data_dir).isEmpty());
+    QVERIFY(model.selectCustomDataDir(data_dir));
+
+    QVERIFY(QFileInfo(data_dir).isDir());
+    QVERIFY(!QFileInfo::exists(wallets_dir));
+    QCOMPARE(model.dataDir(), data_dir);
+    QCOMPARE(settings.value(SettingsKeys::DATA_DIR).toString(), data_dir);
+    QCOMPARE(settings.value("fReset").toBool(), false);
+}
+
 void OptionsModelTests::guiDataDirSettingSoftSetsCustomPath()
 {
     SavedGuiDataDirSettings saved_settings;
@@ -1011,6 +1047,26 @@ void OptionsModelTests::guiDataDirSettingAbsolutizesSavedRelativePath()
     QCOMPARE(QString::fromStdString(args.GetArg("-datadir", "")), data_dir);
     QVERIFY(QFileInfo(data_dir).isDir());
     QVERIFY(QFileInfo(QDir(data_dir).filePath("wallets")).isDir());
+}
+
+void OptionsModelTests::guiDataDirSettingPreservesExistingWalletDiscovery()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    const QString data_dir = QDir(temp_dir.path()).filePath("existing-data-dir");
+    QVERIFY(QDir().mkpath(data_dir));
+    const QString wallets_dir = QDir(data_dir).filePath("wallets");
+    QVERIFY(!QFileInfo::exists(wallets_dir));
+    settings.setValue(SettingsKeys::DATA_DIR, data_dir);
+
+    ArgsManager args;
+    QVERIFY(QmlDataDir::ApplyGuiDataDirSetting(args));
+    QVERIFY(args.IsArgSet("-datadir"));
+    QCOMPARE(QString::fromStdString(args.GetArg("-datadir", "")), data_dir);
+    QVERIFY(QFileInfo(data_dir).isDir());
+    QVERIFY(!QFileInfo::exists(wallets_dir));
 }
 
 void OptionsModelTests::guiDataDirSettingSkipsUnusableConfiguredDir()
@@ -1722,6 +1778,47 @@ void OptionsModelTests::onboardingApplyWithoutTouchedSettingsOnlyAddsQmlOnboarde
         has_listen_override = settings.rw_settings.count("listen") > 0;
     });
     QVERIFY(!has_listen_override);
+}
+
+void OptionsModelTests::onboardingApplyCreatesWalletSubdirectoryForNewNetworkDataDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    const QString network_wallets_dir = QDir(data_dir.path()).filePath(QStringLiteral("regtest/wallets"));
+    QVERIFY(!QFileInfo::exists(network_wallets_dir));
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, TestArgvWithDataDir(data_dir.path()), parse_error), parse_error.c_str());
+
+    QString apply_error;
+    QVERIFY2(QmlOnboardingSettings::ApplyToArgs(args, data_dir.path(), {}, QmlCoreSettings::Values{}, &apply_error), qPrintable(apply_error));
+
+    QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
+    QVERIFY(QFileInfo(network_wallets_dir).isDir());
+}
+
+void OptionsModelTests::onboardingApplyPreservesExistingNetworkWalletDiscovery()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    const QString network_dir = QDir(data_dir.path()).filePath(QStringLiteral("regtest"));
+    const QString network_wallets_dir = QDir(network_dir).filePath(QStringLiteral("wallets"));
+    QVERIFY(QDir().mkpath(network_dir));
+    QVERIFY(!QFileInfo::exists(network_wallets_dir));
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, TestArgvWithDataDir(data_dir.path()), parse_error), parse_error.c_str());
+
+    QString apply_error;
+    QVERIFY2(QmlOnboardingSettings::ApplyToArgs(args, data_dir.path(), {}, QmlCoreSettings::Values{}, &apply_error), qPrintable(apply_error));
+
+    QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
+    QVERIFY(QFileInfo(QDir(network_dir).filePath(QStringLiteral("settings.json"))).isFile());
+    QVERIFY(!QFileInfo::exists(network_wallets_dir));
 }
 
 void OptionsModelTests::fullOnboardingApplyWritesQmlOnboardedMarker()

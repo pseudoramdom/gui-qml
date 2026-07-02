@@ -12,6 +12,7 @@ import sys
 import json
 import os
 import shutil
+import subprocess
 import time
 import tempfile
 
@@ -24,6 +25,13 @@ from qml_test_harness import (
     dump_qml_tree,
     parse_args,
     setup_datadir,
+)
+from qml_wallet_test_lib import (
+    find_bitcoind,
+    pick_unused_port,
+    rpc_call,
+    wait_for_rpc,
+    write_datadir,
 )
 
 
@@ -63,7 +71,7 @@ def finish_preinit_and_reconnect(harness):
     return harness.wait_for_main_window_reconnect()
 
 
-def click_existing_profile_to_connection(gui, datadir):
+def click_existing_profile_to_connection(gui, datadir, expect_custom_storage=True):
     gui.wait_for_page("onboardingCover", timeout_ms=10000)
     assert_preinit_cover_about_available(gui)
 
@@ -78,15 +86,21 @@ def click_existing_profile_to_connection(gui, datadir):
 
     gui.click("onboardingStorageLocationButton")
     gui.wait_for_page("onboardingStorageAmount", timeout_ms=5000)
-    gui.wait_for_property("storageCustomOption", "checked", True, timeout_ms=5000)
+    if expect_custom_storage:
+        gui.wait_for_property("storageCustomOption", "checked", True, timeout_ms=5000)
+    else:
+        assert (
+            gui.get_property("storageReduceOption", "checked")
+            or gui.get_property("storageFullOption", "checked")
+        ), "Expected an existing-profile storage amount selection"
 
     gui.click("onboardingStorageAmountButton")
     gui.wait_for_page("onboardingConnection", timeout_ms=5000)
 
 
-def finish_existing_profile_preinit_and_reconnect(harness, datadir):
+def finish_existing_profile_preinit_and_reconnect(harness, datadir, expect_custom_storage=True):
     gui = harness.driver
-    click_existing_profile_to_connection(gui, datadir)
+    click_existing_profile_to_connection(gui, datadir, expect_custom_storage)
     gui.click("onboardingConnectionButton")
     return harness.wait_for_main_window_reconnect()
 
@@ -102,6 +116,47 @@ def write_settings_json(datadir, settings):
     os.makedirs(settings_dir, exist_ok=True)
     with open(os.path.join(settings_dir, "settings.json"), "w", encoding="utf8") as settings_file:
         json.dump(settings, settings_file)
+
+
+def stop_bitcoind(process, rpc_port):
+    if process and process.poll() is None:
+        try:
+            rpc_call(rpc_port, "stop")
+        except Exception:
+            process.terminate()
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def prepare_existing_profile_with_root_wallet(tmpdir, wallet_name):
+    datadir = os.path.join(tmpdir, "node0")
+    rpc_port = pick_unused_port()
+    p2p_port = pick_unused_port()
+    write_datadir(datadir, rpc_port, p2p_port)
+
+    network_dir = os.path.join(datadir, "regtest")
+    wallets_dir = os.path.join(network_dir, "wallets")
+    os.makedirs(network_dir, exist_ok=True)
+    assert not os.path.exists(wallets_dir), wallets_dir
+
+    bitcoind = subprocess.Popen(
+        [find_bitcoind(), f"-datadir={datadir}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        wait_for_rpc(rpc_port)
+        assert not os.path.exists(wallets_dir), wallets_dir
+        rpc_call(rpc_port, "createwallet", {"wallet_name": wallet_name, "load_on_startup": False})
+        assert os.path.isdir(os.path.join(network_dir, wallet_name))
+        assert not os.path.exists(wallets_dir), wallets_dir
+    finally:
+        stop_bitcoind(bitcoind, rpc_port)
+
+    return datadir, rpc_port
 
 
 def assert_saved_connection_settings_visible(gui):
@@ -234,6 +289,40 @@ def run_existing_profile_full_onboarding_flow():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def run_existing_profile_preserves_root_wallet_discovery_flow():
+    tmpdir = tempfile.mkdtemp(prefix="qml704_wallets_", dir="/tmp")
+    wallet_name = "legacyroot"
+    datadir = None
+    harness = None
+    try:
+        datadir, rpc_port = prepare_existing_profile_with_root_wallet(tmpdir, wallet_name)
+        wallets_dir = os.path.join(datadir, "regtest", "wallets")
+        harness = QmlTestHarness(
+            datadir=datadir,
+            reset_settings=False,
+            start_onboarded=False,
+            extra_args=["-regtest"],
+        )
+        harness.start()
+        gui = finish_existing_profile_preinit_and_reconnect(harness, datadir, expect_custom_storage=False)
+        gui.wait_for_page("desktopWalletsPage", timeout_ms=30000)
+        assert_wallet_shell_visible(gui)
+        assert not gui.object_exists("createWalletWizard"), "Existing root wallet must not route to create-wallet onboarding"
+        assert not os.path.exists(wallets_dir), wallets_dir
+
+        wait_for_rpc(rpc_port)
+        wallet_dir_names = [wallet["name"] for wallet in rpc_call(rpc_port, "listwalletdir")["wallets"]]
+        assert wallet_name in wallet_dir_names, wallet_dir_names
+    except Exception:
+        if harness is not None and harness.driver is not None:
+            dump_qml_tree(harness.driver)
+        raise
+    finally:
+        if harness is not None:
+            harness.stop(cleanup=False)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def run_qml_onboarded_override_reloads_saved_settings_flow():
     tmpdir = tempfile.mkdtemp(prefix="qml704_override_", dir="/tmp")
     datadir = setup_datadir(tmpdir)
@@ -289,6 +378,7 @@ def run_tests():
     run_wallet_enabled_flow()
     run_wallet_disabled_flow()
     run_existing_profile_full_onboarding_flow()
+    run_existing_profile_preserves_root_wallet_discovery_flow()
     run_qml_onboarded_override_reloads_saved_settings_flow()
 
     print("\n" + "=" * 50)
