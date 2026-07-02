@@ -71,6 +71,9 @@
 #include <util/fs_helpers.h>
 #include <util/threadnames.h>
 #include <util/translation.h>
+#ifdef ENABLE_WALLET
+#include <wallet/wallet.h>
+#endif
 
 #include <boost/signals2/connection.hpp>
 #include <cassert>
@@ -132,9 +135,17 @@ bool IsBenignQtFontWarning(const QString& msg)
 }
 
 namespace {
+bool WalletEnabledFromArgs()
+{
+#ifdef ENABLE_WALLET
+    return !gArgs.GetBoolArg("-disablewallet", wallet::DEFAULT_DISABLE_WALLET);
+#else
+    return false;
+#endif
+}
+
 AppMode SetupAppMode()
 {
-    bool wallet_enabled;
     AppMode::Mode mode;
     #ifdef __ANDROID__
         mode = AppMode::MOBILE;
@@ -142,13 +153,7 @@ AppMode SetupAppMode()
         mode = AppMode::DESKTOP;
     #endif // __ANDROID__
 
-    #ifdef ENABLE_WALLET
-        wallet_enabled = !gArgs.GetBoolArg("-disablewallet", false);
-    #else
-        wallet_enabled = false;
-    #endif // ENABLE_WALLET
-
-    return AppMode(mode, wallet_enabled);
+    return AppMode(mode, WalletEnabledFromArgs());
 }
 
 void RegisterQmlTypes(AppMode& app_mode, BuildInfo& build_info, Clipboard& clipboard, BitcoinUriModel& bitcoin_uri_model);
@@ -547,11 +552,7 @@ int QmlGuiMain(int argc, char* argv[])
 
     handler_message_box.disconnect();
 
-#ifdef ENABLE_WALLET
-    const bool wallet_enabled = app_mode.walletEnabled();
-#else
-    const bool wallet_enabled{false};
-#endif
+    const bool wallet_enabled = WalletEnabledFromArgs();
     app_mode.setWalletEnabled(wallet_enabled);
 
     NodeModel node_model{*node};

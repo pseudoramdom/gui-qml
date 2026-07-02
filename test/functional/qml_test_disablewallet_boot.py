@@ -14,6 +14,7 @@ This test requires:
 
 import argparse
 from datetime import datetime
+import json
 import os
 import re
 import sys
@@ -90,6 +91,22 @@ def open_node_settings(gui):
     gui.wait_for_page("settings_about", timeout_ms=SETTINGS_TIMEOUT_MS)
 
 
+def prepend_config_line(datadir, line):
+    conf_path = os.path.join(datadir, "bitcoin.conf")
+    with open(conf_path, encoding="utf8") as conf:
+        existing_config = conf.read()
+    with open(conf_path, "w", encoding="utf8") as conf:
+        conf.write(f"{line}\n")
+        conf.write(existing_config)
+
+
+def write_settings_json(datadir, settings):
+    settings_dir = os.path.join(datadir, "regtest")
+    os.makedirs(settings_dir, exist_ok=True)
+    with open(os.path.join(settings_dir, "settings.json"), "w", encoding="utf8") as settings_file:
+        json.dump(settings, settings_file)
+
+
 def assert_wallet_ui_absent(gui):
     for context_property in ("walletController", "walletListModel"):
         value = gui.get_context_property(context_property)
@@ -116,6 +133,30 @@ def assert_wallet_ui_absent(gui):
         "Wallet settings row should be hidden in -disablewallet mode, "
         f"got {wallet_settings_visible!r}"
     )
+
+
+def assert_node_only_boot(gui):
+    gui.wait_for_page("nodeSettingsButton", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
+
+    current_page = gui.get_current_page()
+    assert current_page == "nodeRunner", (
+        f"Expected -disablewallet startup to show nodeRunner, got {current_page!r}"
+    )
+    assert gui.object_exists("nodeRunner"), "Expected nodeRunner in node-only mode"
+    assert not gui.object_exists("walletBadge"), "Did not expect walletBadge in node-only mode"
+
+
+def assert_wallet_boot(gui):
+    gui.wait_for_object("mainPageStack", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
+    gui.wait_for_object("walletBadge", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
+    current_page = gui.get_current_page()
+    assert current_page == "desktopWalletsPage", (
+        f"Expected wallet-enabled startup to show desktopWalletsPage, got {current_page!r}"
+    )
+    assert gui.get_context_property("walletController")["exists"] is True
+    assert gui.get_context_property("walletListModel")["exists"] is True
+    assert gui.object_exists("walletBadge"), "Expected walletBadge in wallet-enabled mode"
+    assert not gui.object_exists("nodeRunner"), "Did not expect nodeRunner in wallet-enabled mode"
 
 
 def walk_about_settings(gui, checkpoints):
@@ -200,37 +241,30 @@ def walk_debug_log_settings(gui, checkpoints):
     checkpoints.checkpoint("debug log settings opened", gui)
 
 
-def run_tests():
-    args = parse_args()
-    screenshot_root = make_screenshot_root() if args.save_screenshots else None
-    checkpoints = CheckpointRecorder(args.save_screenshots, screenshot_root)
-    harness = QmlTestHarness(socket_path=args.socket_path, extra_args=["-disablewallet"])
+def run_node_only_flow(harness, checkpoints, *, full_walk):
     try:
         harness.start()
         gui = harness.driver
         checkpoints.checkpoint("GUI launched", gui)
 
-        gui.wait_for_page("nodeSettingsButton", timeout_ms=POST_ONBOARDING_TIMEOUT_MS)
-
-        current_page = gui.get_current_page()
-        assert current_page == "nodeRunner", (
-            f"Expected -disablewallet startup to show nodeRunner, got {current_page!r}"
-        )
+        assert_node_only_boot(gui)
         print("Reached node-only main screen")
         checkpoints.checkpoint("node-only main screen reached", gui)
 
-        walk_peers(gui, checkpoints)
+        if full_walk:
+            walk_peers(gui, checkpoints)
 
         open_node_settings(gui)
         assert_wallet_ui_absent(gui)
         checkpoints.checkpoint("node settings opened without wallet UI", gui)
 
-        walk_about_settings(gui, checkpoints)
-        walk_display_settings(gui, checkpoints)
-        walk_storage_settings(gui, checkpoints)
-        walk_connection_settings(gui, checkpoints)
-        walk_network_traffic_settings(gui, checkpoints)
-        walk_debug_log_settings(gui, checkpoints)
+        if full_walk:
+            walk_about_settings(gui, checkpoints)
+            walk_display_settings(gui, checkpoints)
+            walk_storage_settings(gui, checkpoints)
+            walk_connection_settings(gui, checkpoints)
+            walk_network_traffic_settings(gui, checkpoints)
+            walk_debug_log_settings(gui, checkpoints)
 
         gui.click("nodeSettingsDoneButton")
         gui.wait_for_page("nodeSettingsButton", timeout_ms=SETTINGS_TIMEOUT_MS)
@@ -246,6 +280,60 @@ def run_tests():
         sys.exit(1)
     finally:
         harness.stop()
+
+
+def run_cli_disablewallet_flow(args, checkpoints):
+    harness = QmlTestHarness(socket_path=args.socket_path, extra_args=["-disablewallet"])
+    print("\n-- cli -disablewallet -----------------------------------------")
+    run_node_only_flow(harness, checkpoints, full_walk=True)
+
+
+def run_config_disablewallet_flow(checkpoints):
+    harness = QmlTestHarness()
+    prepend_config_line(harness.datadir, "disablewallet=1")
+    print("\n-- bitcoin.conf disablewallet=1 -------------------------------")
+    run_node_only_flow(harness, checkpoints, full_walk=False)
+
+
+def run_settings_disablewallet_flow(checkpoints):
+    harness = QmlTestHarness()
+    write_settings_json(harness.datadir, {"disablewallet": True})
+    print("\n-- settings.json disablewallet=true ---------------------------")
+    run_node_only_flow(harness, checkpoints, full_walk=False)
+
+
+def run_cli_enable_override_flow(checkpoints):
+    harness = QmlTestHarness(extra_args=["-disablewallet=0"])
+    prepend_config_line(harness.datadir, "disablewallet=1")
+    print("\n-- cli -disablewallet=0 overrides bitcoin.conf ----------------")
+    try:
+        harness.start()
+        gui = harness.driver
+        checkpoints.checkpoint("GUI launched with CLI wallet override", gui)
+        assert_wallet_boot(gui)
+        checkpoints.checkpoint("wallet UI opened after CLI override", gui)
+    except Exception as e:
+        print(f"\nFAILED: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        if harness.driver:
+            checkpoints.checkpoint("failure state", harness.driver)
+            dump_qml_tree(harness.driver)
+        sys.exit(1)
+    finally:
+        harness.stop()
+
+
+def run_tests():
+    args = parse_args()
+    screenshot_root = make_screenshot_root() if args.save_screenshots else None
+    checkpoints = CheckpointRecorder(args.save_screenshots, screenshot_root)
+
+    run_cli_disablewallet_flow(args, checkpoints)
+    if not args.socket_path:
+        run_config_disablewallet_flow(checkpoints)
+        run_settings_disablewallet_flow(checkpoints)
+        run_cli_enable_override_flow(checkpoints)
 
     print("\n" + "=" * 60)
     print("Disablewallet node-only boot test PASSED")
