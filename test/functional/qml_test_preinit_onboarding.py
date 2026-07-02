@@ -118,6 +118,14 @@ def write_settings_json(datadir, settings):
         json.dump(settings, settings_file)
 
 
+def assert_qsettings_datadir_not_persisted(config_home):
+    for root, _, files in os.walk(config_home):
+        for filename in files:
+            path = os.path.join(root, filename)
+            with open(path, encoding="utf8", errors="ignore") as settings_file:
+                assert "strDataDir" not in settings_file.read(), path
+
+
 def stop_bitcoind(process, rpc_port):
     if process and process.poll() is None:
         try:
@@ -289,6 +297,55 @@ def run_existing_profile_full_onboarding_flow():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def run_configured_datadir_preserves_config_source_flow():
+    harness = QmlTestHarness(
+        use_datadir_arg=False,
+        reset_settings=False,
+        start_onboarded=False,
+        extra_args=["-regtest", "-disablewallet"],
+    )
+    tmpdir = harness.tmpdir
+    configured_datadir = os.path.join(tmpdir, "configured_node")
+    conf_dir = os.path.join(tmpdir, "conf_source")
+    conf_path = os.path.join(conf_dir, "bitcoin.conf")
+    os.makedirs(configured_datadir, exist_ok=True)
+    os.makedirs(conf_dir, exist_ok=True)
+    with open(conf_path, "w", encoding="utf8") as conf:
+        conf.write("regtest=1\n")
+        conf.write(f"datadir={configured_datadir}\n")
+        conf.write("[regtest]\n")
+        conf.write("server=1\n")
+        conf.write("rpcbind=127.0.0.1\n")
+        conf.write("rpcallowip=127.0.0.1\n")
+        conf.write("discover=0\n")
+        conf.write("dnsseed=0\n")
+        conf.write("fixedseeds=0\n")
+        conf.write("listenonion=0\n")
+        conf.write("printtoconsole=0\n")
+        conf.write("connect=0\n")
+        conf.write("shrinkdebugfile=0\n")
+        conf.write("fallbackfee=0.0001\n")
+    harness.extra_args.append(f"-conf={conf_path}")
+
+    gui = None
+    try:
+        harness.start()
+        gui = finish_existing_profile_preinit_and_reconnect(harness, configured_datadir, expect_custom_storage=False)
+        assert_node_shell_visible(gui)
+
+        settings = read_settings_json(configured_datadir)
+        assert settings.get("qml_onboarded") is True, settings
+        harness.stop(cleanup=False)
+        assert_qsettings_datadir_not_persisted(harness.config_home)
+    except Exception:
+        if gui is not None:
+            dump_qml_tree(gui)
+        raise
+    finally:
+        harness.stop(cleanup=False)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def run_existing_profile_preserves_root_wallet_discovery_flow():
     tmpdir = tempfile.mkdtemp(prefix="qml704_wallets_", dir="/tmp")
     wallet_name = "legacyroot"
@@ -378,6 +435,7 @@ def run_tests():
     run_wallet_enabled_flow()
     run_wallet_disabled_flow()
     run_existing_profile_full_onboarding_flow()
+    run_configured_datadir_preserves_config_source_flow()
     run_existing_profile_preserves_root_wallet_discovery_flow()
     run_qml_onboarded_override_reloads_saved_settings_flow()
 

@@ -19,12 +19,9 @@
 
 
 namespace {
-QString InitialDataDir(const std::vector<std::string>& argv, bool can_listen_ipc)
+QmlOnboardingSettings::OnboardingStartupStatus InitialStartupStatus(const std::vector<std::string>& argv, bool can_listen_ipc)
 {
-    const QmlOnboardingSettings::OnboardingStartupStatus status{
-        QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, can_listen_ipc)
-    };
-    return status.active_data_dir.isEmpty() ? QmlDataDir::ReadGuiDataDir() : status.active_data_dir;
+    return QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, can_listen_ipc);
 }
 } // namespace
 
@@ -32,8 +29,12 @@ OnboardingOptionsModel::OnboardingOptionsModel(std::vector<std::string> argv, bo
     : QObject{parent}
     , m_argv{std::move(argv)}
     , m_can_listen_ipc{can_listen_ipc}
-    , m_data_dir{InitialDataDir(m_argv, m_can_listen_ipc)}
+    , m_data_dir{QmlDataDir::DefaultDataDirString()}
 {
+    const QmlOnboardingSettings::OnboardingStartupStatus status{InitialStartupStatus(m_argv, m_can_listen_ipc)};
+    m_data_dir = status.active_data_dir.isEmpty() ? QmlDataDir::ReadGuiDataDir() : status.active_data_dir;
+    m_data_dir_source = status.data_dir_source;
+
     m_core_settings.setAfterChangeHandler([this](const QmlCoreSettings::Change& change, CoreSettingsModel::ChangeOrigin origin) {
         QmlCoreSettings::EmitCoreSettingSignals(*this, change);
         if (origin == CoreSettingsModel::ChangeOrigin::User &&
@@ -86,6 +87,12 @@ bool OnboardingOptionsModel::selectCustomDataDir(const QString& path)
         m_custom_datadir_string = local_path;
         Q_EMIT customDataDirStringChanged(local_path);
     }
+    const bool source_changed = m_data_dir_source != QmlOnboardingSettings::DataDirSource::UserSelection;
+    m_data_dir_source = QmlOnboardingSettings::DataDirSource::UserSelection;
+    if (source_changed && local_path == m_data_dir) {
+        refreshPreview();
+        return true;
+    }
     setDataDir(local_path);
     return true;
 }
@@ -96,7 +103,14 @@ void OnboardingOptionsModel::useDefaultDataDir()
         m_custom_datadir_string.clear();
         Q_EMIT customDataDirStringChanged({});
     }
-    setDataDir(getDefaultDataDirString());
+    const QString default_data_dir = getDefaultDataDirString();
+    const bool source_changed = m_data_dir_source != QmlOnboardingSettings::DataDirSource::UserSelection;
+    m_data_dir_source = QmlOnboardingSettings::DataDirSource::UserSelection;
+    if (source_changed && default_data_dir == m_data_dir) {
+        refreshPreview();
+        return;
+    }
+    setDataDir(default_data_dir);
 }
 
 void OnboardingOptionsModel::setDataDir(const QString& path)
@@ -325,7 +339,10 @@ void OnboardingOptionsModel::applyPreviewValues(const QmlCoreSettings::Values& v
 
 void OnboardingOptionsModel::refreshPreview()
 {
-    const QmlOnboardingSettings::PreviewResult preview = QmlOnboardingSettings::Preview(m_argv, m_can_listen_ipc, m_data_dir);
+    const QmlOnboardingSettings::PreviewResult preview = QmlOnboardingSettings::Preview(
+        m_argv,
+        m_can_listen_ipc,
+        QmlOnboardingSettings::DataDirSelection{m_data_dir, m_data_dir_source});
     if (!preview.ok) {
         setPreviewError(preview.error);
         return;
@@ -347,5 +364,10 @@ void OnboardingOptionsModel::refreshPreview()
 
 bool OnboardingOptionsModel::applyToArgs(ArgsManager& args, QString* error) const
 {
-    return QmlOnboardingSettings::ApplyToArgs(args, m_data_dir, m_core_settings.touchedSettings(), coreValues(), error);
+    return QmlOnboardingSettings::ApplyToArgs(
+        args,
+        QmlOnboardingSettings::DataDirSelection{m_data_dir, m_data_dir_source},
+        m_core_settings.touchedSettings(),
+        coreValues(),
+        error);
 }

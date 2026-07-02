@@ -15,6 +15,17 @@ class ArgsManager;
 
 namespace QmlDataDir {
 
+enum class GuiDataDirSource {
+    Default,
+    Settings,
+    LegacySettings,
+};
+
+struct GuiDataDir {
+    QString path;
+    GuiDataDirSource source{GuiDataDirSource::Default};
+};
+
 struct StorageSpaceResult {
     QString path;
     QString checked_path;
@@ -30,6 +41,7 @@ QString DefaultDataDirString();
 QString NormalizeLocalPath(QString path);
 fs::path QStringToPath(const QString& path);
 
+GuiDataDir ReadGuiDataDirWithSource();
 QString ReadGuiDataDir();
 bool IsDefaultDataDir(const QString& path);
 QString ValidateCustomDataDir(const QString& path);

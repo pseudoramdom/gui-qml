@@ -33,6 +33,44 @@ bool HasExplicitDataDirArg(const ArgsManager& args)
     return args.IsArgSet("-datadir") && !args.GetPathArg("-datadir").empty();
 }
 
+QmlOnboardingSettings::DataDirSource ToOnboardingDataDirSource(QmlDataDir::GuiDataDirSource source)
+{
+    switch (source) {
+    case QmlDataDir::GuiDataDirSource::Settings:
+        return QmlOnboardingSettings::DataDirSource::GuiSetting;
+    case QmlDataDir::GuiDataDirSource::LegacySettings:
+        return QmlOnboardingSettings::DataDirSource::LegacyGuiSetting;
+    case QmlDataDir::GuiDataDirSource::Default:
+        return QmlOnboardingSettings::DataDirSource::Default;
+    }
+    return QmlOnboardingSettings::DataDirSource::Default;
+}
+
+bool IsGuiOwnedDataDirSource(QmlOnboardingSettings::DataDirSource source)
+{
+    return source == QmlOnboardingSettings::DataDirSource::GuiSetting ||
+           source == QmlOnboardingSettings::DataDirSource::LegacyGuiSetting ||
+           source == QmlOnboardingSettings::DataDirSource::UserSelection;
+}
+
+QString NormalizedDataDirPath(const QmlOnboardingSettings::DataDirSelection& selection)
+{
+    const QString normalized = QmlDataDir::NormalizeLocalPath(selection.path);
+    return normalized.isEmpty() ? QmlDataDir::DefaultDataDirString() : normalized;
+}
+
+bool ShouldApplyDataDirBeforeConfig(QmlOnboardingSettings::DataDirSource source, bool explicit_datadir_arg, const QString& data_dir)
+{
+    return !explicit_datadir_arg &&
+           IsGuiOwnedDataDirSource(source) &&
+           !QmlDataDir::IsDefaultDataDir(data_dir);
+}
+
+bool ShouldPersistGuiDataDirSelection(QmlOnboardingSettings::DataDirSource source, bool explicit_datadir_arg)
+{
+    return !explicit_datadir_arg && IsGuiOwnedDataDirSource(source);
+}
+
 QString ExplicitDataDirString(ArgsManager& args)
 {
     return QmlDataDir::NormalizeLocalPath(QString::fromStdString(fs::PathToString(args.GetPathArg("-datadir"))));
@@ -162,18 +200,22 @@ OnboardingStartupStatus ResolveOnboardingStartupStatus(const std::vector<std::st
     const bool force_show_onboarding = reset_gui_settings || QmlDataDir::ShouldShowDataDirChooser(preview_args);
     if (explicit_datadir) {
         status.active_data_dir = ExplicitDataDirString(preview_args);
+        status.data_dir_source = DataDirSource::ExplicitArg;
     } else if (reset_gui_settings) {
         status.active_data_dir = QmlDataDir::DefaultDataDirString();
+        status.data_dir_source = DataDirSource::Default;
     } else {
-        status.active_data_dir = QmlDataDir::ReadGuiDataDir();
+        const QmlDataDir::GuiDataDir gui_data_dir = QmlDataDir::ReadGuiDataDirWithSource();
+        status.active_data_dir = gui_data_dir.path;
+        status.data_dir_source = ToOnboardingDataDirSource(gui_data_dir.source);
     }
     if (status.active_data_dir.isEmpty()) {
         status.active_data_dir = QmlDataDir::DefaultDataDirString();
     }
 
-    const bool custom_datadir = !explicit_datadir && !QmlDataDir::IsDefaultDataDir(status.active_data_dir);
-    const bool custom_datadir_exists = custom_datadir && QFileInfo::exists(status.active_data_dir);
-    const bool can_read_profile = !custom_datadir || custom_datadir_exists;
+    const bool apply_datadir_before_config = ShouldApplyDataDirBeforeConfig(status.data_dir_source, explicit_datadir, status.active_data_dir);
+    const bool custom_datadir_exists = apply_datadir_before_config && QFileInfo::exists(status.active_data_dir);
+    const bool can_read_profile = !apply_datadir_before_config || custom_datadir_exists;
     if (custom_datadir_exists) {
         QmlDataDir::ApplyDataDirArg(preview_args, status.active_data_dir);
     }
@@ -187,6 +229,9 @@ OnboardingStartupStatus ResolveOnboardingStartupStatus(const std::vector<std::st
         const QString resolved_data_dir = ActiveDataDirString(preview_args);
         if (!resolved_data_dir.isEmpty()) {
             status.active_data_dir = resolved_data_dir;
+            if (status.data_dir_source == DataDirSource::Default && !QmlDataDir::IsDefaultDataDir(resolved_data_dir)) {
+                status.data_dir_source = DataDirSource::Config;
+            }
         }
     } else {
         try {
@@ -229,10 +274,11 @@ OnboardingStartupStatus ResolveOnboardingStartupStatus(const std::vector<std::st
     return status;
 }
 
-PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc, const QString& data_dir)
+PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc, const DataDirSelection& data_dir_selection)
 {
     PreviewResult result;
 
+    const QString data_dir = NormalizedDataDirPath(data_dir_selection);
     const QString validation_error = QmlDataDir::ValidateCustomDataDir(data_dir);
     if (!validation_error.isEmpty()) {
         result.error = validation_error;
@@ -254,13 +300,13 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
     }
 
     const bool explicit_datadir = HasExplicitDataDirArg(preview_args);
-    const bool custom_datadir = !explicit_datadir && !QmlDataDir::IsDefaultDataDir(data_dir);
-    const bool custom_datadir_exists = custom_datadir && QFileInfo::exists(data_dir);
+    const bool apply_datadir_before_config = ShouldApplyDataDirBeforeConfig(data_dir_selection.source, explicit_datadir, data_dir);
+    const bool custom_datadir_exists = apply_datadir_before_config && QFileInfo::exists(data_dir);
     if (custom_datadir_exists) {
         QmlDataDir::ApplyDataDirArg(preview_args, data_dir);
     }
 
-    if (!custom_datadir || custom_datadir_exists) {
+    if (!apply_datadir_before_config || custom_datadir_exists) {
         std::string config_error;
         if (!preview_args.ReadConfigFiles(config_error, true)) {
             result.error = QString::fromStdString(config_error);
@@ -315,22 +361,30 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
     return result;
 }
 
+PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc, const QString& data_dir)
+{
+    return Preview(argv, can_listen_ipc, DataDirSelection{data_dir, DataDirSource::UserSelection});
+}
+
 bool MarkQmlOnboarded(ArgsManager& args, QString* error)
 {
     QmlCoreSettings::SetRwSetting(args, QString::fromLatin1(QML_ONBOARDED_KEY), common::SettingsValue{true});
     return WriteSettingsFile(args, error);
 }
 
-bool ApplyToArgs(ArgsManager& args, const QString& data_dir, const QSet<QString>& touched_settings, const QmlCoreSettings::Values& values, QString* error)
+bool ApplyToArgs(ArgsManager& args, const DataDirSelection& data_dir_selection, const QSet<QString>& touched_settings, const QmlCoreSettings::Values& values, QString* error)
 {
     if (error) error->clear();
+
+    const QString data_dir = NormalizedDataDirPath(data_dir_selection);
+    const bool explicit_datadir = HasExplicitDataDirArg(args);
+    const bool apply_datadir_before_config = ShouldApplyDataDirBeforeConfig(data_dir_selection.source, explicit_datadir, data_dir);
     QString data_dir_error;
-    if (!QmlDataDir::EnsureDataDir(data_dir, &data_dir_error)) {
+    if (apply_datadir_before_config && !QmlDataDir::EnsureDataDir(data_dir, &data_dir_error)) {
         if (error) *error = data_dir_error;
         return false;
     }
-
-    if (!QmlDataDir::IsDefaultDataDir(data_dir)) {
+    if (apply_datadir_before_config) {
         QmlDataDir::ApplyDataDirArg(args, data_dir);
     }
 
@@ -399,13 +453,20 @@ bool ApplyToArgs(ArgsManager& args, const QString& data_dir, const QSet<QString>
     QmlCoreSettings::SetRwSetting(args, QString::fromLatin1(QML_ONBOARDED_KEY), common::SettingsValue{true});
     if (!WriteSettingsFile(args, error)) return false;
 
-    if (QmlDataDir::IsDefaultDataDir(data_dir)) {
-        QmlDataDir::PersistDefaultDataDirSelection();
-    } else if (!QmlDataDir::PersistGuiDataDirSelection(data_dir, &data_dir_error)) {
-        if (error) *error = data_dir_error;
-        return false;
+    if (ShouldPersistGuiDataDirSelection(data_dir_selection.source, explicit_datadir)) {
+        if (QmlDataDir::IsDefaultDataDir(data_dir)) {
+            QmlDataDir::PersistDefaultDataDirSelection();
+        } else if (!QmlDataDir::PersistGuiDataDirSelection(data_dir, &data_dir_error)) {
+            if (error) *error = data_dir_error;
+            return false;
+        }
     }
     return true;
+}
+
+bool ApplyToArgs(ArgsManager& args, const QString& data_dir, const QSet<QString>& touched_settings, const QmlCoreSettings::Values& values, QString* error)
+{
+    return ApplyToArgs(args, DataDirSelection{data_dir, DataDirSource::UserSelection}, touched_settings, values, error);
 }
 
 } // namespace QmlOnboardingSettings

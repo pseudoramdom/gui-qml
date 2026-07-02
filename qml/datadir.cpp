@@ -61,22 +61,33 @@ fs::path QStringToPath(const QString& path)
     return fs::u8path(path.toStdString());
 }
 
-QString ReadGuiDataDir()
+GuiDataDir ReadGuiDataDirWithSource()
 {
     QSettings settings;
     const QString default_dir = DefaultDataDirString();
     if (settings.contains(SettingsKeys::DATA_DIR)) {
         const QString data_dir = NormalizeLocalPath(settings.value(SettingsKeys::DATA_DIR, default_dir).toString());
-        return data_dir.isEmpty() ? default_dir : data_dir;
+        if (data_dir.isEmpty() || IsDefaultDataDir(data_dir)) {
+            return {default_dir, GuiDataDirSource::Default};
+        }
+        return {data_dir, GuiDataDirSource::Settings};
     }
 
     const QString legacy_data_dir = NormalizeLocalPath(QmlLegacySettings::ReadLegacyGuiDataDir());
     if (!legacy_data_dir.isEmpty()) {
-        return legacy_data_dir;
+        if (IsDefaultDataDir(legacy_data_dir)) {
+            return {default_dir, GuiDataDirSource::Default};
+        }
+        return {legacy_data_dir, GuiDataDirSource::LegacySettings};
     }
 
     const QString data_dir = NormalizeLocalPath(settings.value(SettingsKeys::DATA_DIR, default_dir).toString());
-    return data_dir.isEmpty() ? default_dir : data_dir;
+    return {data_dir.isEmpty() ? default_dir : data_dir, GuiDataDirSource::Default};
+}
+
+QString ReadGuiDataDir()
+{
+    return ReadGuiDataDirWithSource().path;
 }
 
 bool IsDefaultDataDir(const QString& path)

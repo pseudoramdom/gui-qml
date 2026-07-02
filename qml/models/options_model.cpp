@@ -128,11 +128,15 @@ OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, ArgsManager& args)
 
     resetDirtySnapshots();
 
-    m_dataDir = QmlDataDir::ReadGuiDataDir();
-    if (QmlDataDir::IsDefaultDataDir(m_dataDir) && !gArgs.GetDataDirBase().empty()) {
-        m_dataDir = QString::fromStdString(gArgs.GetDataDirBase().utf8string());
+    const QString gui_data_dir = QmlDataDir::ReadGuiDataDir();
+    const QString active_data_dir = QString::fromStdString(m_args.GetDataDirBase().utf8string());
+    if (!active_data_dir.isEmpty() &&
+        (QmlDataDir::HasExplicitDataDirArg(m_args) || QmlDataDir::IsDefaultDataDir(gui_data_dir))) {
+        m_dataDir = active_data_dir;
+    } else {
+        m_dataDir = gui_data_dir;
     }
-    if (m_dataDir != getDefaultDataDirString()) {
+    if (!QmlDataDir::IsDefaultDataDir(m_dataDir)) {
         m_custom_datadir_string = m_dataDir;
     }
     QSettings settings;

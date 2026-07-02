@@ -79,6 +79,7 @@ private Q_SLOTS:
     void guiDataDirSettingPreservesExistingWalletDiscovery();
     void guiDataDirSettingSkipsUnusableConfiguredDir();
     void guiDataDirSettingSkipsExplicitDatadir();
+    void runtimeDataDirUsesExplicitDatadirOverSavedGuiSetting();
     void guiDataDirSettingLeavesDefaultOverridable();
     void legacyQtDataDirFallbackReadsOldQtSetting();
     void guiDataDirChooserShowsForMissingConfiguredDir();
@@ -95,6 +96,9 @@ private Q_SLOTS:
     void qmlOnboardedProfileSkipsPreInitOnboarding();
     void qmlOnboardedCommandLineOverrideShowsPreInitOnboarding();
     void qmlOnboardedConfiguredDatadirProfileSkipsPreInitOnboarding();
+    void configuredDatadirPreviewKeepsConfigSource();
+    void configuredDatadirApplyDoesNotPersistGuiDataDir();
+    void explicitDatadirApplyDoesNotPersistGuiDataDir();
     void qmlOnboardedResetGuiSettingsShowsPreInitOnboarding();
     void qmlOnboardedChooseDataDirShowsPreInitOnboarding();
     void qmlOnboardedCurrentResetFlagShowsPreInitOnboarding();
@@ -1103,6 +1107,30 @@ void OptionsModelTests::guiDataDirSettingSkipsExplicitDatadir()
     QVERIFY(!QFileInfo(saved_data_dir).exists());
 }
 
+void OptionsModelTests::runtimeDataDirUsesExplicitDatadirOverSavedGuiSetting()
+{
+    using ::testing::NiceMock;
+
+    SavedGuiDataDirSettings saved_settings;
+    QSettings settings;
+    QTemporaryDir saved_data_dir;
+    QTemporaryDir explicit_data_dir;
+    QVERIFY(saved_data_dir.isValid());
+    QVERIFY(explicit_data_dir.isValid());
+    settings.setValue(SettingsKeys::DATA_DIR, saved_data_dir.path());
+
+    ArgsManager args;
+    PrepareArgsForDataDir(args, explicit_data_dir.path());
+
+    NiceMock<MockNode> node;
+    InstallPersistentSettings(node, args);
+
+    OptionsQmlModel model(node, args);
+    QCOMPARE(model.dataDir(), explicit_data_dir.path());
+    QCOMPARE(model.getCustomDataDirString(), explicit_data_dir.path());
+    QCOMPARE(settings.value(SettingsKeys::DATA_DIR).toString(), saved_data_dir.path());
+}
+
 void OptionsModelTests::guiDataDirSettingLeavesDefaultOverridable()
 {
     SavedGuiDataDirSettings saved_settings;
@@ -1606,6 +1634,126 @@ void OptionsModelTests::qmlOnboardedConfiguredDatadirProfileSkipsPreInitOnboardi
     QVERIFY(status.qml_onboarded);
     QVERIFY(!status.should_show_onboarding);
     QCOMPARE(status.active_data_dir, configured_data_dir.path());
+    QVERIFY(status.data_dir_source == QmlOnboardingSettings::DataDirSource::Config);
+}
+
+void OptionsModelTests::configuredDatadirPreviewKeepsConfigSource()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    QTemporaryDir configured_data_dir;
+    QVERIFY(configured_data_dir.isValid());
+
+    QSettings settings;
+    settings.setValue(SettingsKeys::DATA_DIR, QmlDataDir::DefaultDataDirString());
+
+    const QString conf_path = QDir(temp_dir.path()).filePath(QStringLiteral("bitcoin.conf"));
+    QFile conf(conf_path);
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write(QStringLiteral("regtest=1\ndatadir=%1\n[regtest]\nserver=1\n").arg(configured_data_dir.path()).toUtf8()) > 0);
+    conf.close();
+
+    const std::vector<std::string> argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-conf=" + conf_path.toStdString(),
+    };
+
+    const QmlOnboardingSettings::OnboardingStartupStatus status{
+        QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, /*can_listen_ipc=*/false)
+    };
+    QVERIFY2(status.ok, qPrintable(status.error));
+    QCOMPARE(status.active_data_dir, configured_data_dir.path());
+    QVERIFY(status.data_dir_source == QmlOnboardingSettings::DataDirSource::Config);
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(
+            argv,
+            /*can_listen_ipc=*/false,
+            QmlOnboardingSettings::DataDirSelection{status.active_data_dir, status.data_dir_source})
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.server);
+    QCOMPARE(preview.core_setting_statuses.value(QStringLiteral("server")).toMap().value(QStringLiteral("source")).toString(), QStringLiteral("bitcoin_conf"));
+}
+
+void OptionsModelTests::configuredDatadirApplyDoesNotPersistGuiDataDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir temp_dir;
+    QVERIFY(temp_dir.isValid());
+    QTemporaryDir configured_data_dir;
+    QVERIFY(configured_data_dir.isValid());
+
+    QSettings settings;
+    settings.remove(SettingsKeys::DATA_DIR);
+
+    const QString conf_path = QDir(temp_dir.path()).filePath(QStringLiteral("bitcoin.conf"));
+    QFile conf(conf_path);
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(conf.write(QStringLiteral("regtest=1\ndatadir=%1\n[regtest]\nserver=1\n").arg(configured_data_dir.path()).toUtf8()) > 0);
+    conf.close();
+
+    const std::vector<std::string> argv{
+        std::string{"bitcoinqml"},
+        std::string{"-regtest"},
+        "-conf=" + conf_path.toStdString(),
+    };
+
+    const QmlOnboardingSettings::OnboardingStartupStatus status{
+        QmlOnboardingSettings::ResolveOnboardingStartupStatus(argv, /*can_listen_ipc=*/false)
+    };
+    QVERIFY2(status.ok, qPrintable(status.error));
+    QCOMPARE(status.active_data_dir, configured_data_dir.path());
+    QVERIFY(status.data_dir_source == QmlOnboardingSettings::DataDirSource::Config);
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(
+            argv,
+            /*can_listen_ipc=*/false,
+            QmlOnboardingSettings::DataDirSelection{status.active_data_dir, status.data_dir_source})
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.values.server);
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(QmlOnboardingSettings::ApplyToArgs(
+        args,
+        QmlOnboardingSettings::DataDirSelection{status.active_data_dir, status.data_dir_source},
+        {},
+        preview.values,
+        &apply_error), qPrintable(apply_error));
+
+    QVERIFY(!settings.contains(SettingsKeys::DATA_DIR));
+    QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
+    QVERIFY(QFileInfo(QDir(configured_data_dir.path()).filePath(QStringLiteral("regtest/settings.json"))).isFile());
+}
+
+void OptionsModelTests::explicitDatadirApplyDoesNotPersistGuiDataDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    QSettings settings;
+    settings.remove(SettingsKeys::DATA_DIR);
+
+    const std::vector<std::string> argv{TestArgvWithDataDir(data_dir.path())};
+    OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
+    QCOMPARE(model.dataDir(), data_dir.path());
+
+    ArgsManager args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(args, argv, parse_error), parse_error.c_str());
+    QString apply_error;
+    QVERIFY2(model.applyToArgs(args, &apply_error), qPrintable(apply_error));
+
+    QVERIFY(!settings.contains(SettingsKeys::DATA_DIR));
+    QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
 }
 
 void OptionsModelTests::qmlOnboardedResetGuiSettingsShowsPreInitOnboarding()
@@ -1826,6 +1974,8 @@ void OptionsModelTests::fullOnboardingApplyWritesQmlOnboardedMarker()
     SavedGuiDataDirSettings saved_settings;
     QTemporaryDir data_dir;
     QVERIFY(data_dir.isValid());
+    QSettings settings;
+    settings.remove(SettingsKeys::DATA_DIR);
 
     const std::vector<std::string> argv = TestArgv();
     OnboardingOptionsModel model(argv, /*can_listen_ipc=*/false);
@@ -1837,6 +1987,7 @@ void OptionsModelTests::fullOnboardingApplyWritesQmlOnboardedMarker()
     QString apply_error;
     QVERIFY2(model.applyToArgs(args, &apply_error), qPrintable(apply_error));
     QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
+    QCOMPARE(settings.value(SettingsKeys::DATA_DIR).toString(), data_dir.path());
 }
 
 void OptionsModelTests::onboardingPreviewAppliesParameterInteractions()

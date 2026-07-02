@@ -158,6 +158,7 @@ private:
     std::vector<std::string> m_argv;
     bool m_can_listen_ipc;
     QString m_data_dir;
+    QmlOnboardingSettings::DataDirSource m_data_dir_source{QmlOnboardingSettings::DataDirSource::Default};
     QString m_custom_datadir_string;
     CoreSettingsModel m_core_settings;
     QString m_preview_error;
