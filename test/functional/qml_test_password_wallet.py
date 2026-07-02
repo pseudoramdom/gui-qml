@@ -139,9 +139,9 @@ def create_password_wallet(gui, wallet_name, password):
     gui.click("createWalletPasswordConfirmToggle")
     gui.wait_for_property("createWalletPasswordContinueButton", "enabled", True, timeout_ms=25000)
     gui.click("createWalletPasswordContinueButton")
-    gui.wait_for_property("createWalletConfirmNextButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_page("createWalletConfirmPage", timeout_ms=20000)
     gui.click("createWalletConfirmNextButton")
-    gui.wait_for_property("createWalletBackupDoneButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_page("createWalletBackupPage", timeout_ms=10000)
     gui.click("createWalletBackupDoneButton")
 
 
