@@ -51,6 +51,7 @@ class OnboardingOptionsModel : public QObject
     Q_PROPERTY(bool proxySettingsDirty READ dirtyState CONSTANT)
     Q_PROPERTY(int assumedBlockchainSize READ assumedBlockchainSize NOTIFY assumedSizesChanged)
     Q_PROPERTY(int assumedChainstateSize READ assumedChainstateSize NOTIFY assumedSizesChanged)
+    Q_PROPERTY(bool existingProfile READ existingProfile NOTIFY storageStatusChanged)
     Q_PROPERTY(bool storageCheckPending READ storageCheckPending NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageStatus READ storageStatus NOTIFY storageStatusChanged)
     Q_PROPERTY(int storageAvailableGB READ storageAvailableGB NOTIFY storageStatusChanged)
@@ -58,6 +59,7 @@ class OnboardingOptionsModel : public QObject
     Q_PROPERTY(QString storagePathMessage READ storagePathMessage NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageWarningText READ storageWarningText NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageErrorText READ storageErrorText NOTIFY storageStatusChanged)
+    Q_PROPERTY(int storageMinimumRequiredGB READ storageMinimumRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
@@ -103,6 +105,7 @@ public:
     bool dirtyState() const { return false; }
     int assumedBlockchainSize() const { return m_assumed_blockchain_size; }
     int assumedChainstateSize() const { return m_assumed_chainstate_size; }
+    bool existingProfile() const { return m_profile.existing_profile; }
     bool storageCheckPending() const { return m_storage_check_pending; }
     QString storageStatus() const;
     int storageAvailableGB() const;
@@ -110,6 +113,7 @@ public:
     QString storagePathMessage() const { return m_storage_path_message; }
     QString storageWarningText() const;
     QString storageErrorText() const { return m_storage_error_text; }
+    int storageMinimumRequiredGB() const;
     int fullStorageRequiredGB() const;
     int prunedStorageRequiredGB() const;
     int selectedStorageRequiredGB() const;
@@ -162,6 +166,7 @@ private:
     QString m_custom_datadir_string;
     CoreSettingsModel m_core_settings;
     QString m_preview_error;
+    QmlOnboardingSettings::ProfileSummary m_profile;
     int m_assumed_blockchain_size{0};
     int m_assumed_chainstate_size{0};
     uint64_t m_storage_request_id{0};

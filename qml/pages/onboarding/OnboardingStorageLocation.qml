@@ -15,7 +15,10 @@ InformationPage {
     property int assumedChainstateSize: 0
     property var settingsModel: optionsModel
     readonly property int reducedStorageTargetGB: 2
-    readonly property int minimumStorageRequiredGB: root.assumedChainstateSize + root.reducedStorageTargetGB
+    readonly property int freshMinimumStorageRequiredGB: root.assumedChainstateSize + root.reducedStorageTargetGB
+    readonly property int minimumStorageRequiredGB: root.settingsModel.existingProfile
+        ? root.settingsModel.storageMinimumRequiredGB
+        : root.freshMinimumStorageRequiredGB
     buttonObjectName: "onboardingStorageLocationButton"
     navLeftDetail: NavButton {
         iconSource: "image://images/caret-left"

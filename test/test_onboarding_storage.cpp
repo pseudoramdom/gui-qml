@@ -40,6 +40,8 @@ private Q_SLOTS:
     void insufficientSelectedStorageWarns();
     void nearMinimumStorageWarns();
     void pruneRecommendationUsesValidityAndMargin();
+    void existingProfileDoesNotRecommendPruneOrRequireFreshChainSpace();
+    void existingProfileBelowOperationalMinimumWarns();
 };
 
 void OnboardingStorageTests::pendingCheckReturnsCheckingStatus()
@@ -152,6 +154,41 @@ void OnboardingStorageTests::pruneRecommendationUsesValidityAndMargin()
     QVERIFY(QmlOnboardingStorage::ShouldRecommendPrune(state));
 
     state.available_bytes = GB(622);
+    QVERIFY(!QmlOnboardingStorage::ShouldRecommendPrune(state));
+}
+
+void OnboardingStorageTests::existingProfileDoesNotRecommendPruneOrRequireFreshChainSpace()
+{
+    auto state = MakeState();
+    state.available_bytes = GB(5);
+    state.existing_profile = true;
+
+    const QmlOnboardingStorage::Info info = QmlOnboardingStorage::Evaluate(state);
+
+    QCOMPARE(info.status, QStringLiteral("ok"));
+    QCOMPARE(info.minimum_required_gb, 1);
+    QCOMPARE(info.selected_required_gb, 1);
+    QCOMPARE(info.full_required_gb, 612);
+    QVERIFY(info.enough_for_selected);
+    QVERIFY(info.enough_for_full);
+    QVERIFY(info.warning_text.isEmpty());
+    QVERIFY(!QmlOnboardingStorage::ShouldRecommendPrune(state));
+}
+
+void OnboardingStorageTests::existingProfileBelowOperationalMinimumWarns()
+{
+    auto state = MakeState();
+    state.available_bytes = 0;
+    state.existing_profile = true;
+
+    const QmlOnboardingStorage::Info info = QmlOnboardingStorage::Evaluate(state);
+
+    QCOMPARE(info.status, QStringLiteral("warning"));
+    QCOMPARE(info.minimum_required_gb, 1);
+    QCOMPARE(info.selected_required_gb, 1);
+    QVERIFY(!info.enough_for_selected);
+    QVERIFY(!info.enough_for_full);
+    QCOMPARE(info.warning_text, QStringLiteral("About 1GB is needed for the selected storage option."));
     QVERIFY(!QmlOnboardingStorage::ShouldRecommendPrune(state));
 }
 

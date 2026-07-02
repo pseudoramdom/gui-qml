@@ -312,6 +312,7 @@ class WalletFlowHarness:
     def open_create_wallet_wizard(self):
         if self.driver.object_exists("createWalletWizard"):
             self._wait_for_create_wallet_wizard_entry()
+            self.driver.settle(timeout_ms=15000)
             return
         self.driver.wait_for_property("walletBadge", "loading", False, timeout_ms=30000)
         self.driver.click("walletBadge")
@@ -321,3 +322,4 @@ class WalletFlowHarness:
             self.driver.wait_for_property("walletSelectPopup", "opened", True, timeout_ms=5000)
             self.driver.click("walletSelectAddWalletButton")
             self._wait_for_create_wallet_wizard_entry()
+        self.driver.settle(timeout_ms=15000)

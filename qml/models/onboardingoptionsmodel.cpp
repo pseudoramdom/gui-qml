@@ -210,6 +210,11 @@ QString OnboardingOptionsModel::storageWarningText() const
     return storageInfo().warning_text;
 }
 
+int OnboardingOptionsModel::storageMinimumRequiredGB() const
+{
+    return storageInfo().minimum_required_gb;
+}
+
 int OnboardingOptionsModel::fullStorageRequiredGB() const
 {
     return storageInfo().full_required_gb;
@@ -281,6 +286,7 @@ void OnboardingOptionsModel::applyStorageCheckResult(uint64_t request_id, const 
 void OnboardingOptionsModel::applyAutomaticPruneRecommendation()
 {
     if (!m_storage_result_valid || !m_storage_error_text.isEmpty()) return;
+    if (m_profile.existing_profile) return;
 
     const QVariantMap prune_status = m_core_settings.statuses().value(QStringLiteral("prune")).toMap();
     if (!prune_status.value(QStringLiteral("canEdit"), true).toBool()) return;
@@ -311,6 +317,7 @@ QmlOnboardingStorage::State OnboardingOptionsModel::storageState() const
     state.assumed_chainstate_size_gb = m_assumed_chainstate_size;
     state.prune = m_core_settings.values().prune;
     state.prune_size_gb = m_core_settings.values().prune_size_gb;
+    state.existing_profile = m_profile.existing_profile;
     return state;
 }
 
@@ -350,10 +357,19 @@ void OnboardingOptionsModel::refreshPreview()
 
     const int old_assumed_blockchain_size = m_assumed_blockchain_size;
     const int old_assumed_chainstate_size = m_assumed_chainstate_size;
+    const bool old_existing_profile = m_profile.existing_profile;
     m_assumed_blockchain_size = preview.assumed_blockchain_size;
     m_assumed_chainstate_size = preview.assumed_chainstate_size;
+    m_profile = preview.profile;
+    if (m_profile.existing_profile && m_prune_auto_recommended) {
+        m_core_settings.changePruneRecommendation(preview.values.prune, preview.values.prune_size_gb, /*mark_touched=*/false);
+        m_prune_auto_recommended = false;
+    }
     if (old_assumed_blockchain_size != m_assumed_blockchain_size || old_assumed_chainstate_size != m_assumed_chainstate_size) {
         Q_EMIT assumedSizesChanged();
+        emitStorageStatusChanged();
+    }
+    if (old_existing_profile != m_profile.existing_profile) {
         emitStorageStatusChanged();
     }
 

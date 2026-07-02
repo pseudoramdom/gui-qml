@@ -30,6 +30,7 @@ from test_framework.descriptors import descsum_create
 WALLET_PASSWORD = "correct horse battery staple"
 FALLBACK_DESC_EXTERNAL = "wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/0h/*h)"
 FALLBACK_DESC_INTERNAL = "wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/1h/*h)"
+WALLET_FLOW_SETTLE_TIMEOUT_MS = 15000
 
 
 def parse_args():
@@ -71,7 +72,7 @@ class CheckpointRecorder:
         if gui is None:
             return
 
-        gui.settle()
+        gui.settle(timeout_ms=WALLET_FLOW_SETTLE_TIMEOUT_MS)
 
         if not self.save_screenshots:
             return

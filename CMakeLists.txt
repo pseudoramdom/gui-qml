@@ -121,6 +121,7 @@ target_link_libraries(bitcoinqml
     Qt6::Widgets
   PRIVATE
     bitcoin_cli
+    bitcoin_wallet
     $<$<PLATFORM_ID:Darwin>:-framework\ AppKit>
 )
 

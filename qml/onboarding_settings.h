@@ -32,6 +32,14 @@ struct DataDirSelection {
     DataDirSource source{DataDirSource::UserSelection};
 };
 
+struct ProfileSummary {
+    bool existing_profile{false};
+    bool has_settings_file{false};
+    bool has_config_file{false};
+    bool has_chain_data{false};
+    bool has_wallet_data{false};
+};
+
 struct PreviewResult {
     bool ok{false};
     QString error;
@@ -39,6 +47,7 @@ struct PreviewResult {
     QVariantMap core_setting_statuses;
     int assumed_blockchain_size{0};
     int assumed_chainstate_size{0};
+    ProfileSummary profile;
 };
 
 struct OnboardingStartupStatus {

@@ -1846,6 +1846,7 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(bool canFinish READ canFinish NOTIFY canFinishChanged)
     Q_PROPERTY(int assumedBlockchainSize MEMBER m_assumed_blockchain_size NOTIFY assumedSizesChanged)
     Q_PROPERTY(int assumedChainstateSize MEMBER m_assumed_chainstate_size NOTIFY assumedSizesChanged)
+    Q_PROPERTY(bool existingProfile READ existingProfile WRITE setExistingProfile NOTIFY storageStatusChanged)
     Q_PROPERTY(bool storageCheckPending MEMBER m_storage_check_pending NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageStatus READ storageStatus NOTIFY storageStatusChanged)
     Q_PROPERTY(int storageAvailableGB MEMBER m_storage_available_gb NOTIFY storageStatusChanged)
@@ -1853,6 +1854,7 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(QString storagePathMessage MEMBER m_storage_path_message NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageWarningText MEMBER m_storage_warning_text NOTIFY storageStatusChanged)
     Q_PROPERTY(QString storageErrorText MEMBER m_storage_error_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(int storageMinimumRequiredGB READ storageMinimumRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
     Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
@@ -1884,6 +1886,7 @@ public:
     QString m_preview_error;
     int m_assumed_blockchain_size{610};
     int m_assumed_chainstate_size{12};
+    bool m_existing_profile{false};
     bool m_storage_check_pending{false};
     int m_storage_available_gb{123};
     QString m_storage_path_message{QStringLiteral("Directory already exists.")};
@@ -1932,15 +1935,24 @@ public:
     {
         return m_storage_check_pending ? QStringLiteral("Checking available storage...") : QStringLiteral("%1GB available").arg(m_storage_available_gb);
     }
+    bool existingProfile() const { return m_existing_profile; }
+    void setExistingProfile(bool value)
+    {
+        if (m_existing_profile == value) return;
+        m_existing_profile = value;
+        Q_EMIT storageStatusChanged();
+        Q_EMIT canFinishChanged();
+    }
+    int storageMinimumRequiredGB() const { return m_existing_profile ? 1 : m_assumed_chainstate_size + 2; }
     int fullStorageRequiredGB() const { return m_assumed_blockchain_size + m_assumed_chainstate_size; }
     bool prune() const { return m_core_settings.prune(); }
     void setPrune(bool value) { m_core_settings.setPrune(value); }
     int pruneSizeGB() const { return m_core_settings.pruneSizeGB(); }
     void setPruneSizeGB(int value) { m_core_settings.setPruneSizeGB(value); }
     int prunedStorageRequiredGB() const { return pruneSizeGB() + m_assumed_chainstate_size; }
-    int selectedStorageRequiredGB() const { return prune() ? prunedStorageRequiredGB() : fullStorageRequiredGB(); }
+    int selectedStorageRequiredGB() const { return m_existing_profile ? storageMinimumRequiredGB() : (prune() ? prunedStorageRequiredGB() : fullStorageRequiredGB()); }
     bool storageEnoughForSelected() const { return m_storage_available_gb >= selectedStorageRequiredGB(); }
-    bool storageEnoughForFull() const { return m_storage_available_gb >= fullStorageRequiredGB(); }
+    bool storageEnoughForFull() const { return m_existing_profile ? storageEnoughForSelected() : m_storage_available_gb >= fullStorageRequiredGB(); }
     Q_INVOKABLE QString getCustomDataDirString() const { return m_custom_data_dir; }
     Q_INVOKABLE void setCustomDataDirString(const QString& dir) { m_custom_data_dir = dir; }
     Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { selectCustomDataDir(dir); }

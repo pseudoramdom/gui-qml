@@ -5,6 +5,7 @@
 #include <qml/onboarding_settings.h>
 
 #include <chainparams.h>
+#include <chainparamsbase.h>
 #include <common/args.h>
 #include <common/settings.h>
 #include <common/system.h>
@@ -16,13 +17,16 @@
 #include <qml/guiargs.h>
 #include <qml/legacy_settings_migration.h>
 #include <univalue.h>
+#include <util/fs.h>
 #include <util/fs_helpers.h>
+#include <wallet/db.h>
 
 #include <QFileInfo>
 
 #include <map>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace {
@@ -116,6 +120,102 @@ bool ReadSettingsFileIfPresent(ArgsManager& args, QString* error)
     }
     if (error) error->clear();
     return true;
+}
+
+bool PathExists(const fs::path& path)
+{
+    if (path.empty()) return false;
+    std::error_code ec;
+    return std::filesystem::exists(path, ec) && !ec;
+}
+
+bool DirectoryExists(const fs::path& path)
+{
+    if (path.empty()) return false;
+    std::error_code ec;
+    return fs::is_directory(path, ec) && !ec;
+}
+
+bool IsHiddenPath(const fs::path& path)
+{
+    const std::string filename{fs::PathToString(path.filename())};
+    return !filename.empty() && filename.front() == '.';
+}
+
+bool DirectoryHasNonHiddenEntry(const fs::path& path)
+{
+    if (!DirectoryExists(path)) return false;
+
+    std::error_code ec;
+    for (fs::directory_iterator it(path, ec); it != fs::directory_iterator(); it.increment(ec)) {
+        if (ec) return false;
+        if (!IsHiddenPath(it->path())) return true;
+    }
+    return false;
+}
+
+fs::path BlocksDirPathNoCreate(const ArgsManager& args)
+{
+    fs::path path;
+    if (args.IsArgSet("-blocksdir")) {
+        path = fs::absolute(args.GetPathArg("-blocksdir"));
+        if (!DirectoryExists(path)) return {};
+    } else {
+        path = args.GetDataDirBase();
+    }
+
+    if (path.empty()) return {};
+    path /= fs::PathFromString(BaseParams().DataDir());
+    path /= "blocks";
+    return path;
+}
+
+bool HasExistingChainData(const ArgsManager& args)
+{
+    const fs::path network_data_dir{args.GetDataDirNet()};
+    if (DirectoryHasNonHiddenEntry(network_data_dir / "chainstate")) return true;
+    if (DirectoryHasNonHiddenEntry(network_data_dir / "chainstate_snapshot")) return true;
+    if (DirectoryHasNonHiddenEntry(network_data_dir / "indexes")) return true;
+    return DirectoryHasNonHiddenEntry(BlocksDirPathNoCreate(args));
+}
+
+std::optional<fs::path> EffectiveWalletDirNoCreate(const ArgsManager& args)
+{
+    if (args.IsArgSet("-walletdir")) {
+        const fs::path wallet_dir{args.GetPathArg("-walletdir")};
+        std::error_code ec;
+        const fs::path canonical_wallet_dir{fs::canonical(wallet_dir, ec)};
+        if (ec || !DirectoryExists(canonical_wallet_dir) || !wallet_dir.is_absolute()) return std::nullopt;
+        return canonical_wallet_dir;
+    }
+
+    fs::path wallet_dir{args.GetDataDirNet()};
+    if (DirectoryExists(wallet_dir / "wallets")) {
+        wallet_dir /= "wallets";
+    }
+    if (!DirectoryExists(wallet_dir)) return std::nullopt;
+    return wallet_dir;
+}
+
+bool HasExistingWalletData(const ArgsManager& args)
+{
+    const std::optional<fs::path> wallet_dir{EffectiveWalletDirNoCreate(args)};
+    return wallet_dir && !wallet::ListDatabases(*wallet_dir).empty();
+}
+
+QmlOnboardingSettings::ProfileSummary BuildProfileSummary(const ArgsManager& args, bool config_file_path_available)
+{
+    QmlOnboardingSettings::ProfileSummary summary;
+    fs::path settings_path;
+    summary.has_settings_file = args.GetSettingsPath(&settings_path) && PathExists(settings_path);
+    summary.has_config_file = config_file_path_available && PathExists(args.GetConfigFilePath());
+    summary.has_chain_data = HasExistingChainData(args);
+    summary.has_wallet_data = HasExistingWalletData(args);
+    summary.existing_profile = summary.has_settings_file ||
+                               summary.has_config_file ||
+                               summary.has_chain_data ||
+                               summary.has_wallet_data;
+    return summary;
 }
 
 bool EnsureSettingsDirectory(ArgsManager& args, const fs::path& settings_path, QString* error)
@@ -302,6 +402,7 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
     const bool explicit_datadir = HasExplicitDataDirArg(preview_args);
     const bool apply_datadir_before_config = ShouldApplyDataDirBeforeConfig(data_dir_selection.source, explicit_datadir, data_dir);
     const bool custom_datadir_exists = apply_datadir_before_config && QFileInfo::exists(data_dir);
+    bool config_file_path_available{false};
     if (custom_datadir_exists) {
         QmlDataDir::ApplyDataDirArg(preview_args, data_dir);
     }
@@ -312,6 +413,7 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
             result.error = QString::fromStdString(config_error);
             return result;
         }
+        config_file_path_available = true;
         try {
             SelectParams(preview_args.GetChainType());
             preview_args.SelectConfigNetwork(preview_args.GetChainTypeString());
@@ -355,6 +457,7 @@ PreviewResult Preview(const std::vector<std::string>& argv, bool can_listen_ipc,
 
     result.assumed_blockchain_size = static_cast<int>(Params().AssumedBlockchainSize());
     result.assumed_chainstate_size = static_cast<int>(Params().AssumedChainStateSize());
+    result.profile = BuildProfileSummary(preview_args, config_file_path_available);
     result.core_setting_statuses = QmlCoreSettings::BuildCoreSettingStatuses(preview_args, QmlCoreSettings::OnboardingCoreSettingNames());
     result.values = QmlCoreSettings::LoadEffectiveValues(preview_args);
     result.ok = true;

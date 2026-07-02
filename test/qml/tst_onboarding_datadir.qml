@@ -88,6 +88,7 @@ TestCase {
 
     function init() {
         optionsModel.clearCoreSettingStatusesForTest()
+        optionsModel.existingProfile = false
         optionsModel.prune = true
         optionsModel.pruneSizeGB = 2
         optionsModel.setStorageStatusForTest(false, 123, "", "")
@@ -160,6 +161,20 @@ TestCase {
         const page = createTemporaryObject(storageLocation, this)
         verify(page !== null)
         verify(page.description.indexOf("10GB") !== -1)
+    }
+
+    function test_existing_profile_storage_location_uses_operational_minimum() {
+        optionsModel.existingProfile = true
+        optionsModel.setStorageStatusForTest(false, 1, "", "")
+
+        const page = createTemporaryObject(storageLocation, this)
+        verify(page !== null)
+        const defaultOption = findChild(page, "storageDefaultLocationOption")
+        verify(defaultOption !== null)
+
+        compare(page.description, "Where do you want to store the downloaded block data?\nYou need a minimum of 1GB of storage.")
+        tryCompare(page, "buttonEnabled", true)
+        compare(defaultOption.showErrorText, false)
     }
 
     function test_connection_final_button_labels_start_commit_point() {
@@ -323,6 +338,26 @@ TestCase {
         compare(fullOption.enabled, false)
         compare(reduceOption.description, "Uses about 14GB. For regular wallet use.")
         compare(fullOption.description, "Uses about 622GB. Support the network.")
+    }
+
+    function test_existing_profile_storage_amount_keeps_full_storage_available() {
+        optionsModel.existingProfile = true
+        optionsModel.prune = false
+        optionsModel.setStorageStatusForTest(false, 5, "", "")
+
+        const page = createTemporaryObject(storageAmount, this)
+        verify(page !== null)
+        const infoPage = findChild(page, "onboardingStorageAmountPage")
+        const reduceOption = findChild(page, "storageReduceOption")
+        const fullOption = findChild(page, "storageFullOption")
+        verify(infoPage !== null)
+        verify(reduceOption !== null)
+        verify(fullOption !== null)
+
+        compare(reduceOption.enabled, true)
+        tryCompare(fullOption, "enabled", true)
+        compare(fullOption.checked, true)
+        tryCompare(infoPage, "buttonEnabled", true)
     }
 
     function test_disabled_full_storage_does_not_hover() {

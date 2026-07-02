@@ -20,6 +20,7 @@ struct State {
     int assumed_chainstate_size_gb{0};
     bool prune{false};
     int prune_size_gb{0};
+    bool existing_profile{false};
 };
 
 struct Info {
@@ -27,6 +28,7 @@ struct Info {
     int available_gb{0};
     QString available_text;
     QString warning_text;
+    int minimum_required_gb{0};
     int full_required_gb{0};
     int pruned_required_gb{0};
     int selected_required_gb{0};

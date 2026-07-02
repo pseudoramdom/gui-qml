@@ -31,6 +31,7 @@ ColumnLayout {
     readonly property int customRequiredGB: root.effectiveCustomStorageAmount + root.assumedChainstateSize
 
     function hasEnoughStorage(requiredGB) {
+        if (root.settingsModel.existingProfile) return root.settingsModel.storageEnoughForSelected
         return !root.hasStorageResult || root.availableGB >= requiredGB
     }
 

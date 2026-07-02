@@ -167,6 +167,29 @@ def prepare_existing_profile_with_root_wallet(tmpdir, wallet_name):
     return datadir, rpc_port
 
 
+def prepare_existing_profile_with_explicit_walletdir(tmpdir, wallet_name):
+    datadir = os.path.join(tmpdir, "node0")
+    walletdir = os.path.join(tmpdir, "external_wallets")
+    rpc_port = pick_unused_port()
+    p2p_port = pick_unused_port()
+    write_datadir(datadir, rpc_port, p2p_port)
+    os.makedirs(walletdir, exist_ok=True)
+
+    bitcoind = subprocess.Popen(
+        [find_bitcoind(), f"-datadir={datadir}", f"-walletdir={walletdir}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        wait_for_rpc(rpc_port)
+        rpc_call(rpc_port, "createwallet", {"wallet_name": wallet_name, "load_on_startup": False})
+        assert os.path.isdir(os.path.join(walletdir, wallet_name))
+    finally:
+        stop_bitcoind(bitcoind, rpc_port)
+
+    return datadir, rpc_port, walletdir
+
+
 def assert_saved_connection_settings_visible(gui):
     gui.click("connectionSettingsButton")
     gui.wait_for_page("gotoProxy", timeout_ms=5000)
@@ -380,6 +403,37 @@ def run_existing_profile_preserves_root_wallet_discovery_flow():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def run_existing_profile_detects_explicit_walletdir_flow():
+    tmpdir = tempfile.mkdtemp(prefix="qml704_walletdir_", dir="/tmp")
+    wallet_name = "externalwallet"
+    harness = None
+    try:
+        datadir, rpc_port, walletdir = prepare_existing_profile_with_explicit_walletdir(tmpdir, wallet_name)
+        harness = QmlTestHarness(
+            datadir=datadir,
+            reset_settings=False,
+            start_onboarded=False,
+            extra_args=["-regtest", f"-walletdir={walletdir}"],
+        )
+        harness.start()
+        gui = finish_existing_profile_preinit_and_reconnect(harness, datadir, expect_custom_storage=False)
+        gui.wait_for_page("desktopWalletsPage", timeout_ms=30000)
+        assert_wallet_shell_visible(gui)
+        assert not gui.object_exists("createWalletWizard"), "Existing explicit-walletdir wallet must not route to create-wallet onboarding"
+
+        wait_for_rpc(rpc_port)
+        wallet_dir_names = [wallet["name"] for wallet in rpc_call(rpc_port, "listwalletdir")["wallets"]]
+        assert wallet_name in wallet_dir_names, wallet_dir_names
+    except Exception:
+        if harness is not None and harness.driver is not None:
+            dump_qml_tree(harness.driver)
+        raise
+    finally:
+        if harness is not None:
+            harness.stop(cleanup=False)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def run_qml_onboarded_override_reloads_saved_settings_flow():
     tmpdir = tempfile.mkdtemp(prefix="qml704_override_", dir="/tmp")
     datadir = setup_datadir(tmpdir)
@@ -437,6 +491,7 @@ def run_tests():
     run_existing_profile_full_onboarding_flow()
     run_configured_datadir_preserves_config_source_flow()
     run_existing_profile_preserves_root_wallet_discovery_flow()
+    run_existing_profile_detects_explicit_walletdir_flow()
     run_qml_onboarded_override_reloads_saved_settings_flow()
 
     print("\n" + "=" * 50)

@@ -104,6 +104,13 @@ private Q_SLOTS:
     void qmlOnboardedCurrentResetFlagShowsPreInitOnboarding();
     void qmlOnboardedLegacyResetFlagShowsPreInitOnboarding();
     void existingCoreProfileShowsFullOnboardingWithCurrentSettings();
+    void freshExplicitDatadirPreviewReportsFreshProfile();
+    void onboardingPreviewDetectsSettingsJsonProfile();
+    void onboardingPreviewDetectsChainDataWithoutCreatingBlocksDir();
+    void onboardingPreviewDetectsRootWalletProfile();
+    void onboardingPreviewDetectsExplicitWalletDirProfile();
+    void onboardingPreviewIgnoresEmptyExplicitWalletDir();
+    void onboardingPreviewIgnoresUnrecognizedWalletsEntry();
     void freshExplicitDatadirShowsFullOnboarding();
     void onboardingApplyWithoutTouchedSettingsOnlyAddsQmlOnboardedMarker();
     void onboardingApplyCreatesWalletSubdirectoryForNewNetworkDataDir();
@@ -332,6 +339,23 @@ static std::vector<std::string> TestArgvWithDataDir(const QString& data_dir)
         std::string{"-regtest"},
         "-datadir=" + data_dir.toStdString(),
     };
+}
+
+static void WriteSqliteWalletMarker(const QString& wallet_dir)
+{
+    QVERIFY(QDir().mkpath(wallet_dir));
+    QFile wallet_file(QDir(wallet_dir).filePath(QStringLiteral("wallet.dat")));
+    QVERIFY(wallet_file.open(QIODevice::WriteOnly));
+
+    QByteArray wallet_data(512, '\0');
+    wallet_data.replace(0, 16, QByteArray("SQLite format 3\0", 16));
+    const auto& message_start{Params().MessageStart()};
+    for (qsizetype i = 0; i < static_cast<qsizetype>(message_start.size()); ++i) {
+        wallet_data[68 + i] = static_cast<char>(message_start[i]);
+    }
+
+    QCOMPARE(wallet_file.write(wallet_data), wallet_data.size());
+    wallet_file.close();
 }
 
 static void PrepareArgsForDataDir(ArgsManager& args, const QString& data_dir)
@@ -1883,6 +1907,157 @@ void OptionsModelTests::existingCoreProfileShowsFullOnboardingWithCurrentSetting
     QVERIFY(preview.values.server);
     QVERIFY(preview.values.prune);
     QCOMPARE(preview.values.prune_size_gb, 5);
+    QVERIFY(preview.profile.existing_profile);
+    QVERIFY(preview.profile.has_config_file);
+}
+
+void OptionsModelTests::freshExplicitDatadirPreviewReportsFreshProfile()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgvWithDataDir(data_dir.path()), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(!preview.profile.existing_profile);
+    QVERIFY(!preview.profile.has_settings_file);
+    QVERIFY(!preview.profile.has_config_file);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(!preview.profile.has_wallet_data);
+}
+
+void OptionsModelTests::onboardingPreviewDetectsSettingsJsonProfile()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    ArgsManager write_args;
+    std::string parse_error;
+    QVERIFY2(PrepareTestArgs(write_args, TestArgvWithDataDir(data_dir.path()), parse_error), parse_error.c_str());
+    SelectParams(write_args.GetChainType());
+    write_args.SelectConfigNetwork(write_args.GetChainTypeString());
+    write_args.LockSettings([](common::Settings& settings) {
+        settings.rw_settings["listen"] = common::SettingsValue{false};
+    });
+    QVERIFY(QDir(data_dir.path()).mkpath(QStringLiteral("regtest")));
+    std::vector<std::string> settings_errors;
+    QVERIFY2(write_args.WriteSettingsFile(&settings_errors), settings_errors.empty() ? "" : settings_errors.front().c_str());
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgvWithDataDir(data_dir.path()), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.profile.existing_profile);
+    QVERIFY(preview.profile.has_settings_file);
+    QVERIFY(!preview.profile.has_config_file);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(!preview.profile.has_wallet_data);
+}
+
+void OptionsModelTests::onboardingPreviewDetectsChainDataWithoutCreatingBlocksDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    const QString network_dir = QDir(data_dir.path()).filePath(QStringLiteral("regtest"));
+    const QString chainstate_dir = QDir(network_dir).filePath(QStringLiteral("chainstate"));
+    const QString blocks_dir = QDir(network_dir).filePath(QStringLiteral("blocks"));
+    QVERIFY(QDir().mkpath(chainstate_dir));
+    QFile chainstate_marker(QDir(chainstate_dir).filePath(QStringLiteral("CURRENT")));
+    QVERIFY(chainstate_marker.open(QIODevice::WriteOnly | QIODevice::Text));
+    QVERIFY(chainstate_marker.write("manifest\n") > 0);
+    chainstate_marker.close();
+    QVERIFY(!QFileInfo::exists(blocks_dir));
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgvWithDataDir(data_dir.path()), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.profile.existing_profile);
+    QVERIFY(preview.profile.has_chain_data);
+    QVERIFY(!preview.profile.has_wallet_data);
+    QVERIFY(!QFileInfo::exists(blocks_dir));
+}
+
+void OptionsModelTests::onboardingPreviewDetectsRootWalletProfile()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+    const QString wallet_dir = QDir(data_dir.path()).filePath(QStringLiteral("regtest/rootwallet"));
+    WriteSqliteWalletMarker(wallet_dir);
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgvWithDataDir(data_dir.path()), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.profile.existing_profile);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(preview.profile.has_wallet_data);
+}
+
+void OptionsModelTests::onboardingPreviewDetectsExplicitWalletDirProfile()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QTemporaryDir wallet_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(wallet_dir.isValid());
+    WriteSqliteWalletMarker(QDir(wallet_dir.path()).filePath(QStringLiteral("customwallet")));
+
+    std::vector<std::string> argv{TestArgvWithDataDir(data_dir.path())};
+    argv.push_back("-walletdir=" + wallet_dir.path().toStdString());
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(argv, /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(preview.profile.existing_profile);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(preview.profile.has_wallet_data);
+}
+
+void OptionsModelTests::onboardingPreviewIgnoresEmptyExplicitWalletDir()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QTemporaryDir wallet_dir;
+    QVERIFY(data_dir.isValid());
+    QVERIFY(wallet_dir.isValid());
+
+    std::vector<std::string> argv{TestArgvWithDataDir(data_dir.path())};
+    argv.push_back("-walletdir=" + wallet_dir.path().toStdString());
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(argv, /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(!preview.profile.existing_profile);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(!preview.profile.has_wallet_data);
+}
+
+void OptionsModelTests::onboardingPreviewIgnoresUnrecognizedWalletsEntry()
+{
+    SavedGuiDataDirSettings saved_settings;
+    QTemporaryDir data_dir;
+    QVERIFY(data_dir.isValid());
+
+    const QString wallets_dir = QDir(data_dir.path()).filePath(QStringLiteral("regtest/wallets"));
+    QVERIFY(QDir().mkpath(wallets_dir));
+    QFile junk_file(QDir(wallets_dir).filePath(QStringLiteral("not-a-wallet")));
+    QVERIFY(junk_file.open(QIODevice::WriteOnly));
+    QVERIFY(junk_file.write("not wallet data\n") > 0);
+    junk_file.close();
+
+    const QmlOnboardingSettings::PreviewResult preview{
+        QmlOnboardingSettings::Preview(TestArgvWithDataDir(data_dir.path()), /*can_listen_ipc=*/false, data_dir.path())
+    };
+    QVERIFY2(preview.ok, qPrintable(preview.error));
+    QVERIFY(!preview.profile.existing_profile);
+    QVERIFY(!preview.profile.has_chain_data);
+    QVERIFY(!preview.profile.has_wallet_data);
 }
 
 void OptionsModelTests::freshExplicitDatadirShowsFullOnboarding()
@@ -1922,10 +2097,13 @@ void OptionsModelTests::onboardingApplyWithoutTouchedSettingsOnlyAddsQmlOnboarde
 
     QCOMPARE(SettingToBool(args.GetPersistentSetting("qml_onboarded")), true);
     bool has_listen_override{true};
+    bool has_prune_override{true};
     args.LockSettings([&](common::Settings& settings) {
         has_listen_override = settings.rw_settings.count("listen") > 0;
+        has_prune_override = settings.rw_settings.count("prune") > 0;
     });
     QVERIFY(!has_listen_override);
+    QVERIFY(!has_prune_override);
 }
 
 void OptionsModelTests::onboardingApplyCreatesWalletSubdirectoryForNewNetworkDataDir()
