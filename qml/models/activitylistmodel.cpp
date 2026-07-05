@@ -144,7 +144,7 @@ QVariantMap ActivityListModel::transactionDetails(const QString& txid) const
                 {"txid", tx->txid},
                 {"canBump", m_wallet_model ? m_wallet_model->canBumpTransaction(tx->hash) : false},
                 {"replacedByTxid", tx->replacedByTxid},
-                {"amount", tx->prettyAmount()},
+                {"amount", tx->prettyAmount(m_display_unit)},
                 {"date", tx->dateTimeString()},
                 {"depth", tx->depth},
                 {"type", tx->type},
