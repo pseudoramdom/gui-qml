@@ -257,7 +257,7 @@ Page {
                 text: "↑"
                 color: "white"
                 font.pixelSize: 15
-                font.family: "Inter"
+                font.family: Theme.text.family
                 font.bold: true
                 anchors.left: parent.left
                 anchors.leftMargin: 16
@@ -271,7 +271,7 @@ Page {
                     : qsTr("%1 new entries").arg(root.displayedLines)
                 color: "white"
                 font.pixelSize: 13
-                font.family: "Inter"
+                font.family: Theme.text.family
                 anchors.left: arrowText.right
                 anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
