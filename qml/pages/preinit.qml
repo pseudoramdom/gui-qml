@@ -13,7 +13,7 @@ ApplicationWindow {
     id: appWindow
     objectName: "preInitWindow"
     title: qsTr("Bitcoin Core App")
-    minimumWidth: 640
+    minimumWidth: 800
     minimumHeight: 665
     color: Theme.color.background
     visible: true

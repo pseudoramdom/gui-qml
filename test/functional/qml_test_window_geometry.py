@@ -28,9 +28,9 @@ import sys
 from qml_test_harness import QmlTestHarness, dump_qml_tree, parse_args
 
 
-# Clearly larger than the 640x665 minimum so the restore forces a real resize,
+# Clearly larger than the 800x665 minimum so the restore forces a real resize,
 # which is the exact condition that triggered the crash.
-SAVED_WIDTH = 900
+SAVED_WIDTH = 1200
 SAVED_HEIGHT = 800
 
 

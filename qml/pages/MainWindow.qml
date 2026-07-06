@@ -16,7 +16,7 @@ ApplicationWindow {
     id: appWindow
     objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
-    minimumWidth: 640
+    minimumWidth: 800
     minimumHeight: 665
     color: Theme.color.background
 
