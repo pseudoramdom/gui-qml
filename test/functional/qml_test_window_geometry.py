@@ -13,7 +13,7 @@ startup. The fix applies the saved size during construction (initial bindings,
 later broken so the window stays resizable), so no live relayout occurs.
 
 This test seeds a saved window size that differs from the minimum, boots
-straight into the desktop wallet UI (wallet enabled, needOnboarding=false so the
+straight into an onboarded desktop wallet UI (wallet enabled, so the
 DesktopWallets page loads), and asserts the QML scene loads without crashing.
 Without the fix the scene crashes during load and the test bridge never
 connects, failing the test.
@@ -28,9 +28,9 @@ import sys
 from qml_test_harness import QmlTestHarness, dump_qml_tree, parse_args
 
 
-# Clearly larger than the 640x665 minimum so the restore forces a real resize,
+# Clearly larger than the 800x665 minimum so the restore forces a real resize,
 # which is the exact condition that triggered the crash.
-SAVED_WIDTH = 900
+SAVED_WIDTH = 1200
 SAVED_HEIGHT = 800
 
 
@@ -56,8 +56,8 @@ def seed_window_geometry(config_home):
 def run_tests():
     args = parse_args()
 
-    # reset_settings=False keeps the seeded geometry (so the restore actually
-    # runs) and leaves needOnboarding=false, so the app boots straight into
+    # Keep the seeded geometry so the restore actually runs. The shared harness
+    # starts managed runtime tests as onboarded, so the app boots straight into
     # DesktopWallets. Wallet stays enabled (no -disablewallet).
     harness = QmlTestHarness(socket_path=args.socket_path, reset_settings=False)
     gui = None

@@ -22,6 +22,16 @@ Page {
     objectName: "nodeSettingsStack"
     background: null
 
+    readonly property int settingsSidebarWidth: 185
+    readonly property int settingsContentWidth: 450
+    readonly property int settingsContentGap: 50
+    readonly property int settingsHorizontalPadding: 20
+    readonly property int settingsSidebarItemHeight: 31
+    readonly property int settingsSidebarGroupSpacing: 20
+    readonly property int settingsBodyWidth: Math.min(
+        Math.max(0, width - settingsHorizontalPadding * 2),
+        settingsSidebarWidth + settingsContentGap + settingsContentWidth)
+    readonly property color settingsSidebarSelectedBackgroundColor: Qt.rgba(Theme.color.orange.r, Theme.color.orange.g, Theme.color.orange.b, 0.15)
     property int currentSection: 0
 
     function openWalletSettings() {
@@ -111,163 +121,166 @@ Page {
         return false
     }
 
-    contentItem: RowLayout {
-        spacing: 0
+    contentItem: Item {
+        RowLayout {
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.settingsBodyWidth
+            height: parent.height
+            spacing: root.settingsContentGap
 
-        ColumnLayout {
-            Layout.preferredWidth: 200
-            Layout.maximumWidth: 200
-            Layout.minimumWidth: 200
-            Layout.fillWidth: false
-            Layout.fillHeight: true
-            Layout.topMargin: 20
-            // Keep the sidebar off the window edge for breathing room, but drop
-            // the margin near the minimum window width so content is not squeezed.
-            Layout.leftMargin: root.width > 700 ? 20 : 0
-            spacing: 0
+            ColumnLayout {
+                Layout.preferredWidth: root.settingsSidebarWidth
+                Layout.maximumWidth: root.settingsSidebarWidth
+                Layout.minimumWidth: root.settingsSidebarWidth
+                Layout.fillWidth: false
+                Layout.fillHeight: true
+                Layout.topMargin: 25
+                spacing: 0
 
-            Repeater {
-                model: sidebarModel
-                delegate: AbstractButton {
-                    objectName: "settings_" + model.section
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    Layout.topMargin: root.isFirstVisibleInGroup(index) ? 16 : 0
-                    visible: root.isSectionVisible(index)
-                    hoverEnabled: AppMode.isDesktop
-                    focusPolicy: Qt.TabFocus
-                    leftPadding: 16
-                    rightPadding: 16
-                    Accessible.name: model.label
-                    Accessible.role: Accessible.ListItem
+                Repeater {
+                    model: sidebarModel
+                    delegate: AbstractButton {
+                        id: sidebarButton
+                        objectName: "settings_" + model.section
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: root.settingsSidebarItemHeight
+                        Layout.topMargin: root.isFirstVisibleInGroup(index) ? root.settingsSidebarGroupSpacing : 0
+                        visible: root.isSectionVisible(index)
+                        hoverEnabled: AppMode.isDesktop
+                        focusPolicy: Qt.TabFocus
+                        leftPadding: 10
+                        rightPadding: 10
+                        topPadding: 5
+                        bottomPadding: 5
+                        Accessible.name: model.label
+                        Accessible.role: Accessible.ListItem
 
-                    onClicked: root.currentSection = index
+                        onClicked: root.currentSection = index
 
-                    background: Item {
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            anchors.topMargin: 2
-                            anchors.bottomMargin: 2
-                            radius: 8
-                            // Highlight the selected row with a filled pill rather
-                            // than an accent bar; a fainter fill marks hover.
+                        background: Rectangle {
+                            radius: 5
                             color: root.currentSection === index
-                                ? Theme.color.neutral3
-                                : parent.parent.hovered
-                                    ? Theme.color.neutral2
+                                ? root.settingsSidebarSelectedBackgroundColor
+                                : sidebarButton.hovered
+                                    ? Theme.color.neutral1
                                     : "transparent"
                             Behavior on color { ColorAnimation { duration: 150 } }
-                        }
-                        FocusBorder {
-                            visible: parent.parent.visualFocus
-                        }
-                    }
 
-                    contentItem: CoreText {
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignVCenter
-                        text: model.label
-                        font.pixelSize: 15
-                        color: root.currentSection === index
-                            ? Theme.color.orange
-                            : parent.hovered
-                                ? Theme.color.orangeLight1
-                                : Theme.color.neutral7
-                    }
-
-                    HoverHandler {
-                        cursorShape: Qt.PointingHandCursor
-                    }
-                }
-            }
-
-            Item { Layout.fillHeight: true }
-
-            NavButton {
-                id: doneButton
-                objectName: "nodeSettingsDoneButton"
-                text: qsTr("Done")
-                Layout.alignment: Qt.AlignHCenter
-                Layout.bottomMargin: 20
-                onClicked: root.doneClicked()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.rightMargin: 20
-            color: "transparent"
-            clip: true
-
-            StackLayout {
-                id: contentStack
-                anchors.fill: parent
-                // Content order is kept in lockstep with the sidebar row order
-                // so the selected row maps directly to its page.
-                currentIndex: root.currentSection
-
-                PageStack {
-                    id: walletStack
-                    objectName: "walletSettingsStack"
-                    initialItem: WalletSettings {
-                        objectName: "walletSettingsPage"
-                        // Reached from the settings sidebar, like the other
-                        // sections, so it has no back button of its own; the
-                        // pushed sub-pages carry theirs. Binding this to
-                        // depth > 1 turned the back button on as soon as a
-                        // sub-page was pushed, flashing it on this page for the
-                        // duration of the push transition.
-                        showBackButton: false
-                        onBack: walletStack.pop()
-                        onSelectWalletRequested: root.selectWalletRequested()
-                        onPasswordRequested: walletStack.push(walletPasswordComp, { "updating": walletController.selectedWallet.isEncrypted })
-                        onSignVerifyMessageRequested: walletStack.push(signVerifyComp)
-                        onAddressesRequested: {
-                            if (walletController.isWalletLoaded && walletController.selectedWallet) {
-                                walletController.selectedWallet.addressListModel.refresh()
-                                walletStack.push(addressListComp)
+                            FocusBorder {
+                                visible: sidebarButton.visualFocus
+                                borderRadius: 7
+                                topMargin: -2
+                                bottomMargin: -2
+                                leftMargin: -2
+                                rightMargin: -2
                             }
                         }
-                    }
-                    Component {
-                        id: walletPasswordComp
-                        WalletPasswordSettings {
-                            onBack: walletStack.pop()
-                            onSaved: walletStack.pop()
+
+                        contentItem: CoreText {
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                            text: model.label
+                            font.pixelSize: 15
+                            color: root.currentSection === index
+                                ? Theme.color.orange
+                                : Theme.color.neutral9
                         }
-                    }
-                    Component {
-                        id: signVerifyComp
-                        SignVerifyMessage {
-                            onBack: walletStack.pop()
-                        }
-                    }
-                    Component {
-                        id: addressListComp
-                        AddressList {
-                            onBack: walletStack.pop()
-                            onReceiveRequested: {
-                                walletStack.pop()
-                                root.receiveRequested()
-                            }
+
+                        HoverHandler {
+                            cursorShape: Qt.PointingHandCursor
                         }
                     }
                 }
-                SettingsWallet { showBackButton: false }
-                SettingsDisplay { showBackButton: false }
-                SettingsWindowBehavior { showBackButton: false }
-                SettingsStorage { showBackButton: false }
-                SettingsConnection { showBackButton: false }
-                NetworkTraffic { showBackButton: false; showHeader: false }
-                MempoolInformationSettings { showBackButton: false }
-                SettingsDebugLog { showBackButton: false }
-                PageStack {
-                    id: aboutStack
-                    initialItem: SettingsAbout {
-                        showBackButton: false
+
+                Item { Layout.fillHeight: true }
+
+                NavButton {
+                    id: doneButton
+                    objectName: "nodeSettingsDoneButton"
+                    text: qsTr("Done")
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.bottomMargin: 20
+                    onClicked: root.doneClicked()
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: Math.min(root.settingsContentWidth, Math.max(0, root.settingsBodyWidth - root.settingsSidebarWidth - root.settingsContentGap))
+                Layout.maximumWidth: root.settingsContentWidth
+                Layout.minimumWidth: 0
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                color: "transparent"
+                clip: true
+
+                StackLayout {
+                    id: contentStack
+                    anchors.fill: parent
+                    // Content order is kept in lockstep with the sidebar row order
+                    // so the selected row maps directly to its page.
+                    currentIndex: root.currentSection
+
+                    PageStack {
+                        id: walletStack
+                        objectName: "walletSettingsStack"
+                        initialItem: WalletSettings {
+                            objectName: "walletSettingsPage"
+                            // Reached from the settings sidebar, like the other
+                            // sections, so it has no back button of its own; the
+                            // pushed sub-pages carry theirs. Binding this to
+                            // depth > 1 turned the back button on as soon as a
+                            // sub-page was pushed, flashing it on this page for the
+                            // duration of the push transition.
+                            showBackButton: false
+                            onBack: walletStack.pop()
+                            onSelectWalletRequested: root.selectWalletRequested()
+                            onPasswordRequested: walletStack.push(walletPasswordComp, { "updating": walletController.selectedWallet.isEncrypted })
+                            onSignVerifyMessageRequested: walletStack.push(signVerifyComp)
+                            onAddressesRequested: {
+                                if (walletController.isWalletLoaded && walletController.selectedWallet) {
+                                    walletController.selectedWallet.addressListModel.refresh()
+                                    walletStack.push(addressListComp)
+                                }
+                            }
+                        }
+                        Component {
+                            id: walletPasswordComp
+                            WalletPasswordSettings {
+                                onBack: walletStack.pop()
+                                onSaved: walletStack.pop()
+                            }
+                        }
+                        Component {
+                            id: signVerifyComp
+                            SignVerifyMessage {
+                                onBack: walletStack.pop()
+                            }
+                        }
+                        Component {
+                            id: addressListComp
+                            AddressList {
+                                onBack: walletStack.pop()
+                                onReceiveRequested: {
+                                    walletStack.pop()
+                                    root.receiveRequested()
+                                }
+                            }
+                        }
+                    }
+                    SettingsWallet { showBackButton: false }
+                    SettingsDisplay { showBackButton: false }
+                    SettingsWindowBehavior { showBackButton: false }
+                    SettingsStorage { showBackButton: false }
+                    SettingsConnection { showBackButton: false }
+                    NetworkTraffic { showBackButton: false; showHeader: false }
+                    MempoolInformationSettings { showBackButton: false }
+                    SettingsDebugLog { showBackButton: false }
+                    PageStack {
+                        id: aboutStack
+                        initialItem: SettingsAbout {
+                            showBackButton: false
+                        }
                     }
                 }
             }

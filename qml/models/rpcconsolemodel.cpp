@@ -36,6 +36,7 @@ QVariant RpcOutputListModel::data(const QModelIndex& index, int role) const
     switch (role) {
     case TimestampRole: return r.timestamp;
     case ContentRole:   return r.contentHtml;
+    case CategoryRole:  return r.category;
     }
     return {};
 }
@@ -45,10 +46,11 @@ QHash<int, QByteArray> RpcOutputListModel::roleNames() const
     return {
         {TimestampRole, "timestamp"},
         {ContentRole,   "content"},
+        {CategoryRole,  "category"},
     };
 }
 
-void RpcOutputListModel::appendRow(const QString& timestamp, const QString& contentHtml)
+void RpcOutputListModel::appendRow(const QString& timestamp, const QString& contentHtml, int category)
 {
     // Cap the row buffer. Drop oldest rows until we have room for the new one.
     if (m_rows.size() >= kMaxRows) {
@@ -58,7 +60,7 @@ void RpcOutputListModel::appendRow(const QString& timestamp, const QString& cont
         endRemoveRows();
     }
     beginInsertRows({}, m_rows.size(), m_rows.size());
-    m_rows.append(Row{timestamp, contentHtml});
+    m_rows.append(Row{timestamp, contentHtml, category});
     endInsertRows();
     Q_EMIT countChanged();
 }
@@ -183,12 +185,6 @@ QString FormatJsonReply(const std::string& raw, const QString& key_color_hex)
     return out;
 }
 
-QString WrapColor(const QString& inner, const QColor& color)
-{
-    return QStringLiteral("<span style='color:%1'>%2</span>")
-        .arg(color.name(), inner);
-}
-
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -302,27 +298,41 @@ RpcConsoleModel::~RpcConsoleModel()
 void RpcConsoleModel::appendFormattedRow(const QString& time, int category, const QString& rawText)
 {
     QString body;
-    QColor color;
-    QString prefix;
     switch (category) {
     case CMD_REQUEST:
         body = EscapeAndConvertWhitespace(rawText);
-        color = m_request_color;
-        prefix = QStringLiteral("&gt;&gt; ");
         break;
     case CMD_REPLY:
         body = FormatJsonReply(rawText.toStdString(), m_key_color.name());
-        color = m_reply_color;
         break;
     case CMD_ERROR:
     default:
         body = EscapeAndConvertWhitespace(rawText);
-        color = m_error_color;
-        prefix = QStringLiteral("!! ");
         break;
     }
-    m_output_model.appendRow(QStringLiteral("[%1]").arg(time),
-                             WrapColor(prefix + body, color));
+    m_output_model.appendRow(time, body, category);
+}
+
+void RpcConsoleModel::ensureWelcomeMessage()
+{
+    if (m_welcome_added) return;
+    m_welcome_added = true;
+
+    const QString warning_open = QStringLiteral("<span style='color:%1'>").arg(m_error_color.name());
+    QString welcome_message =
+        /*: RPC console starter message. Placeholders %1 and %2 are style tags
+            and are intentionally adjacent to the warning text. */
+        tr("Use ↑↓ arrows to navigate history. Type <b>help</b> for an overview of available commands. "
+           "Type <b>help-console</b> for console syntax help.\n"
+           "\n"
+           "%1<b>WARNING:</b> Scammers and thieves will request that you type commands here to steal your coins. "
+           "Do not type any commands unless you fully understand them.%2")
+            .arg(warning_open,
+                 QStringLiteral("</span>"));
+    welcome_message.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+    m_output_model.appendRow(QDateTime::currentDateTime().toString("hh:mm:ss"),
+                             welcome_message,
+                             CMD_REPLY);
 }
 
 bool RpcConsoleModel::submitCommand(const QString& command, const QString& wallet_name)
@@ -438,6 +448,8 @@ void RpcConsoleModel::resetHistoryNavigation()
 void RpcConsoleModel::clear()
 {
     m_output_model.resetAll();
+    m_welcome_added = false;
+    ensureWelcomeMessage();
 }
 
 void RpcConsoleModel::onNodeInitialized()

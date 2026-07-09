@@ -30,6 +30,12 @@ public:
     bool isMobile() { return m_mode == MOBILE; }
     bool isDesktop() { return m_mode == DESKTOP; }
     bool walletEnabled() { return m_wallet_enabled; }
+    void setWalletEnabled(bool wallet_enabled)
+    {
+        if (m_wallet_enabled == wallet_enabled) return;
+        m_wallet_enabled = wallet_enabled;
+        Q_EMIT walletEnabledChanged();
+    }
     QString state()
     {
         switch (m_mode) {
@@ -49,7 +55,7 @@ Q_SIGNALS:
 
 private:
     const Mode m_mode;
-    const bool m_wallet_enabled;
+    bool m_wallet_enabled;
 };
 
 #endif // BITCOIN_QML_APPMODE_H

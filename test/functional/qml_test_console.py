@@ -20,6 +20,8 @@ Requires:
 """
 
 import sys
+import re
+import time
 
 from qml_test_harness import (
     QmlTestHarness,
@@ -56,13 +58,126 @@ def navigate_to_console(gui):
 
 # ── Test cases ────────────────────────────────────────────────────────────────
 
+def assert_close(actual, expected, label, tolerance=1):
+    assert abs(actual - expected) <= tolerance, (
+        f"{label}: expected {expected}, got {actual}"
+    )
+
+
+def submit_console_command(gui, command):
+    gui.set_text("consoleInput", command)
+    gui.invoke("commandConsole", "runHighlightedOrSubmit")
+
+
+def test_console_input_bar_matches_design(gui):
+    """Console input bar follows the Figma Console input component geometry."""
+    print("\n── test_console_input_bar_matches_design ───────────────────────")
+
+    root_width = gui.get_property("commandConsole", "width")
+    row_x = gui.get_property("consoleInputRow", "x")
+    row_width = gui.get_property("consoleInputRow", "width")
+    row_height = gui.get_property("consoleInputRow", "height")
+    divider_width = gui.get_property("consoleInputDivider", "width")
+    divider_height = gui.get_property("consoleInputDivider", "height")
+    content_x = gui.get_property("consoleInputContent", "x")
+    content_y = gui.get_property("consoleInputContent", "y")
+    content_height = gui.get_property("consoleInputContent", "height")
+    prompt_width = gui.get_property("consolePromptIcon", "width")
+    prompt_height = gui.get_property("consolePromptIcon", "height")
+    input_x = gui.get_property("consoleInput", "x")
+    action_x = gui.get_property("consoleInputActions", "x")
+    action_width = gui.get_property("consoleInputActions", "width")
+    action_height = gui.get_property("consoleInputActions", "height")
+
+    assert_close(row_x, 20, "console input row x")
+    assert_close(row_width, root_width - 40, "console input row width")
+    assert_close(row_height, 41, "console input row height")
+    assert_close(divider_width, row_width, "console input divider width")
+    assert_close(divider_height, 1, "console input divider height")
+    assert_close(content_x, 55, "console input content x")
+    assert_close(content_y, 11, "console input content y")
+    assert_close(content_height, 20, "console input content height")
+    assert_close(prompt_width, 20, "console prompt icon width")
+    assert_close(prompt_height, 20, "console prompt icon height")
+    assert_close(content_x + input_x, 80, "console text field x within row")
+    assert_close(action_width, 95, "console action cluster width")
+    assert_close(action_height, 20, "console action cluster height")
+    assert_close(content_x + action_x, row_width - 95, "console action cluster right alignment")
+    assert gui.get_property("consoleInput", "placeholderText") == "Enter command..."
+    assert gui.get_property("commandConsole", "searchMode") is False
+
+    gui.click("consoleModeToggleButton")
+    gui.wait_for_property("commandConsole", "searchMode", True, timeout_ms=3000)
+    assert gui.get_property("consoleInput", "placeholderText") == "Search..."
+
+    gui.click("consoleFontIncreaseButton")
+    assert gui.get_property("commandConsole", "outputFontPixelSize") == 14
+    gui.click("consoleFontDecreaseButton")
+    assert gui.get_property("commandConsole", "outputFontPixelSize") == 13
+
+    gui.click("consoleModeToggleButton")
+    gui.wait_for_property("commandConsole", "searchMode", False, timeout_ms=3000)
+    assert gui.get_property("consoleInput", "placeholderText") == "Enter command..."
+    print("  PASSED: console input bar geometry and controls match the design component")
+
+
+def assert_console_entry_geometry(gui, index, row_width):
+    row_name = f"consoleOutputArea_row_{index}"
+    left_name = f"consoleOutputArea_left_{index}"
+    content_name = f"consoleOutputArea_content_{index}"
+
+    gui.wait_for_property(row_name, "visible", True, timeout_ms=3000)
+    assert_close(gui.get_property(row_name, "width"), row_width, f"console entry {index} row width")
+    assert_close(gui.get_property(left_name, "x"), 0, f"console entry {index} time x")
+    assert_close(gui.get_property(left_name, "width"), 60, f"console entry {index} time width")
+    assert_close(gui.get_property(content_name, "x"), 80, f"console entry {index} content x")
+
+
+def test_console_output_rows_match_design(gui):
+    """Console output rows follow the Figma Console entry component geometry."""
+    print("\n── test_console_output_rows_match_design ───────────────────────")
+
+    gui.wait_for_property("commandConsole", "outputCount", lambda v: v >= 1, timeout_ms=3000)
+    root_width = gui.get_property("commandConsole", "width")
+    column_width = root_width - 40
+
+    assert_close(gui.get_property("consoleOutputArea_contentColumn", "x"), 20, "console output column x")
+    assert_close(gui.get_property("consoleOutputArea_contentColumn", "width"), column_width, "console output column width")
+    assert_close(gui.get_property("consoleOutputArea_contentColumn", "topPadding"), 15, "console output top padding")
+    assert_console_entry_geometry(gui, 0, column_width)
+
+    welcome_time = gui.get_text("consoleOutputArea_left_0")
+    assert re.fullmatch(r"\d\d:\d\d:\d\d", welcome_time), f"Unexpected welcome timestamp: {welcome_time!r}"
+    welcome_text = gui.get_text("consoleOutputArea_content_0")
+    assert "Use ↑↓ arrows" in welcome_text
+    assert "help-console" in welcome_text
+
+    count_before = gui.get_property("commandConsole", "outputCount")
+    submit_console_command(gui, "getblockcount")
+    gui.wait_for_property("commandConsole", "executing", False, timeout_ms=10000)
+    gui.wait_for_property("commandConsole", "outputCount", count_before + 2, timeout_ms=3000)
+
+    request_index = count_before
+    reply_index = count_before + 1
+    assert_console_entry_geometry(gui, request_index, column_width)
+    assert_console_entry_geometry(gui, reply_index, column_width)
+    assert gui.get_property(f"consoleOutputArea_row_{request_index}", "rowCategory") == 0
+    assert gui.get_property(f"consoleOutputArea_row_{reply_index}", "rowCategory") == 1
+
+    request_time = gui.get_text(f"consoleOutputArea_left_{request_index}")
+    assert re.fullmatch(r"\d\d:\d\d:\d\d", request_time), f"Unexpected request timestamp: {request_time!r}"
+    request_text = gui.get_text(f"consoleOutputArea_content_{request_index}")
+    assert "getblockcount" in request_text
+    assert "&gt;&gt;" not in request_text
+    print("  PASSED: console output entry geometry, timestamps, and categories match design")
+
+
 def test_execute_getblockcount(gui):
     """Execute getblockcount and verify a request + reply pair appears (no error row)."""
     print("\n── test_execute_getblockcount ──────────────────────────────────")
 
     count_before = gui.get_property("commandConsole", "outputCount")
-    gui.set_text("consoleInput", "getblockcount")
-    gui.click("consoleSubmitButton")
+    submit_console_command(gui, "getblockcount")
 
     # Wait for execution to complete.
     gui.wait_for_property("commandConsole", "executing", False, timeout_ms=10000)
@@ -82,8 +197,7 @@ def test_execute_help(gui):
     print("\n── test_execute_help ───────────────────────────────────────────")
 
     count_before = gui.get_property("commandConsole", "outputCount")
-    gui.set_text("consoleInput", "help")
-    gui.click("consoleSubmitButton")
+    submit_console_command(gui, "help")
 
     gui.wait_for_property("commandConsole", "executing", False, timeout_ms=10000)
 
@@ -99,8 +213,7 @@ def test_execute_invalid_command(gui):
     print("\n── test_execute_invalid_command ────────────────────────────────")
 
     count_before = gui.get_property("commandConsole", "outputCount")
-    gui.set_text("consoleInput", "thiscommanddoesnotexist")
-    gui.click("consoleSubmitButton")
+    submit_console_command(gui, "thiscommanddoesnotexist")
 
     # Wait for execution to complete (button stays disabled since input was cleared).
     gui.wait_for_property("commandConsole", "executing", False, timeout_ms=10000)
@@ -170,11 +283,34 @@ def test_back_navigation(gui):
     print("  PASSED: back navigation returned to NodeRunner")
 
 
+def test_clear_button_restores_welcome_output(gui):
+    """The X action clears prior output and restores the welcome row."""
+    print("\n── test_clear_button_restores_welcome_output ───────────────────")
+
+    gui.set_text("consoleInput", "")
+    assert gui.get_property("commandConsole", "outputCount") > 0
+    welcome_time_before = gui.get_text("consoleOutputArea_left_0")
+
+    time.sleep(1.1)
+    gui.click("consoleClearButton")
+    gui.wait_for_property("commandConsole", "outputCount", 1, timeout_ms=3000)
+
+    welcome_time_after = gui.get_text("consoleOutputArea_left_0")
+    assert re.fullmatch(r"\d\d:\d\d:\d\d", welcome_time_after), (
+        f"Unexpected welcome timestamp after clear: {welcome_time_after!r}"
+    )
+    assert welcome_time_after != welcome_time_before, "Expected clear to re-add welcome row with a fresh timestamp"
+    welcome_text = gui.get_text("consoleOutputArea_content_0")
+    assert "Use ↑↓ arrows" in welcome_text
+    assert "help-console" in welcome_text
+    print("  PASSED: clear action restored the welcome output with a fresh timestamp")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     args = parse_args()
-    harness = QmlTestHarness(socket_path=args.socket_path, extra_args=["-disablewallet"])
+    harness = QmlTestHarness(socket_path=args.socket_path, extra_args=["-disablewallet", "-qwindowgeometry", "800x700"])
 
     try:
         harness.start()
@@ -187,6 +323,8 @@ def main():
         navigate_to_console(gui)
 
         # Run the test cases.
+        test_console_input_bar_matches_design(gui)
+        test_console_output_rows_match_design(gui)
         test_execute_getblockcount(gui)
         test_execute_help(gui)
         test_execute_invalid_command(gui)
@@ -194,6 +332,7 @@ def main():
         test_autocomplete_popup_hidden_no_match(gui)
         test_autocomplete_click_applies_suggestion(gui)
         test_autocomplete_help_variants(gui)
+        test_clear_button_restores_welcome_output(gui)
         test_back_navigation(gui)
 
         print("\nAll console tests passed.")

@@ -34,12 +34,12 @@ void WriteCsvRow(QTextStream& stream, const QStringList& values)
 
 QmlBitcoinUnits::Unit ExportDisplayUnit(int display_unit)
 {
-    return display_unit == 1 ? QmlBitcoinUnits::Unit::SAT : QmlBitcoinUnits::Unit::BTC;
+    return QmlBitcoinUnits::fromDisplayUnit(display_unit);
 }
 
 QString ExportDisplayUnitLabel(int display_unit)
 {
-    return display_unit == 1 ? QStringLiteral("sat") : QStringLiteral("BTC");
+    return QmlBitcoinUnits::label(ExportDisplayUnit(display_unit));
 }
 } // namespace
 

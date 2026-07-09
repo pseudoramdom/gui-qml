@@ -98,7 +98,7 @@ Item {
                 rightPadding: 0
                 bottomPadding: 0
                 height: visible ? Math.max(contentHeight, 32) : 0
-                font.family: "Inter"
+                font.family: Theme.text.family
                 font.styleName: "Regular"
                 font.pixelSize: 18
                 color: Theme.color.neutral7

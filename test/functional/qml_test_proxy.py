@@ -2,12 +2,12 @@
 # Copyright (c) 2026 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Functional test for the proxy settings UI.
+"""Functional test for the runtime proxy settings UI.
 
-Tests navigation to the proxy settings page from within the onboarding
-connection step, toggling the default proxy and Tor proxy enable switches,
-entering valid and invalid addresses, and verifying that settings are
-persisted to disk when onboarding completes.
+Tests navigation to the proxy settings page from the runtime settings shell,
+toggling the default proxy and Tor proxy enable switches, entering valid and
+invalid addresses, discarding draft edits with Back, and verifying that settings
+persist to disk only after pressing Done.
 
 This test requires the binary to be built with -DENABLE_TEST_AUTOMATION=ON.
 """
@@ -20,43 +20,49 @@ import time
 from qml_driver import QmlDriverError
 from qml_test_harness import (
     QmlTestHarness,
+    complete_preinit_onboarding,
     dump_qml_tree,
     parse_args,
 )
 
 
-def walk_onboarding_to_connection(gui):
-    """Walk through onboarding pages up to (but not past) onboardingConnection."""
-    gui.wait_for_page("onboardingCover", timeout_ms=10000)
-    steps = [
-        ("onboardingCoverButton",           "onboardingStrengthen"),
-        ("onboardingStrengthenButton",      "onboardingBlockclock"),
-        ("onboardingBlockclockButton",      "onboardingStorageLocation"),
-        ("onboardingStorageLocationButton", "onboardingStorageAmount"),
-        ("onboardingStorageAmountButton",   "onboardingConnection"),
-    ]
-    for button, expected_page in steps:
-        gui.click(button)
-        gui.wait_for_page(expected_page, timeout_ms=5000)
-
-
 def navigate_to_proxy_settings(gui):
-    """Navigate from the onboardingConnection page to the Proxy Settings page."""
-    gui.wait_for_page("onboardingConnection", timeout_ms=5000)
-    gui.click("connectionSettingsButton")
+    """Navigate from the runtime settings shell to the Proxy Settings page."""
+    if gui.object_exists("desktopWalletSettingsTabButton"):
+        gui.wait_for_property("desktopWalletSettingsTabButton", "visible", True, timeout_ms=10000)
+        gui.click("desktopWalletSettingsTabButton")
+    else:
+        gui.wait_for_page("nodeSettingsButton", timeout_ms=10000)
+        gui.click("nodeSettingsButton")
+
+    gui.settle()
+    gui.wait_for_property("settings_connection", "visible", True, timeout_ms=5000)
+    gui.click("settings_connection")
     gui.wait_for_page("gotoProxy", timeout_ms=5000)
     gui.click("gotoProxy")
     gui.wait_for_page("settingsProxy", timeout_ms=5000)
     print("  Navigated to Proxy Settings page.")
 
 
-def navigate_back_from_proxy_settings(gui):
-    """Navigate back from Proxy Settings to the onboardingConnection page."""
-    gui.click("settingsProxyBack")
+def leave_proxy_settings_with_done(gui):
+    """Commit draft proxy settings and return to Connection settings."""
+    gui.wait_for_property("settingsProxyDone", "enabled", True, timeout_ms=2000)
+    gui.click("settingsProxyDone")
     gui.wait_for_page("gotoProxy", timeout_ms=5000)
-    gui.click("connectionSettingsDoneButton")
-    gui.wait_for_page("onboardingConnectionButton", timeout_ms=5000)
-    print("  Navigated back to onboardingConnection page.")
+
+
+def navigate_back_from_connection_settings(gui):
+    """Navigate back from Connection settings to the runtime settings shell."""
+    if gui.object_exists("nodeSettingsDoneButton"):
+        gui.click("nodeSettingsDoneButton")
+    else:
+        gui.click("settingsConnectionBack")
+    gui.settle()
+    if gui.object_exists("desktopWalletSettingsTabButton"):
+        gui.wait_for_property("desktopWalletSettingsTabButton", "visible", True, timeout_ms=5000)
+    else:
+        gui.wait_for_page("nodeSettingsButton", timeout_ms=5000)
+    print("  Navigated back to runtime settings.")
 
 
 def test_default_proxy_toggle(gui):
@@ -66,10 +72,10 @@ def test_default_proxy_toggle(gui):
     checked = gui.get_property("proxyEnableSwitch", "checked")
     assert not checked, f"Expected proxy disabled by default, got checked={checked}"
 
-    # During onboarding the node has not started yet, so no restart is needed
-    # and proxySettingsDirty must remain false regardless of user changes.
     dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
     assert not dirty, "Expected proxySettingsDirty=False before any change"
+    draft_dirty = gui.get_property("settingsProxy", "proxyDraftDirty")
+    assert not draft_dirty, "Expected proxyDraftDirty=False before any change"
 
     # Enable proxy.
     gui.click("proxyEnableSwitch")
@@ -78,10 +84,10 @@ def test_default_proxy_toggle(gui):
     assert checked, "Expected proxyEnableSwitch to be checked after click"
     print("  Default proxy toggled ON: OK")
 
-    # proxySettingsDirty stays false during onboarding.
+    gui.wait_for_property("settingsProxy", "proxyDraftDirty", True, timeout_ms=2000)
     dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
-    assert not dirty, "Expected proxySettingsDirty=False during onboarding"
-    print("  proxySettingsDirty=False during onboarding: OK")
+    assert not dirty, "Expected proxySettingsDirty=False before pressing Done"
+    print("  Proxy edit is draft-only before Done: OK")
 
     # Disable proxy.
     gui.click("proxyEnableSwitch")
@@ -90,9 +96,8 @@ def test_default_proxy_toggle(gui):
     assert not checked, "Expected proxyEnableSwitch to be unchecked after second click"
     print("  Default proxy toggled OFF: OK")
 
-    dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
-    assert not dirty, "Expected proxySettingsDirty=False after toggle off"
-    print("  proxySettingsDirty=False after toggle off: OK")
+    gui.wait_for_property("settingsProxy", "proxyDraftDirty", False, timeout_ms=2000)
+    print("  proxyDraftDirty=False after reverting proxy change: OK")
 
 
 def test_proxy_valid_address(gui):
@@ -103,11 +108,18 @@ def test_proxy_valid_address(gui):
         gui.click("proxyEnableSwitch")
         gui.wait_for_property("proxyEnableSwitch", "checked", True, timeout_ms=2000)
 
-    gui.set_text("proxyAddressInput", "10.0.0.1:9050")
+    gui.wait_for_property("proxyAddressInput", "enabled", True, timeout_ms=2000)
+    gui.set_text("proxyAddressInput", "")
+    gui.wait_for_property("proxyAddressInput", "text", "", timeout_ms=2000)
+    gui.click("proxyAddressSetting")
+    gui.wait_for_property("proxyAddressInput", "activeFocus", True, timeout_ms=2000)
+    gui.type_text("proxyAddressInput", "10.0.0.1:9050")
+    gui.wait_for_property("proxyAddressInput", "text", "10.0.0.1:9050", timeout_ms=2000)
     gui.wait_for_property("proxyAddressInput", "validInput", True, timeout_ms=2000)
 
     valid = gui.get_property("proxyAddressInput", "validInput")
     assert valid, f"Expected '10.0.0.1:9050' to pass validation, got validInput={valid}"
+    gui.wait_for_property("settingsProxyDone", "enabled", True, timeout_ms=2000)
     print("  Valid address accepted: OK")
 
 
@@ -119,17 +131,20 @@ def test_proxy_invalid_address(gui):
         gui.click("proxyEnableSwitch")
         gui.wait_for_property("proxyEnableSwitch", "checked", True, timeout_ms=2000)
 
+    gui.wait_for_property("proxyAddressInput", "enabled", True, timeout_ms=2000)
     # Enter an address with invalid IP octets.
     gui.set_text("proxyAddressInput", "999.999.999.999:9050")
     gui.wait_for_property("proxyAddressInput", "validInput", False, timeout_ms=2000)
 
     valid = gui.get_property("proxyAddressInput", "validInput")
     assert not valid, f"Expected invalid address to fail validation, got validInput={valid}"
+    gui.wait_for_property("settingsProxyDone", "enabled", False, timeout_ms=2000)
     print("  Invalid address rejected: OK")
 
     # Restore to a valid address for subsequent tests.
     gui.set_text("proxyAddressInput", "127.0.0.1:9050")
     gui.wait_for_property("proxyAddressInput", "validInput", True, timeout_ms=2000)
+    gui.wait_for_property("settingsProxyDone", "enabled", True, timeout_ms=2000)
 
 
 def test_tor_proxy_toggle(gui):
@@ -142,6 +157,7 @@ def test_tor_proxy_toggle(gui):
     # Enable Tor proxy.
     gui.click("torEnableSwitch")
     gui.wait_for_property("torEnableSwitch", "checked", True, timeout_ms=2000)
+    gui.wait_for_property("torAddressInput", "enabled", True, timeout_ms=2000)
     checked = gui.get_property("torEnableSwitch", "checked")
     assert checked, "Expected torEnableSwitch to be checked after click"
     print("  Tor proxy toggled ON: OK")
@@ -152,6 +168,38 @@ def test_tor_proxy_toggle(gui):
     checked = gui.get_property("torEnableSwitch", "checked")
     assert not checked, "Expected torEnableSwitch to be unchecked after second click"
     print("  Tor proxy toggled OFF: OK")
+
+
+def test_back_discards_proxy_draft(gui):
+    print("\n── test_back_discards_proxy_draft ─────────────────────────────────")
+
+    if not gui.get_property("proxyEnableSwitch", "checked"):
+        gui.click("proxyEnableSwitch")
+        gui.wait_for_property("proxyEnableSwitch", "checked", True, timeout_ms=2000)
+
+    gui.wait_for_property("proxyAddressInput", "enabled", True, timeout_ms=2000)
+    gui.set_text("proxyAddressInput", "10.0.0.5:9050")
+    gui.wait_for_property("proxyAddressInput", "text", "10.0.0.5:9050", timeout_ms=2000)
+    gui.wait_for_property("settingsProxy", "proxyDraftDirty", True, timeout_ms=2000)
+    dirty = gui.get_property("settingsProxy", "proxySettingsDirty")
+    assert not dirty, "Expected model to remain unchanged before pressing Done"
+
+    gui.click("settingsProxyBack")
+    gui.wait_for_property("discardProxyChangesPopup", "visible", True, timeout_ms=2000)
+    gui.click("discardProxyChangesCancelButton")
+    gui.wait_for_property("discardProxyChangesPopup", "visible", False, timeout_ms=2000)
+    gui.wait_for_property("proxyAddressInput", "text", "10.0.0.5:9050", timeout_ms=2000)
+    print("  Back cancellation keeps draft changes: OK")
+
+    gui.click("settingsProxyBack")
+    gui.wait_for_property("discardProxyChangesPopup", "visible", True, timeout_ms=2000)
+    gui.click("discardProxyChangesConfirmButton")
+    gui.wait_for_page("gotoProxy", timeout_ms=5000)
+    gui.click("gotoProxy")
+    gui.wait_for_page("settingsProxy", timeout_ms=5000)
+    gui.wait_for_property("proxyEnableSwitch", "checked", False, timeout_ms=2000)
+    gui.wait_for_property("settingsProxy", "proxyDraftDirty", False, timeout_ms=2000)
+    print("  Back discard leaves persisted settings unchanged: OK")
 
 
 def wait_for_settings_key(datadir, key, timeout=10.0):
@@ -189,41 +237,45 @@ def test_proxy_settings_persist(datadir, settings):
 
 def run_tests():
     args = parse_args()
-    harness = QmlTestHarness(socket_path=args.socket_path)
+    harness = QmlTestHarness(
+        socket_path=args.socket_path,
+        reset_settings=False,
+    )
     gui = None
     try:
         harness.start()
         gui = harness.driver
+        if not args.socket_path and gui.object_exists("onboardingCover"):
+            complete_preinit_onboarding(gui)
+            gui = harness.wait_for_main_window_reconnect()
 
-        walk_onboarding_to_connection(gui)
         navigate_to_proxy_settings(gui)
 
         test_default_proxy_toggle(gui)
         test_proxy_valid_address(gui)
         test_proxy_invalid_address(gui)
         test_tor_proxy_toggle(gui)
+        test_back_discards_proxy_draft(gui)
 
-        # Prepare state for the persistence test: enable proxy and Tor proxy
-        # with specific addresses before completing onboarding (which triggers
-        # optionsModel.onboard() and writes settings to disk).
+        # Prepare state for the persistence test. Runtime proxy settings remain
+        # local drafts until the page-level Done button is pressed.
         if harness.datadir:
             if not gui.get_property("proxyEnableSwitch", "checked"):
                 gui.click("proxyEnableSwitch")
                 gui.wait_for_property("proxyEnableSwitch", "checked", True, timeout_ms=2000)
+            gui.wait_for_property("proxyAddressInput", "enabled", True, timeout_ms=2000)
             gui.set_text("proxyAddressInput", "10.0.0.1:9050")
             gui.wait_for_property("proxyAddressInput", "validInput", True, timeout_ms=2000)
 
             if not gui.get_property("torEnableSwitch", "checked"):
                 gui.click("torEnableSwitch")
                 gui.wait_for_property("torEnableSwitch", "checked", True, timeout_ms=2000)
+            gui.wait_for_property("torAddressInput", "enabled", True, timeout_ms=2000)
             gui.set_text("torAddressInput", "127.0.0.1:9150")
             gui.wait_for_property("torAddressInput", "validInput", True, timeout_ms=2000)
 
-        navigate_back_from_proxy_settings(gui)
-
-        # Complete onboarding — triggers optionsModel.onboard() which
-        # persists all settings (including proxy) to regtest/settings.json.
-        gui.click("onboardingConnectionButton")
+        leave_proxy_settings_with_done(gui)
+        navigate_back_from_connection_settings(gui)
 
         if harness.datadir:
             settings = wait_for_settings_key(harness.datadir, "proxy")

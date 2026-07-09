@@ -13,6 +13,7 @@ import "../settings"
 
 Page {
     id: root
+    objectName: "activityDetailsPage"
 
     signal showTransaction(string txid)
 
@@ -122,6 +123,8 @@ Page {
                 Layout.bottomMargin: 5
                 text: root.amount
                 color: transactionVisuals.amountColor
+                font.family: optionsModel.moneyFont.family
+                font.weight: optionsModel.moneyFont.weight
                 font.pixelSize: 28
             }
 
@@ -138,6 +141,27 @@ Page {
                 text: qsTr("%1 confirmations").arg(root.depth)
                 color: Theme.color.neutral7
                 font.pixelSize: 18
+            }
+
+            Column {
+                id: thirdPartyLinks
+                objectName: "activityDetailsThirdPartyLinks"
+                visible: root.txid.length > 0 && optionsModel.thirdPartyTransactionLinks(root.txid).length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
+                Layout.bottomMargin: visible ? 20 : 0
+                spacing: 8
+
+                Repeater {
+                    model: optionsModel.thirdPartyTransactionLinks(root.txid)
+                    delegate: ExternalLink {
+                        required property var modelData
+                        width: thirdPartyLinks.width
+                        parentState: "FILLED"
+                        description: qsTr("Show in %1").arg(modelData.host)
+                        link: modelData.url
+                    }
+                }
             }
 
             LabeledTextInput {
@@ -166,11 +190,12 @@ Page {
                 address: root.address
             }
 
-            ColumnLayout {
+            Column {
                 id: paymentRequestsSection
                 objectName: "activityDetailsPaymentRequestsSection"
                 visible: root.paymentRequestCount > 0
                 Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
                 Layout.topMargin: 10
                 Layout.bottomMargin: 20
                 spacing: 0
@@ -184,7 +209,7 @@ Page {
                         required property var modelData
 
                         objectName: "activityDetailsPaymentRequest_" + paymentRequestDelegate.index
-                        Layout.fillWidth: true
+                        width: paymentRequestsSection.width
                         leftPadding: 0
                         rightPadding: 0
                         topPadding: 4

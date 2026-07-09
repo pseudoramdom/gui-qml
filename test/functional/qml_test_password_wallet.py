@@ -30,6 +30,7 @@ from test_framework.descriptors import descsum_create
 WALLET_PASSWORD = "correct horse battery staple"
 FALLBACK_DESC_EXTERNAL = "wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/0h/*h)"
 FALLBACK_DESC_INTERNAL = "wpkh(tprv8ZgxMBicQKsPdYeeZbPSKd2KYLmeVKtcFA7kqCxDvDR13MQ6us8HopUR2wLcS2ZKPhLyKsqpDL2FtL73LMHcgoCL7DXsciA8eX8nbjCR2eG/1h/*h)"
+WALLET_FLOW_SETTLE_TIMEOUT_MS = 15000
 
 
 def parse_args():
@@ -71,7 +72,7 @@ class CheckpointRecorder:
         if gui is None:
             return
 
-        gui.settle()
+        gui.settle(timeout_ms=WALLET_FLOW_SETTLE_TIMEOUT_MS)
 
         if not self.save_screenshots:
             return
@@ -123,9 +124,12 @@ def create_recipient_wallet(harness, wallet_name="recipient"):
 
 
 def create_password_wallet(gui, wallet_name, password):
-    gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=10000)
-    gui.wait_for_property("createWalletButton", "enabled", True, timeout_ms=25000)
-    gui.click("createWalletButton")
+    try:
+        gui.wait_for_property("createWalletButton", "visible", True, timeout_ms=1000)
+        gui.wait_for_property("createWalletButton", "enabled", True, timeout_ms=25000)
+        gui.click("createWalletButton")
+    except QmlDriverError:
+        pass
     gui.wait_for_property("walletTypeRegular", "visible", True, timeout_ms=5000)
     gui.click("walletTypeRegular")
     gui.click("createWalletIntroStartButton")
@@ -136,15 +140,19 @@ def create_password_wallet(gui, wallet_name, password):
     gui.click("createWalletPasswordConfirmToggle")
     gui.wait_for_property("createWalletPasswordContinueButton", "enabled", True, timeout_ms=25000)
     gui.click("createWalletPasswordContinueButton")
-    gui.wait_for_property("createWalletConfirmNextButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_page("createWalletConfirmPage", timeout_ms=20000)
     gui.click("createWalletConfirmNextButton")
-    gui.wait_for_property("createWalletBackupDoneButton", "visible", True, timeout_ms=10000)
+    gui.wait_for_page("createWalletBackupPage", timeout_ms=10000)
     gui.click("createWalletBackupDoneButton")
 
 
 def dismiss_create_wallet_wizard(gui):
-    gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=10000)
-    gui.click("createWalletWizardExitButton")
+    try:
+        gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletWizardExitButton")
+    except QmlDriverError:
+        gui.wait_for_property("typeSelectorCancelButton", "visible", True, timeout_ms=10000)
+        gui.click("typeSelectorCancelButton")
 
 
 def wait_for_wallet_ready(harness, gui):
@@ -232,9 +240,13 @@ def open_wallet_settings_page(gui):
 
 
 def open_import_wallet_page(gui):
-    gui.wait_for_property("importWalletButton", "visible", True, timeout_ms=10000)
-    gui.wait_for_property("importWalletButton", "enabled", True, timeout_ms=25000)
-    gui.click("importWalletButton")
+    try:
+        gui.wait_for_property("importWalletButton", "visible", True, timeout_ms=1000)
+        gui.wait_for_property("importWalletButton", "enabled", True, timeout_ms=25000)
+        gui.click("importWalletButton")
+    except QmlDriverError:
+        gui.wait_for_property("walletTypeImport", "visible", True, timeout_ms=10000)
+        gui.click("walletTypeImport")
     gui.wait_for_page("importWalletOptions", timeout_ms=10000)
 
 
@@ -347,7 +359,7 @@ def case_created_wallet_send(harness, checkpoints):
     wallet_name = "created_password_wallet"
     recipient_addr = create_recipient_wallet(harness)
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -401,7 +413,7 @@ def case_locked_review_fallback(harness, checkpoints):
     configure_fallback_wallet(harness, wallet_name)
     checkpoints.checkpoint("fallback wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -442,7 +454,7 @@ def case_import_encrypted_wallet(harness, checkpoints):
     harness.stop_source_node()
     checkpoints.checkpoint("encrypted backup fixture created")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -471,7 +483,7 @@ def case_managed_legacy_migration(harness, checkpoints):
         return
     checkpoints.checkpoint("managed legacy wallet fixture prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()
@@ -519,7 +531,7 @@ def case_close_loaded_wallet_from_selector(harness, checkpoints):
         stop_node(process, harness.gui_rpc_port)
     checkpoints.checkpoint("two managed wallets prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
     harness.finish_onboarding()

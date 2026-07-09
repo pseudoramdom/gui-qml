@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QMetaMethod>
 #include <QMetaObject>
+#include <QMetaProperty>
 #include <QEventLoop>
 #include <QFont>
 #include <QKeyEvent>
@@ -23,6 +24,7 @@
 #include <QQmlContext>
 #include <QScopedValueRollback>
 #include <QTimer>
+#include <QUrl>
 #include <QVariant>
 
 #include <algorithm>
@@ -54,29 +56,27 @@ QByteArray clickObject(QObject* obj)
         if (meta->method(idx).invoke(obj, Qt::DirectConnection)) return okResponse();
     }
 
-    // Fallback for Qt < 6.8 (no QQuickAbstractButton::click()): invoke both
-    // toggle() (if checkable) and the clicked() signal. We can't tell which
-    // one a given control needs - NavigationTab + ButtonGroup react to
-    // `checked` changes via toggle(), while NavButton / ContinueButton react
-    // to QML-defined onClicked handlers via the clicked() signal. Firing
-    // both covers both shapes without per-component special cases.
-    bool invoked_any{false};
-    if (obj->property("checkable").toBool()) {
-        if (int idx = meta->indexOfMethod("toggle()"); idx >= 0) {
-            invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
-        }
-    }
-    if (int idx = meta->indexOfSignal("clicked()"); idx >= 0) {
-        invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
-    }
-    if (invoked_any) return okResponse();
-
-    // Last resort for items without click()/trigger()/toggle()/clicked()
-    // (bare Item + MouseArea, etc.): synthesize a real mouse press + release
-    // at the item's center.
+    // Qt < 6.8 does not expose QQuickAbstractButton::click(). Prefer a real
+    // mouse press/release before falling back to raw signal emission so QML
+    // handlers run the same way they do for user clicks.
     if (auto* item = qobject_cast<QQuickItem*>(obj)) {
         QQuickWindow* window = item->window();
-        if (window && item->isVisible() && item->width() > 0 && item->height() > 0) {
+        if (window && item->isVisible() && item->isEnabled() &&
+            item->width() > 0 && item->height() > 0) {
+            QTimer clicked_timer;
+            QMetaObject::Connection clicked_connection;
+            if (meta->indexOfSignal("clicked()") >= 0) {
+                clicked_timer.setSingleShot(true);
+                clicked_timer.setInterval(10000);
+                clicked_connection = QObject::connect(
+                    obj,
+                    SIGNAL(clicked()),
+                    &clicked_timer,
+                    SLOT(stop()),
+                    Qt::DirectConnection);
+                if (clicked_connection) clicked_timer.start();
+            }
+
             const QPointF center = item->mapToScene(
                 QPointF(item->width() / 2.0, item->height() / 2.0));
             const QPoint pos = center.toPoint();
@@ -88,9 +88,61 @@ QByteArray clickObject(QObject* obj)
 
             QCoreApplication::sendEvent(window, &press);
             QCoreApplication::sendEvent(window, &release);
-            return okResponse();
+            QCoreApplication::processEvents();
+
+            if (clicked_connection) {
+                const bool clicked_emitted{!clicked_timer.isActive()};
+                QObject::disconnect(clicked_connection);
+                clicked_timer.stop();
+                if (clicked_emitted) return okResponse();
+            } else {
+                return okResponse();
+            }
         }
     }
+
+    // Last resort: invoke the same user-action signals a checkable button
+    // would normally emit. Qt < 6.8 does not expose AbstractButton::click(),
+    // and the synthetic mouse path is not reliable for every control/backend.
+    // `toggle()` updates `checked`, while `toggled()` and `clicked()` run QML
+    // handlers such as onToggled/onClicked.
+    bool invoked_any{false};
+    if (obj->property("checkable").toBool()) {
+        QTimer toggled_timer;
+        QMetaObject::Connection toggled_connection;
+        if (meta->indexOfSignal("toggled()") >= 0) {
+            toggled_timer.setSingleShot(true);
+            toggled_timer.setInterval(10000);
+            toggled_connection = QObject::connect(
+                obj,
+                SIGNAL(toggled()),
+                &toggled_timer,
+                SLOT(stop()),
+                Qt::DirectConnection);
+            if (toggled_connection) toggled_timer.start();
+        }
+
+        bool toggled_checked{false};
+        if (int idx = meta->indexOfMethod("toggle()"); idx >= 0) {
+            toggled_checked = meta->method(idx).invoke(obj, Qt::DirectConnection);
+            invoked_any |= toggled_checked;
+        }
+
+        if (toggled_connection) {
+            const bool toggled_emitted{!toggled_timer.isActive()};
+            QObject::disconnect(toggled_connection);
+            toggled_timer.stop();
+            if (toggled_checked && !toggled_emitted) {
+                if (int idx = meta->indexOfSignal("toggled()"); idx >= 0) {
+                    invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
+                }
+            }
+        }
+    }
+    if (int idx = meta->indexOfSignal("clicked()"); idx >= 0) {
+        invoked_any |= meta->method(idx).invoke(obj, Qt::DirectConnection);
+    }
+    if (invoked_any) return okResponse();
 
     QJsonObject resp;
     resp[QStringLiteral("error")] = QStringLiteral("Cannot click object");
@@ -402,6 +454,22 @@ QByteArray TestBridge::processCommand(const QByteArray& json_cmd)
         return cmdGetProperty(
             obj.value(QStringLiteral("objectName")).toString(),
             obj.value(QStringLiteral("prop")).toString());
+    } else if (cmd == QLatin1String("set_property")) {
+        return cmdSetProperty(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("prop")).toString(),
+            obj.value(QStringLiteral("value")));
+    } else if (cmd == QLatin1String("invoke")) {
+        return cmdInvoke(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("method")).toString(),
+            obj.value(QStringLiteral("args")).toArray());
+    } else if (cmd == QLatin1String("invoke_property_object")) {
+        return cmdInvokePropertyObject(
+            obj.value(QStringLiteral("objectName")).toString(),
+            obj.value(QStringLiteral("prop")).toString(),
+            obj.value(QStringLiteral("method")).toString(),
+            obj.value(QStringLiteral("args")).toArray());
     } else if (cmd == QLatin1String("click")) {
         return cmdClick(obj.value(QStringLiteral("objectName")).toString());
     } else if (cmd == QLatin1String("set_text")) {
@@ -470,7 +538,7 @@ QByteArray TestBridge::cmdGetCurrentPage()
         return QJsonDocument(resp).toJson(QJsonDocument::Compact);
     };
 
-    // Preferred path: resolve from the named main PageStack in main.qml.
+    // Preferred path: resolve from the named main PageStack in the main window.
     for (QObject* root : m_engine->rootObjects()) {
         QObject* main_stack = root->findChild<QObject*>(QStringLiteral("mainPageStack"));
         if (!main_stack) continue;
@@ -596,6 +664,133 @@ QByteArray TestBridge::cmdClick(const QString& object_name)
         return errorResponse(QStringLiteral("Cannot click object: %1").arg(object_name));
     }
     return response;
+}
+
+QByteArray TestBridge::cmdSetProperty(const QString& object_name, const QString& prop, const QJsonValue& value)
+{
+    if (object_name.isEmpty() || prop.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName and prop are required"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+    if (!obj->property(prop.toUtf8().constData()).isValid()) {
+        return errorResponse(QStringLiteral("Object %1 has no property %2").arg(object_name, prop));
+    }
+
+    QVariant variant = value.toVariant();
+    const int property_index = obj->metaObject()->indexOfProperty(prop.toUtf8().constData());
+    if (property_index >= 0 && obj->metaObject()->property(property_index).metaType() == QMetaType::fromType<QUrl>()) {
+        variant = QUrl{variant.toString()};
+    }
+
+    const bool ok = obj->setProperty(prop.toUtf8().constData(), variant);
+    if (!ok) {
+        return errorResponse(QStringLiteral("Could not set property %1 on %2").arg(prop, object_name));
+    }
+    return okResponse();
+}
+
+QByteArray TestBridge::cmdInvoke(const QString& object_name, const QString& method, const QJsonArray& args)
+{
+    if (object_name.isEmpty() || method.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName and method are required"));
+    }
+    if (args.size() > 1) {
+        return errorResponse(QStringLiteral("Only zero or one string argument is supported"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+
+    const QMetaObject* meta = obj->metaObject();
+    QByteArray signature = method.toUtf8();
+    if (!signature.contains('(')) {
+        signature += args.isEmpty() ? "()" : "(QString)";
+    }
+    int idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+    bool use_variant_arg{false};
+    if (idx < 0 && args.size() == 1 && !method.contains(QLatin1Char('('))) {
+        signature = method.toUtf8() + "(QVariant)";
+        idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+        use_variant_arg = idx >= 0;
+    }
+    if (idx < 0) {
+        return errorResponse(QStringLiteral("Method not found: %1 on %2").arg(QString::fromUtf8(signature), object_name));
+    }
+
+    const QMetaMethod meta_method = meta->method(idx);
+    bool invoked{false};
+    if (args.isEmpty()) {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection);
+    } else if (use_variant_arg) {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection, Q_ARG(QVariant, args.at(0).toString()));
+    } else {
+        invoked = meta_method.invoke(obj, Qt::DirectConnection, Q_ARG(QString, args.at(0).toString()));
+    }
+    if (!invoked) {
+        return errorResponse(QStringLiteral("Could not invoke %1 on %2").arg(QString::fromUtf8(signature), object_name));
+    }
+    return okResponse();
+}
+
+QByteArray TestBridge::cmdInvokePropertyObject(const QString& object_name, const QString& prop, const QString& method, const QJsonArray& args)
+{
+    if (object_name.isEmpty() || prop.isEmpty() || method.isEmpty()) {
+        return errorResponse(QStringLiteral("objectName, prop, and method are required"));
+    }
+    if (args.size() > 1) {
+        return errorResponse(QStringLiteral("Only zero or one string argument is supported"));
+    }
+
+    QObject* obj = findObjectByName(object_name);
+    if (!obj) {
+        return errorResponse(QStringLiteral("Object not found: %1").arg(object_name));
+    }
+
+    QObject* property_object = obj->property(prop.toUtf8().constData()).value<QObject*>();
+    if (!property_object) {
+        return errorResponse(QStringLiteral("Property %1 on %2 is not a QObject").arg(prop, object_name));
+    }
+
+    QByteArray signature = method.toUtf8();
+    if (!signature.contains('(')) {
+        signature += args.isEmpty() ? "()" : "(QString)";
+    }
+
+    const QMetaObject* meta = property_object->metaObject();
+    const int idx = meta->indexOfMethod(QMetaObject::normalizedSignature(signature.constData()));
+    if (idx < 0) {
+        return errorResponse(QStringLiteral("Method not found: %1 on %2.%3").arg(QString::fromUtf8(signature), object_name, prop));
+    }
+
+    const QMetaMethod meta_method = meta->method(idx);
+    const bool returns_bool = meta_method.returnMetaType() == QMetaType::fromType<bool>();
+    bool bool_result{false};
+    bool invoked{false};
+    if (args.isEmpty()) {
+        invoked = returns_bool
+            ? meta_method.invoke(property_object, Qt::DirectConnection, Q_RETURN_ARG(bool, bool_result))
+            : meta_method.invoke(property_object, Qt::DirectConnection);
+    } else {
+        const QString arg = args.at(0).toString();
+        invoked = returns_bool
+            ? meta_method.invoke(property_object, Qt::DirectConnection, Q_RETURN_ARG(bool, bool_result), Q_ARG(QString, arg))
+            : meta_method.invoke(property_object, Qt::DirectConnection, Q_ARG(QString, arg));
+    }
+    if (!invoked) {
+        return errorResponse(QStringLiteral("Could not invoke %1 on %2.%3").arg(QString::fromUtf8(signature), object_name, prop));
+    }
+
+    QJsonObject resp = QJsonDocument::fromJson(okResponse()).object();
+    if (returns_bool) {
+        resp[QStringLiteral("value")] = bool_result;
+    }
+    return QJsonDocument(resp).toJson(QJsonDocument::Compact);
 }
 
 QByteArray TestBridge::cmdSetText(const QString& object_name, const QString& text)

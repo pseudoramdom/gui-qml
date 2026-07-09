@@ -69,8 +69,14 @@ void WalletListModel::listWalletDir()
 
     sortItems(updated_items);
     applyUpdatedItems(std::move(updated_items));
-    m_wallet_dir_loaded = true;
+    const bool wallet_dir_became_loaded{!m_wallet_dir_loaded};
+    if (wallet_dir_became_loaded) {
+        m_wallet_dir_loaded = true;
+    }
     Q_EMIT walletListChanged(rowCount() > 0);
+    if (wallet_dir_became_loaded) {
+        Q_EMIT walletDirLoadedChanged();
+    }
 }
 
 void WalletListModel::setWalletLoadState(const QString& name, LoadState state, const QString& error)

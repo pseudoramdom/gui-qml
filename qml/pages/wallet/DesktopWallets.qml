@@ -162,14 +162,14 @@ Page {
             }
         }
         rightItem: RowLayout {
-            spacing: 2
+            spacing: 5
             NetworkIndicator {
                 textSize: 11
-                Layout.rightMargin: 2
                 shorten: true
             }
             NavigationTab {
                 id: blockClockTabButton
+                objectName: "blockClockTabButton"
                 checked: true
                 Layout.preferredWidth: 30
                 property int index: 3
@@ -217,6 +217,7 @@ Page {
                 objectName: "peersTabButton"
                 iconSource: Utils.nodeConnectionIcon(nodeModel.numPeers)
                 iconColor: Theme.color.neutral7
+                iconSize: 24
                 Layout.preferredWidth: 30
                 property int index: 4
                 ButtonGroup.group: navigationTabs
@@ -242,6 +243,7 @@ Page {
                 objectName: "consoleTabButton"
                 iconSource: "image://images/console"
                 iconColor: Theme.color.neutral7
+                iconSize: 24
                 Layout.preferredWidth: 30
                 property int index: 5
                 ButtonGroup.group: navigationTabs

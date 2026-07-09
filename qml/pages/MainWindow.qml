@@ -9,14 +9,14 @@ import Qt.labs.settings 1.0
 import org.bitcoincore.qt 1.0
 import "../components"
 import "../controls"
-import "./onboarding"
 import "./node"
 import "./wallet"
 
 ApplicationWindow {
     id: appWindow
+    objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
-    minimumWidth: 640
+    minimumWidth: 800
     minimumHeight: 665
     color: Theme.color.background
 
@@ -29,6 +29,31 @@ ApplicationWindow {
     visible: false
     width: minimumWidth
     height: minimumHeight
+    property bool walletAvailableForUi: AppMode.walletEnabled
+    property bool appModeDesktopForUi: AppMode.isDesktop
+    property bool preInitOnboardingRanForUi: false
+    readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
+    readonly property bool waitForPostOnboardingWalletRoute: preInitOnboardingRanForUi && desktopWalletMode
+    property bool postOnboardingWalletRouteResolved: false
+
+    function resolvePostOnboardingWalletRoute() {
+        if (appWindow.postOnboardingWalletRouteResolved) {
+            return
+        }
+        if (!appWindow.waitForPostOnboardingWalletRoute) {
+            return
+        }
+        if (!walletController.initialized || !walletListModel.walletDirLoaded) {
+            return
+        }
+        appWindow.postOnboardingWalletRouteResolved = true
+        main.replace(desktopWallets, {}, StackView.Immediate)
+        if (walletController.noWalletsFound) {
+            main.push(createWalletWizard, {
+                "launchContext": CreateWalletWizard.Context.Onboarding
+            }, StackView.Immediate)
+        }
+    }
 
     Settings {
         id: windowSettings
@@ -118,17 +143,9 @@ ApplicationWindow {
     PageStack {
         id: main
         objectName: "mainPageStack"
-        initialItem: {
-            if (needOnboarding) {
-                onboardingWizard
-            } else {
-                if (AppMode.walletEnabled && AppMode.isDesktop) {
-                    desktopWallets
-                } else {
-                    node
-                }
-            }
-        }
+        initialItem: appWindow.waitForPostOnboardingWalletRoute
+            ? postOnboardingStartup
+            : (appWindow.desktopWalletMode ? desktopWallets : node)
         anchors.fill: parent
         focus: true
         Keys.onReleased: (event) => {
@@ -155,20 +172,35 @@ ApplicationWindow {
         parent: Overlay.overlay
     }
 
+    Connections {
+        target: appWindow.desktopWalletMode ? walletController : null
+        function onInitializedChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+        function onNoWalletsFoundChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+    }
+
+    Connections {
+        target: appWindow.desktopWalletMode ? walletListModel : null
+        function onWalletDirLoadedChanged() {
+            appWindow.resolvePostOnboardingWalletRoute()
+        }
+    }
+
     Component {
-        id: onboardingWizard
-        OnboardingWizard {
-            onFinished: {
-                optionsModel.onboard()
-                nodeModel.startNodeInitializionThread()
-                if (AppMode.walletEnabled && AppMode.isDesktop) {
-                    main.push([
-                        desktopWallets, {},
-                        createWalletWizard, { "launchContext": CreateWalletWizard.Context.Onboarding }
-                    ])
-                } else {
-                    main.push(node)
-                }
+        id: postOnboardingStartup
+        Page {
+            objectName: "postOnboardingStartupPage"
+            background: Rectangle {
+                color: "black"
+            }
+
+            BusyIndicator {
+                objectName: "postOnboardingStartupBusyIndicator"
+                anchors.centerIn: parent
+                running: true
             }
         }
     }
@@ -176,6 +208,7 @@ ApplicationWindow {
     Component {
         id: desktopWallets
         DesktopWallets {
+            objectName: "desktopWalletsPage"
             onAddWallet: {
                 main.push(createWalletWizard, { "launchContext": CreateWalletWizard.Context.Main })
             }
@@ -250,8 +283,11 @@ ApplicationWindow {
             y = windowSettings.windowY
         }
         visible = true
-        if (!needOnboarding && AppMode.walletEnabled && AppMode.isDesktop) {
+        if (appWindow.desktopWalletMode) {
             nodeModel.startNodeInitializionThread()
+            if (appWindow.waitForPostOnboardingWalletRoute) {
+                Qt.callLater(appWindow.resolvePostOnboardingWalletRoute)
+            }
         }
     }
 

@@ -116,6 +116,7 @@ def start_gui_without_driver(harness):
         f"-datadir={harness.gui_datadir}",
         f"-test-automation={harness.socket_path}",
     ] + settings_args + [
+        "-qml_onboarded=1",
         "-logtimemicros",
         "-debug",
         "-debugexclude=libevent",

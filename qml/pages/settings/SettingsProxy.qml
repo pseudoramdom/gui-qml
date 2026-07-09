@@ -14,14 +14,87 @@ Page {
     id: root
     objectName: "settingsProxy"
 
-    readonly property bool proxySettingsDirty: optionsModel.proxySettingsDirty
+    property var settingsModel: optionsModel
+    property var coreSettingsModel: settingsModel.coreSettings
+    property bool onboarding: false
+    readonly property bool proxySettingsDirty: settingsModel.proxySettingsDirty
+    readonly property var proxySetting: coreSettingsModel.entry("proxy")
+    readonly property var onionSetting: coreSettingsModel.entry("onion")
+    property bool draftProxyEnabled: false
+    property string draftProxyAddress: ""
+    property string draftProxyValidationError: ""
+    property bool draftTorEnabled: false
+    property string draftTorAddress: ""
+    property string draftTorValidationError: ""
+    readonly property bool proxyDraftDirty: draftProxyEnabled !== proxySetting.enabled
+                                           || draftProxyAddress !== displayAddress(proxySetting)
+                                           || draftTorEnabled !== onionSetting.enabled
+                                           || draftTorAddress !== displayAddress(onionSetting)
+    readonly property bool proxyDraftValid: !draftProxyEnabled || draftProxyValidationError.length === 0
+    readonly property bool torDraftValid: !draftTorEnabled || draftTorValidationError.length === 0
+    readonly property bool canSaveProxyDraft: proxyDraftValid && torDraftValid
 
     background: null
+
+    Component.onCompleted: resetProxyDraft()
+
+    function displayAddress(setting) {
+        return setting.address.length > 0 ? setting.address : setting.defaultAddress()
+    }
+
+    function resetProxyDraft() {
+        draftProxyEnabled = proxySetting.enabled
+        draftProxyAddress = displayAddress(proxySetting)
+        draftProxyValidationError = proxySetting.validate(draftProxyAddress)
+        draftTorEnabled = onionSetting.enabled
+        draftTorAddress = displayAddress(onionSetting)
+        draftTorValidationError = onionSetting.validate(draftTorAddress)
+    }
+
+    function commitProxyDraftEntry(setting, enabled, address, validationError) {
+        const trimmedAddress = address.trim()
+        if (!setting.canEdit) return true
+        if (validationError.length === 0 && trimmedAddress !== setting.address) {
+            if (!setting.commitAddress(trimmedAddress)) return false
+        }
+        if (setting.enabled !== enabled) {
+            setting.enabled = enabled
+            if (setting.enabled !== enabled) return false
+        }
+        return true
+    }
+
+    function commitProxyDraft() {
+        if (!canSaveProxyDraft) return false
+        if (!commitProxyDraftEntry(proxySetting, draftProxyEnabled, draftProxyAddress, draftProxyValidationError)) return false
+        if (!commitProxyDraftEntry(onionSetting, draftTorEnabled, draftTorAddress, draftTorValidationError)) return false
+        resetProxyDraft()
+        return true
+    }
+
+    function done() {
+        if (proxyDraftDirty && !commitProxyDraft()) return
+        root.back()
+    }
+
+    function requestBack() {
+        if (proxyDraftDirty) {
+            discardProxyChangesPopup.open()
+            return
+        }
+        root.back()
+    }
 
     header: SettingsHeader {
         title: qsTr("Proxy settings")
         backButtonObjectName: "settingsProxyBack"
-        onBack: root.back()
+        onBack: root.requestBack()
+        rightItem: NavButton {
+            objectName: "settingsProxyDone"
+            text: qsTr("Done")
+            enabled: root.canSaveProxyDraft
+            onClicked: root.done()
+        }
     }
 
     ScrollView {
@@ -34,44 +107,56 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
-            Rectangle {
+            SettingsRestartNotice {
                 Layout.fillWidth: true
                 Layout.topMargin: 10
                 Layout.bottomMargin: 20
-                Layout.leftMargin: 10
-                Layout.rightMargin: 10
-                // Note: this advisory is only shown in the post-onboarding settings
-                // context. No restart is needed when configuring proxy during onboarding
-                // since the node has not started yet.
-                implicitHeight: advisoryRow.implicitHeight + 20
-                radius: 5
-                color: optionsModel.proxySettingsDirty
-                    ? Qt.rgba(Theme.color.blue.r, Theme.color.blue.g, Theme.color.blue.b, 0.25)
-                    : Qt.rgba(Theme.color.neutral2.r, Theme.color.neutral2.g, Theme.color.neutral2.b, 0.5)
-                RowLayout {
-                    id: advisoryRow
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 10
-                    spacing: 8
-                    Icon {
-                        source: "image://images/info-filled"
-                        color: optionsModel.proxySettingsDirty ? Theme.color.blue : Theme.color.neutral9
-                        size: 16
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-                    CoreText {
-                        Layout.fillWidth: true
-                        text: qsTr("Restart the application for these changes to take effect.")
-                        color: optionsModel.proxySettingsDirty ? Theme.color.blue : Theme.color.neutral9
-                        wrapMode: Text.WordWrap
-                    }
-                }
+                visible: !root.onboarding && root.settingsModel.proxySettingsDirty
             }
 
             ProxySettings {
+                settingsModel: root.settingsModel
+                proxyEnabled: root.draftProxyEnabled
+                proxyAddress: root.draftProxyAddress
+                proxyValidationError: root.draftProxyValidationError
+                torEnabled: root.draftTorEnabled
+                torAddress: root.draftTorAddress
+                torValidationError: root.draftTorValidationError
+                onProxyEnabledEdited: (enabled) => root.draftProxyEnabled = enabled
+                onProxyAddressEdited: (address, validationError) => {
+                    root.draftProxyAddress = address
+                    root.draftProxyValidationError = validationError
+                }
+                onTorEnabledEdited: (enabled) => root.draftTorEnabled = enabled
+                onTorAddressEdited: (address, validationError) => {
+                    root.draftTorAddress = address
+                    root.draftTorValidationError = validationError
+                }
                 Layout.fillWidth: true
+            }
+        }
+    }
+
+    AlertPopup {
+        id: discardProxyChangesPopup
+        objectName: "discardProxyChangesPopup"
+        parent: Overlay.overlay
+        title: qsTr("Discard changes?")
+        message: qsTr("This will discard your proxy settings changes.")
+        messageObjectName: "discardProxyChangesMessage"
+
+        AlertAction {
+            text: qsTr("Cancel")
+            role: AlertAction.Cancel
+            buttonObjectName: "discardProxyChangesCancelButton"
+        }
+        AlertAction {
+            text: qsTr("Discard")
+            role: AlertAction.Destructive
+            buttonObjectName: "discardProxyChangesConfirmButton"
+            onTriggered: {
+                root.resetProxyDraft()
+                root.back()
             }
         }
     }

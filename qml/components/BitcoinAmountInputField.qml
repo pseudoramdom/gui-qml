@@ -30,6 +30,31 @@ ColumnLayout {
         amountInput.syncFromAmount(force)
     }
 
+    function amountInputPlaceholder(unit) {
+        if (unit === BitcoinAmount.SAT) return "0"
+        if (unit === BitcoinAmount.uBTC) return "0.00"
+        if (unit === BitcoinAmount.mBTC) return "0.00000"
+        return "0.00000000"
+    }
+
+    function amountInputPattern(unit) {
+        if (unit === BitcoinAmount.SAT) return /^0*\d{0,16}$/
+        if (unit === BitcoinAmount.uBTC) return /^0*\d{0,13}(\.\d{0,2})?$/
+        if (unit === BitcoinAmount.mBTC) return /^0*\d{0,10}(\.\d{0,5})?$/
+        return /^0*\d{0,7}(\.\d{0,8})?$/
+    }
+
+    function amountInputMaximumLength(unit) {
+        if (unit === BitcoinAmount.SAT) return 16
+        if (unit === BitcoinAmount.uBTC) return 17
+        if (unit === BitcoinAmount.mBTC) return 17
+        return 17
+    }
+
+    function flippedDisplayUnit(unit) {
+        return unit === BitcoinAmount.SAT ? BitcoinAmount.BTC : BitcoinAmount.SAT
+    }
+
     Layout.fillWidth: true
     spacing: 4
 
@@ -94,7 +119,7 @@ ColumnLayout {
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
-            placeholderText: root.amount && root.amount.unit === BitcoinAmount.SAT ? "0" : "0.00000000"
+            placeholderText: root.amount ? root.amountInputPlaceholder(root.amount.unit) : "0.00000000"
             selectByMouse: true
 
             text: ""
@@ -119,14 +144,10 @@ ColumnLayout {
                 }
             }
 
-            // Keep draft input representable as satoshis; leading zeroes are
-            // still allowed until the field syncs from the formatted amount.
             validator: RegularExpressionValidator {
-                regularExpression: !root.amount || root.amount.unit === BitcoinAmount.BTC
-                    ? /^0*\d{0,8}(\.\d{0,8})?$/
-                    : /^0*\d{0,16}$/
+                regularExpression: root.amount ? root.amountInputPattern(root.amount.unit) : /^(0|[1-9]\d{0,7})(\.\d{0,8})?$/
             }
-            maximumLength: 32
+            maximumLength: root.amount ? root.amountInputMaximumLength(root.amount.unit) : 17
 
             Connections {
                 target: root
@@ -157,7 +178,7 @@ ColumnLayout {
             function click() {
                 if (!root.enabled || !root.amount) return
                 amountInput.commitAmountText()
-                root.amount.flipUnit()
+                optionsModel.displayUnit = root.flippedDisplayUnit(root.amount.unit)
             }
 
             MouseArea {
@@ -165,7 +186,10 @@ ColumnLayout {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 enabled: root.enabled && root.amount
-                onClicked: unitToggle.click()
+                onClicked: {
+                    amountInput.commitAmountText()
+                    optionsModel.displayUnit = root.flippedDisplayUnit(root.amount.unit)
+                }
             }
 
             CoreText {

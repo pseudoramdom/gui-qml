@@ -6,6 +6,8 @@
 
 #include <cassert>
 
+#include <QtGlobal>
+
 namespace {
 constexpr int THIN_SP_CP = 0x2009;
 }
@@ -62,4 +64,38 @@ QString QmlBitcoinUnits::format(Unit unit, CAmount amount, bool plussign, Separa
     const qint64 remainder = n_abs % coin;
     const QString remainder_str = QString::number(remainder).rightJustified(num_decimals, '0');
     return quotient_str + "." + remainder_str;
+}
+
+QmlBitcoinUnits::Unit QmlBitcoinUnits::fromDisplayUnit(int display_unit)
+{
+    switch (display_unit) {
+    case 0: return Unit::BTC;
+    case 1: return Unit::mBTC;
+    case 2: return Unit::uBTC;
+    case 3: return Unit::SAT;
+    }
+    return Unit::BTC;
+}
+
+QString QmlBitcoinUnits::label(Unit unit)
+{
+    switch (unit) {
+    case Unit::BTC: return QStringLiteral("BTC");
+    case Unit::mBTC: return QStringLiteral("mBTC");
+    case Unit::uBTC: return QStringLiteral("bits");
+    case Unit::SAT: return QStringLiteral("sat");
+    }
+    assert(false);
+}
+
+QString QmlBitcoinUnits::displayLabel(Unit unit, CAmount amount)
+{
+    switch (unit) {
+    case Unit::BTC: return QStringLiteral("₿");
+    case Unit::mBTC: return QStringLiteral("mBTC");
+    case Unit::uBTC: return QStringLiteral("bits");
+    case Unit::SAT:
+        return qAbs(amount) == 1 ? QStringLiteral("sat") : QStringLiteral("sats");
+    }
+    assert(false);
 }

@@ -15,6 +15,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bitcoin", "test", "functional"))
 
+from qml_driver import QmlDriverError
 from qml_test_harness import dump_qml_tree
 from qml_wallet_test_lib import (
     WalletFlowHarness,
@@ -48,8 +49,12 @@ def stop_node(process, rpc_port):
 
 
 def dismiss_create_wallet_wizard(gui):
-    gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=10000)
-    gui.click("createWalletWizardExitButton")
+    try:
+        gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletWizardExitButton")
+    except QmlDriverError:
+        gui.wait_for_property("typeSelectorCancelButton", "visible", True, timeout_ms=10000)
+        gui.click("typeSelectorCancelButton")
 
 
 def wait_for_wallet_ready(harness, gui):
@@ -155,7 +160,7 @@ def case_selector_loads_closed_wallet(harness, checkpoints):
     precreate_closed_wallet(harness, wallet_name)
     checkpoints.checkpoint("closed wallet prepared on disk")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     checkpoints.checkpoint("GUI launched", gui)
 
@@ -245,7 +250,7 @@ def case_selector_surfaces_load_error(harness, checkpoints):
     plant_readonly_wallet(harness, wallet_name)
     checkpoints.checkpoint("read-only wallet planted on disk")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     harness.finish_onboarding()
     dismiss_create_wallet_wizard(gui)
@@ -311,7 +316,7 @@ def case_selector_skips_load_for_already_open_wallet(harness, checkpoints):
         stop_node(process, harness.gui_rpc_port)
     checkpoints.checkpoint("two managed wallets prepared")
 
-    harness.start_gui(reset_gui_settings=True)
+    harness.start_gui()
     gui = harness.driver
     harness.finish_onboarding()
     dismiss_create_wallet_wizard(gui)

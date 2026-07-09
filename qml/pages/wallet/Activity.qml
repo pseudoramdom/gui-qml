@@ -14,6 +14,7 @@ import "../../components"
 
 PageStack {
     id: stackView
+    objectName: "activityStack"
 
     function navigateToTransaction(txid) {
         if (!walletController.selectedWallet)
@@ -285,7 +286,7 @@ PageStack {
                         placeholderText: qsTr("Search")
                         placeholderTextColor: Theme.color.neutral7
                         color: Theme.color.neutral9
-                        font.family: "Inter"
+                        font.family: Theme.text.family
                         font.pixelSize: 15
                         verticalAlignment: TextInput.AlignVCenter
                         topPadding: 0

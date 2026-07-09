@@ -15,8 +15,8 @@ import subprocess
 import tempfile
 import time
 
-from qml_driver import QmlDriver
-from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qsettings_sandbox_args
+from qml_driver import QmlDriver, QmlDriverError
+from qml_test_harness import GUI_STARTUP_TIMEOUT, complete_onboarding, find_gui_binary, qml_onboarded_args, qml_qpa_platform, qsettings_sandbox_args
 
 
 RPC_USER = "qmlwallettest"
@@ -212,15 +212,20 @@ class WalletFlowHarness:
                 self.source_process.wait()
         self.source_process = None
 
-    def start_gui(self, reset_gui_settings=False, extra_args=None, cwd=None):
+    def start_gui(self, reset_gui_settings=False, start_onboarded=True, extra_args=None, cwd=None):
         env = dict(os.environ)
-        env["QT_QPA_PLATFORM"] = "offscreen"
+        env["QT_QPA_PLATFORM"] = qml_qpa_platform()
         settings_args = qsettings_sandbox_args(env, self.config_home)
+        extra_args = extra_args or []
         args = [
             self.gui_binary,
             f"-datadir={self.gui_datadir}",
             f"-test-automation={self.socket_path}",
-        ] + settings_args + [
+        ] + settings_args + qml_onboarded_args(
+            extra_args,
+            reset_settings=reset_gui_settings,
+            start_onboarded=start_onboarded,
+        ) + [
             "-logtimemicros",
             "-debug",
             "-debugexclude=libevent",
@@ -229,8 +234,7 @@ class WalletFlowHarness:
         ]
         if reset_gui_settings:
             args.insert(3, "-resetguisettings")
-        if extra_args:
-            args.extend(extra_args)
+        args.extend(extra_args)
         self.gui_process = subprocess.Popen(
             args,
             env=env,
@@ -281,3 +285,41 @@ class WalletFlowHarness:
 
     def finish_onboarding(self):
         complete_onboarding(self.driver)
+        self.open_create_wallet_wizard()
+
+    def _wait_for_create_wallet_wizard_entry(self, timeout_ms=5000):
+        deadline = time.time() + timeout_ms / 1000
+        last_error = None
+        entry_points = (
+            "createWalletButton",
+            "walletTypeRegular",
+            "walletTypeExternalSigner",
+            "walletTypeImport",
+        )
+        while time.time() < deadline:
+            for object_name in entry_points:
+                try:
+                    if self.driver.get_property(object_name, "visible"):
+                        return object_name
+                except QmlDriverError as err:
+                    last_error = err
+            time.sleep(0.05)
+        raise QmlDriverError(
+            "No create-wallet wizard entry point became visible"
+            + (f": {last_error}" if last_error else "")
+        )
+
+    def open_create_wallet_wizard(self):
+        if self.driver.object_exists("createWalletWizard"):
+            self._wait_for_create_wallet_wizard_entry()
+            self.driver.settle(timeout_ms=15000)
+            return
+        self.driver.wait_for_property("walletBadge", "loading", False, timeout_ms=30000)
+        self.driver.click("walletBadge")
+        try:
+            self._wait_for_create_wallet_wizard_entry(timeout_ms=2000)
+        except QmlDriverError:
+            self.driver.wait_for_property("walletSelectPopup", "opened", True, timeout_ms=5000)
+            self.driver.click("walletSelectAddWalletButton")
+            self._wait_for_create_wallet_wizard_entry()
+        self.driver.settle(timeout_ms=15000)

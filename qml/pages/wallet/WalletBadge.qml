@@ -160,9 +160,12 @@ Button {
                 }
                 CoreText {
                     id: balanceText
+                    objectName: "walletBadgeBalanceText"
                     visible: root.showBalance
-                    text: root.balance + " " + (optionsModel.displayUnit === 1 ? (root.balanceSatoshi === 1 ? qsTr("sat") : qsTr("sats")) : "₿")
+                    text: root.balance + " " + optionsModel.displayUnitLabelForAmount(root.balanceSatoshi)
                     color: Theme.color.neutral7
+                    font.family: optionsModel.moneyFont.family
+                    font.weight: optionsModel.moneyFont.weight
                     font.pixelSize: 15
                     bold: true
                 }

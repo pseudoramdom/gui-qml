@@ -2720,33 +2720,33 @@ If you find it useful, please contribute.
     </message>
 </context>
 <context>
-    <name>main</name>
+    <name>MainWindow</name>
     <message>
-        <location filename="../pages/main.qml" line="18"/>
+        <location filename="../pages/MainWindow.qml" line="18"/>
         <source>Bitcoin Core App</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../pages/main.qml" line="119"/>
-        <location filename="../pages/main.qml" line="137"/>
+        <location filename="../pages/MainWindow.qml" line="154"/>
+        <location filename="../pages/MainWindow.qml" line="175"/>
         <source>Approved on external signer. It should be confirmed within the next 10 minutes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../pages/main.qml" line="120"/>
-        <location filename="../pages/main.qml" line="138"/>
+        <location filename="../pages/MainWindow.qml" line="155"/>
+        <location filename="../pages/MainWindow.qml" line="176"/>
         <source>Based on your selected fee, it should be confirmed within the next 10 minutes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../pages/main.qml" line="121"/>
-        <location filename="../pages/main.qml" line="139"/>
+        <location filename="../pages/MainWindow.qml" line="156"/>
+        <location filename="../pages/MainWindow.qml" line="177"/>
         <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../pages/main.qml" line="121"/>
-        <location filename="../pages/main.qml" line="139"/>
+        <location filename="../pages/MainWindow.qml" line="156"/>
+        <location filename="../pages/MainWindow.qml" line="177"/>
         <source>Close window</source>
         <translation type="unfinished"></translation>
     </message>

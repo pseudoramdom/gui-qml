@@ -23,6 +23,9 @@ PageStack {
     property int launchContext: CreateWalletWizard.Context.Onboarding
     property bool waitingForInit: false
     property bool creatingWatchOnly: false
+    property bool waitForWalletDiscovery: false
+    readonly property bool walletDiscoveryReady: walletController.initialized &&
+        (!waitForWalletDiscovery || walletListModel.walletDirLoaded)
 
     function createWatchOnly() {
         root.creatingWatchOnly = true
@@ -84,12 +87,6 @@ PageStack {
 
             header: NavigationBar2 {
                 id: navbar
-                leftItem: NavButton {
-                    objectName: "createWalletWizardBackButton"
-                    iconSource: "image://images/caret-left"
-                    text: qsTr("Back")
-                    onClicked: root.finished()
-                }
                 rightItem: NavButton {
                     objectName: "createWalletWizardExitButton"
                     text: qsTr("Skip")
@@ -131,11 +128,18 @@ PageStack {
                     Layout.rightMargin: Layout.leftMargin
                     Layout.bottomMargin: 20
                     Layout.alignment: Qt.AlignCenter
-                    enabled: walletController.initialized
+                    enabled: root.walletDiscoveryReady
                     text: qsTr("Create wallet")
                     onClicked: {
                         root.push(typeSelector)
                     }
+                }
+
+                BusyIndicator {
+                    objectName: "createWalletDiscoveryBusyIndicator"
+                    Layout.alignment: Qt.AlignCenter
+                    visible: !root.walletDiscoveryReady
+                    running: visible
                 }
 
                 ContinueButton {
@@ -144,7 +148,7 @@ PageStack {
                     Layout.leftMargin: 20
                     Layout.rightMargin: Layout.leftMargin
                     Layout.alignment: Qt.AlignCenter
-                    enabled: walletController.initialized
+                    enabled: root.walletDiscoveryReady
                     text: qsTr("Import wallet")
                     borderColor: Theme.color.neutral6
                     borderHoverColor: Theme.color.orangeLight1

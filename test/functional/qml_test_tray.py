@@ -33,10 +33,11 @@ import time
 from qml_test_harness import (
     GUI_STARTUP_TIMEOUT,
     find_gui_binary,
-    setup_datadir,
     complete_onboarding,
     dump_qml_tree,
     parse_args,
+    qsettings_sandbox_args,
+    setup_datadir,
 )
 from qml_driver import QmlDriver, QmlDriverError
 
@@ -66,13 +67,15 @@ def run_tests():
 
         env = dict(os.environ)
         env["QT_QPA_PLATFORM"] = "offscreen"
+        settings_args = qsettings_sandbox_args(env, os.path.join(tmpdir, "config"))
 
         gui_args = [
             gui_binary,
             f"-datadir={datadir}",
             f"-test-automation={socket_path}",
+        ] + settings_args + [
             "-disablewallet",
-            "-resetguisettings",
+            "-qml_onboarded=1",
             "-logtimemicros",
             "-debug",
             "-debugexclude=libevent",
@@ -90,11 +93,11 @@ def run_tests():
         print("QmlDriver connected to test bridge.")
 
     try:
-        # ── Complete onboarding ───────────────────────────────────────────────
-        print("Completing onboarding ...")
+        # ── Runtime tests start from the onboarded node shell ─────────────────
+        print("Ensuring onboarding is not visible ...")
         complete_onboarding(gui)
 
-        # After onboarding (wallet disabled) the app transitions to NodeRunner.
+        # With wallet disabled the app transitions to NodeRunner.
         # The gear button objectName "nodeSettingsButton" appears immediately,
         # before full node initialization completes.
         gui.wait_for_page("nodeSettingsButton", timeout_ms=15000)
@@ -108,7 +111,6 @@ def run_tests():
         # ── Test 2: Required controls are present ─────────────────────────────
         print("Test 2: Verify expected controls exist on the page ...")
         required_controls = [
-            "windowBehaviorBack",
             "showTrayIconSwitch",
             "minimizeToTraySwitch",
             "minimizeOnCloseSwitch",

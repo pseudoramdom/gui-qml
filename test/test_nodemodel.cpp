@@ -1254,6 +1254,7 @@ void NodeModelTests::initializeFailureUsesNodeErrorMessages()
 
     QTRY_VERIFY_WITH_TIMEOUT(finished.load(), ASYNC_TIMEOUT_MS);
     worker.join();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, ASYNC_TIMEOUT_MS);
     QCOMPARE(runtime_dialog_spy.count(), 0);
 
     QSignalSpy faulted_spy{&model, &NodeModel::errorStateChanged};

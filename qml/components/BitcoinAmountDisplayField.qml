@@ -44,6 +44,8 @@ Item {
         wrap: false
         elide: Text.ElideRight
         text: root.amountText
+        font.family: optionsModel.moneyFont.family
+        font.weight: optionsModel.moneyFont.weight
         font.pixelSize: 18
         color: Theme.color.neutral9
     }

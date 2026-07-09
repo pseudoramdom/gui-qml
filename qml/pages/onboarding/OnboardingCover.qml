@@ -24,6 +24,7 @@ Page {
             InformationPage {
                 buttonObjectName: "onboardingCoverButton"
                 navRightDetail: NavButton {
+                    objectName: "onboardingCoverInfoButton"
                     iconSource: "image://images/info"
                     iconHeight: 24
                     iconWidth: 24

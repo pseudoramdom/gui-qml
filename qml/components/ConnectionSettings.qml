@@ -10,14 +10,30 @@ import "../controls"
 ColumnLayout {
     id: root
     signal next
+    property var settingsModel: optionsModel
+    property var coreSettingsModel: settingsModel.coreSettings
+    property bool showRestartNotice: false
+    readonly property var listenSetting: coreSettingsModel.entry("listen")
+    readonly property var natpmpSetting: coreSettingsModel.entry("natpmp")
+    readonly property var serverSetting: coreSettingsModel.entry("server")
     spacing: 4
+    SettingsRestartNotice {
+        visible: root.showRestartNotice
+        Layout.fillWidth: true
+        Layout.bottomMargin: visible ? 12 : 0
+    }
     Setting {
+        objectName: "listenSetting"
         Layout.fillWidth: true
         header: qsTr("Enable listening")
         description: qsTr("Allows incoming connections")
+        state: root.listenSetting.canEdit ? "FILLED" : "DISABLED"
+        infoText: root.listenSetting.infoText
+        showInfoText: infoText.length > 0
         actionItem: OptionSwitch {
-            checked: optionsModel.listen
-            onToggled: optionsModel.listen = checked
+            objectName: "listenSwitch"
+            checked: root.listenSetting.value
+            onToggled: root.listenSetting.value = checked
         }
         onClicked: {
           loadedItem.toggle()
@@ -26,11 +42,16 @@ ColumnLayout {
     }
     Separator { Layout.fillWidth: true }
     Setting {
+        objectName: "natpmpSetting"
         Layout.fillWidth: true
         header: qsTr("Map port using NAT-PMP")
+        state: root.natpmpSetting.canEdit ? "FILLED" : "DISABLED"
+        infoText: root.natpmpSetting.infoText
+        showInfoText: infoText.length > 0
         actionItem: OptionSwitch {
-            checked: optionsModel.natpmp
-            onToggled: optionsModel.natpmp = checked
+            objectName: "natpmpSwitch"
+            checked: root.natpmpSetting.value
+            onToggled: root.natpmpSetting.value = checked
         }
         onClicked: {
           loadedItem.toggle()
@@ -39,11 +60,16 @@ ColumnLayout {
     }
     Separator { Layout.fillWidth: true }
     Setting {
+        objectName: "serverSetting"
         Layout.fillWidth: true
         header: qsTr("Enable RPC server")
+        state: root.serverSetting.canEdit ? "FILLED" : "DISABLED"
+        infoText: root.serverSetting.infoText
+        showInfoText: infoText.length > 0
         actionItem: OptionSwitch {
-            checked: optionsModel.server
-            onToggled: optionsModel.server = checked
+            objectName: "serverSwitch"
+            checked: root.serverSetting.value
+            onToggled: root.serverSetting.value = checked
         }
         onClicked: {
           loadedItem.toggle()

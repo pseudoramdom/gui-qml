@@ -34,16 +34,41 @@ Item {
     property string contentRole: "content"
     property string leftColumnRole: ""
     property string rightColumnRole: ""
+    property string categoryRole: ""
 
     // ── Style ────────────────────────────────────────────────────────────
 
     property int   fontPixelSize:    12
+    property string fontFamily:      "monospace"
+    property string fontStyleName:   ""
+    property int   textLineHeight:   0
     property int   contentTextFormat: Text.PlainText
     property color contentColor:     Theme.color.neutral9
     property color leftColumnColor:  Theme.color.neutral5
     property color rightColumnColor: Theme.color.neutral5
+    property int   requestCategory:  0
+    property int   replyCategory:    1
+    property int   errorCategory:    2
+    property color requestContentColor: contentColor
+    property color replyContentColor: contentColor
+    property color errorContentColor: contentColor
+    property color requestLeftColumnColor: leftColumnColor
+    property color replyLeftColumnColor: leftColumnColor
+    property color errorLeftColumnColor: leftColumnColor
     property color selectionColor:    Theme.color.orange
     property color selectedTextColor: Theme.color.white
+    property string filterText: ""
+    readonly property string normalizedFilterText: filterText.toLowerCase()
+
+    // ── Layout metrics ───────────────────────────────────────────────────
+
+    property int horizontalPadding: 16
+    property int topPadding: 16
+    property int bottomPadding: 16
+    property int rowSpacing: 2
+    property int columnSpacing: 8
+    property int leftColumnWidth: 0
+    property int rightColumnWidth: 0
 
     // ── Accessibility ────────────────────────────────────────────────────
 
@@ -93,13 +118,15 @@ Item {
 
     TextMetrics {
         id: leftMetrics
-        font.family: "monospace"
+        font.family: root.fontFamily
+        font.styleName: root.fontStyleName
         font.pixelSize: root.fontPixelSize
         text: root.leftColumnSample
     }
     TextMetrics {
         id: rightMetrics
-        font.family: "monospace"
+        font.family: root.fontFamily
+        font.styleName: root.fontStyleName
         font.pixelSize: root.fontPixelSize
         text: root.rightColumnSample
     }
@@ -123,11 +150,12 @@ Item {
 
         Column {
             id: contentColumn
-            x: 16
-            width: flick.width - 32
-            topPadding: 16
-            bottomPadding: 16
-            spacing: 2
+            objectName: root.objectName.length > 0 ? root.objectName + "_contentColumn" : ""
+            x: root.horizontalPadding
+            width: flick.width - (root.horizontalPadding * 2)
+            topPadding: root.topPadding
+            bottomPadding: root.bottomPadding
+            spacing: root.rowSpacing
 
             Loader {
                 width: contentColumn.width
@@ -145,37 +173,72 @@ Item {
                     // property; marking it required pins the reference so
                     // bracket lookup (model[roleName]) resolves reliably.
                     required property var model
+                    required property int index
+                    readonly property string rowContent: rowRoot.model[root.contentRole] ?? ""
+                    readonly property int rowCategory: root.categoryRole !== ""
+                                                       ? Number(rowRoot.model[root.categoryRole] ?? -1)
+                                                       : -1
+                    readonly property bool useCategoryColors: root.categoryRole !== ""
+                    readonly property color effectiveContentColor: !useCategoryColors
+                                                                  ? root.contentColor
+                                                                  : rowCategory === root.requestCategory
+                                                                    ? root.requestContentColor
+                                                                    : rowCategory === root.errorCategory
+                                                                      ? root.errorContentColor
+                                                                      : rowCategory === root.replyCategory
+                                                                        ? root.replyContentColor
+                                                                        : root.contentColor
+                    readonly property color effectiveLeftColumnColor: !useCategoryColors
+                                                                    ? root.leftColumnColor
+                                                                    : rowCategory === root.requestCategory
+                                                                      ? root.requestLeftColumnColor
+                                                                      : rowCategory === root.errorCategory
+                                                                        ? root.errorLeftColumnColor
+                                                                        : rowCategory === root.replyCategory
+                                                                          ? root.replyLeftColumnColor
+                                                                          : root.leftColumnColor
+                    readonly property bool matchesFilter: root.normalizedFilterText.length === 0
+                                                          || rowContent.toLowerCase().indexOf(root.normalizedFilterText) !== -1
 
+                    objectName: root.objectName.length > 0 ? root.objectName + "_row_" + index : ""
                     width: contentColumn.width
-                    spacing: 8
+                    height: matchesFilter ? implicitHeight : 0
+                    spacing: root.columnSpacing
+                    visible: matchesFilter
 
                     Accessible.role: Accessible.ListItem
-                    Accessible.name: rowRoot.model[root.contentRole] ?? ""
+                    Accessible.name: rowContent
 
                     // Left column (optional)
                     Text {
+                        objectName: root.objectName.length > 0 ? root.objectName + "_left_" + rowRoot.index : ""
                         visible: root.leftColumnRole !== ""
                         text: root.leftColumnRole !== ""
                               ? (rowRoot.model[root.leftColumnRole] ?? "") : ""
-                        font.family: "monospace"
+                        font.family: root.fontFamily
+                        font.styleName: root.fontStyleName
                         font.pixelSize: root.fontPixelSize
-                        color: root.leftColumnColor
-                        Layout.preferredWidth: leftMetrics.width
+                        lineHeight: root.textLineHeight > 0 ? root.textLineHeight : 1.0
+                        lineHeightMode: root.textLineHeight > 0 ? Text.FixedHeight : Text.ProportionalHeight
+                        color: rowRoot.effectiveLeftColumnColor
+                        Layout.preferredWidth: root.leftColumnWidth > 0 ? root.leftColumnWidth : leftMetrics.width
                         Layout.alignment: Qt.AlignTop
                         wrapMode: Text.NoWrap
                     }
 
                     // Main content column: TextEdit for per-row select + copy.
                     TextEdit {
-                        text: rowRoot.model[root.contentRole] ?? ""
+                        objectName: root.objectName.length > 0 ? root.objectName + "_content_" + rowRoot.index : ""
+                        text: rowRoot.rowContent
                         readOnly: true
                         selectByMouse: true
                         persistentSelection: false
                         textFormat: root.contentTextFormat
                         wrapMode: Text.WrapAnywhere
-                        font.family: "monospace"
+                        font.family: root.fontFamily
+                        font.styleName: root.fontStyleName
                         font.pixelSize: root.fontPixelSize
-                        color: root.contentColor
+                        color: rowRoot.effectiveContentColor
                         selectionColor: root.selectionColor
                         selectedTextColor: root.selectedTextColor
                         activeFocusOnPress: true
@@ -186,13 +249,17 @@ Item {
 
                     // Right column (optional)
                     Text {
+                        objectName: root.objectName.length > 0 ? root.objectName + "_right_" + rowRoot.index : ""
                         visible: root.rightColumnRole !== ""
                         text: root.rightColumnRole !== ""
                               ? (rowRoot.model[root.rightColumnRole] ?? "") : ""
-                        font.family: "monospace"
+                        font.family: root.fontFamily
+                        font.styleName: root.fontStyleName
                         font.pixelSize: root.fontPixelSize
+                        lineHeight: root.textLineHeight > 0 ? root.textLineHeight : 1.0
+                        lineHeightMode: root.textLineHeight > 0 ? Text.FixedHeight : Text.ProportionalHeight
                         color: root.rightColumnColor
-                        Layout.preferredWidth: rightMetrics.width
+                        Layout.preferredWidth: root.rightColumnWidth > 0 ? root.rightColumnWidth : rightMetrics.width
                         Layout.alignment: Qt.AlignTop
                         horizontalAlignment: Text.AlignRight
                         wrapMode: Text.NoWrap

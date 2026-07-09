@@ -12,6 +12,13 @@ import "../../components"
 InformationPage {
     id: root
     objectName: "onboardingStorageLocation"
+    property int assumedChainstateSize: 0
+    property var settingsModel: optionsModel
+    readonly property int reducedStorageTargetGB: 2
+    readonly property int freshMinimumStorageRequiredGB: root.assumedChainstateSize + root.reducedStorageTargetGB
+    readonly property int minimumStorageRequiredGB: root.settingsModel.existingProfile
+        ? root.settingsModel.storageMinimumRequiredGB
+        : root.freshMinimumStorageRequiredGB
     buttonObjectName: "onboardingStorageLocationButton"
     navLeftDetail: NavButton {
         iconSource: "image://images/caret-left"
@@ -22,9 +29,13 @@ InformationPage {
     bold: true
     headerText: qsTr("Storage location")
     headerMargin: 0
-    description: qsTr("Where do you want to store the downloaded block data?\nYou need a minimum of %1GB of storage.").arg(chainModel.assumedChainstateSize + 1)
+    description: qsTr("Where do you want to store the downloaded block data?\nYou need a minimum of %1GB of storage.").arg(root.minimumStorageRequiredGB)
     descriptionMargin: 20
     detailActive: true
-    detailItem: StorageLocations {}
+    buttonEnabled: !loadedDetailItem || loadedDetailItem.validSelection
+    detailItem: StorageLocations {
+        settingsModel: root.settingsModel
+        minimumStorageRequiredGB: root.minimumStorageRequiredGB
+    }
     buttonText: qsTr("Next")
 }

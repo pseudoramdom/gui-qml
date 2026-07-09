@@ -18,8 +18,56 @@ class DebugLogModelTests : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void parsed_roles_extract_structured_log_lines();
     void refresh_resetsOnlyOnContentChange();
 };
+
+void DebugLogModelTests::parsed_roles_extract_structured_log_lines()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString log_path = dir.filePath("debug.log");
+
+    auto append_line = [&](const QByteArray& line) {
+        QFile file(log_path);
+        QVERIFY(file.open(QIODevice::Append | QIODevice::WriteOnly));
+        file.write(line + '\n');
+    };
+
+    append_line("2026-06-19T09:59:59Z connect() to 127.0.0.1:9050 failed after wait: Connection refused (61)");
+    append_line("2026-06-19T10:00:00Z Writing 0 mempool transactions to file...");
+    append_line("2026-06-19T10:00:01Z ERROR: boom <bad>");
+    append_line("2026-06-19T10:00:02Z UpdateTip: new best=abc height=1");
+
+    DebugLogModel model(fs::PathFromString(log_path.toStdString()));
+    model.refresh(/*full_load=*/true);
+    QTRY_COMPARE(model.rowCount(), 4);
+
+    const QModelIndex update_tip = model.index(0, 0);
+    QCOMPARE(model.data(update_tip, DebugLogModel::LineNumberRole).toString(), QStringLiteral("1"));
+    QCOMPARE(model.data(update_tip, DebugLogModel::CommandRole).toString(), QStringLiteral("UpdateTip"));
+    QCOMPARE(model.data(update_tip, DebugLogModel::MessageRole).toString(), QStringLiteral("new best=abc height=1"));
+    QCOMPARE(model.data(update_tip, DebugLogModel::ContentRole).toString(), QStringLiteral("UpdateTip: new best=abc height=1"));
+    QCOMPARE(model.data(update_tip, DebugLogModel::SeverityRole).toInt(), int(DebugLogModel::InfoSeverity));
+    QVERIFY(!model.data(update_tip, DebugLogModel::DateLabelRole).toString().isEmpty());
+
+    const QModelIndex error = model.index(1, 0);
+    QCOMPARE(model.data(error, DebugLogModel::CommandRole).toString(), QStringLiteral("ERROR"));
+    QCOMPARE(model.data(error, DebugLogModel::MessageRole).toString(), QStringLiteral("boom <bad>"));
+    QCOMPARE(model.data(error, DebugLogModel::ContentRole).toString(), QStringLiteral("ERROR: boom &lt;bad&gt;"));
+    QCOMPARE(model.data(error, DebugLogModel::SeverityRole).toInt(), int(DebugLogModel::ErrorSeverity));
+
+    const QModelIndex plain = model.index(2, 0);
+    QCOMPARE(model.data(plain, DebugLogModel::CommandRole).toString(), QString{});
+    QCOMPARE(model.data(plain, DebugLogModel::MessageRole).toString(), QStringLiteral("Writing 0 mempool transactions to file..."));
+    QCOMPARE(model.data(plain, DebugLogModel::SeverityRole).toInt(), int(DebugLogModel::InfoSeverity));
+
+    const QModelIndex endpoint = model.index(3, 0);
+    QCOMPARE(model.data(endpoint, DebugLogModel::CommandRole).toString(), QString{});
+    QCOMPARE(model.data(endpoint, DebugLogModel::MessageRole).toString(),
+             QStringLiteral("connect() to 127.0.0.1:9050 failed after wait: Connection refused (61)"));
+    QCOMPARE(model.data(endpoint, DebugLogModel::SeverityRole).toInt(), int(DebugLogModel::InfoSeverity));
+}
 
 // buildDisplayLines() skips the model reset when the displayed lines are
 // unchanged, so a redundant refresh on an idle log does not force the

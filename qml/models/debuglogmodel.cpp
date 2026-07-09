@@ -17,6 +17,8 @@
 
 static const QRegularExpression TIMESTAMP_RX(
     QStringLiteral(R"(^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s*(.*)$)"));
+static const QRegularExpression COMMAND_PREFIX_RX(
+    QStringLiteral(R"(^([^:]{1,80}):\s+(.*)$)"));
 
 DebugLogModel::DebugLogModel(const fs::path& log_path, QObject* parent)
     : QAbstractListModel(parent)
@@ -42,9 +44,13 @@ QVariant DebugLogModel::data(const QModelIndex& index, int role) const
 
     const LogLine& line = m_display_lines.at(index.row());
     switch (role) {
-    case LineNumberRole:  return line.lineNumber;
-    case ContentRole:    return line.content;
+    case LineNumberRole:   return line.lineNumber;
+    case ContentRole:      return line.content;
     case RelativeTimeRole: return line.relativeTime;
+    case CommandRole:      return line.command;
+    case MessageRole:      return line.message;
+    case DateLabelRole:    return line.relativeTime;
+    case SeverityRole:     return line.severity;
     }
     return {};
 }
@@ -55,6 +61,10 @@ QHash<int, QByteArray> DebugLogModel::roleNames() const
         {LineNumberRole,   "lineNumber"},
         {ContentRole,      "content"},
         {RelativeTimeRole, "relativeTime"},
+        {CommandRole,      "command"},
+        {MessageRole,      "message"},
+        {DateLabelRole,    "dateLabel"},
+        {SeverityRole,     "severity"},
     };
 }
 
@@ -89,17 +99,17 @@ void DebugLogModel::refresh(bool full_load)
     }
     m_read_in_flight = true;
 
-    const QString prev_top_content = m_all_lines.isEmpty()
+    const QString prev_top_identity = m_all_lines.isEmpty()
         ? QString{}
-        : m_all_lines.first().content;
+        : m_all_lines.first().identity;
 
     const fs::path path = m_log_path;
     const int load_limit = m_load_limit;
 
     auto* watcher = new QFutureWatcher<ReadResult>(this);
     connect(watcher, &QFutureWatcher<ReadResult>::finished, this,
-            [this, watcher, prev_top_content, full_load]() {
-                onReadCompleted(watcher->result(), prev_top_content, full_load);
+            [this, watcher, prev_top_identity, full_load]() {
+                onReadCompleted(watcher->result(), prev_top_identity, full_load);
                 watcher->deleteLater();
             });
     watcher->setFuture(QtConcurrent::run(&DebugLogModel::ReadAndFilter,
@@ -144,17 +154,30 @@ bool DebugLogModel::openLogFile()
 
 void DebugLogModel::updateRelativeTimes()
 {
-    if (m_display_lines.isEmpty()) return;
+    if (m_all_lines.isEmpty() && m_display_lines.isEmpty()) return;
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
 
-    // Update cached relative time strings in all_lines.
     for (LogLine& line : m_all_lines) {
         if (line.timestamp_ms >= 0)
             line.relativeTime = RelativeTimeLabelStatic(line.timestamp_ms, now_ms);
     }
 
-    // Rebuild display so delegates see the new strings.
-    buildDisplayLines();
+    int first_changed = -1;
+    int last_changed = -1;
+    for (int i = 0; i < m_display_lines.size(); ++i) {
+        LogLine& line = m_display_lines[i];
+        if (line.timestamp_ms < 0) continue;
+        const QString next_label = RelativeTimeLabelStatic(line.timestamp_ms, now_ms);
+        if (line.relativeTime == next_label) continue;
+        line.relativeTime = next_label;
+        if (first_changed < 0) first_changed = i;
+        last_changed = i;
+    }
+
+    if (first_changed >= 0) {
+        Q_EMIT dataChanged(index(first_changed, 0), index(last_changed, 0),
+                           {RelativeTimeRole, DateLabelRole});
+    }
 }
 
 // ── Private ──────────────────────────────────────────────────────────────────
@@ -222,15 +245,17 @@ QList<DebugLogModel::LogLine> DebugLogModel::ReadRawLines(const fs::path& log_pa
     result.reserve(raw.size());
     for (const QString& line : raw) {
         LogLine entry;
+        QString raw_message;
         const QRegularExpressionMatch m = TIMESTAMP_RX.match(line);
         if (m.hasMatch()) {
             const QDateTime dt = QDateTime::fromString(m.captured(1), Qt::ISODateWithMs);
             entry.timestamp_ms = dt.isValid() ? dt.toMSecsSinceEpoch() : -1;
-            entry.content      = m.captured(2).toHtmlEscaped();
+            raw_message = m.captured(2);
         } else {
             entry.timestamp_ms = -1;
-            entry.content      = line.toHtmlEscaped();
+            raw_message = line;
         }
+        PopulateParsedFields(entry, raw_message);
         entry.relativeTime = entry.timestamp_ms >= 0
             ? RelativeTimeLabelStatic(entry.timestamp_ms, now_ms)
             : QString{};
@@ -240,7 +265,7 @@ QList<DebugLogModel::LogLine> DebugLogModel::ReadRawLines(const fs::path& log_pa
 }
 
 void DebugLogModel::onReadCompleted(const ReadResult& result,
-                                   const QString& prev_top_content,
+                                   const QString& prev_top_identity,
                                    bool full_load)
 {
     // Propagate open-error state from the background read.
@@ -294,11 +319,11 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
         }
     } else {
         // Incremental refresh: prepend lines newer than the previous top entry.
-        if (!prev_top_content.isEmpty()) {
+        if (!prev_top_identity.isEmpty()) {
             QList<LogLine> new_entries;
             bool found_prev = false;
             for (int j = filtered.size() - 1; j >= 0; j--) {
-                if (filtered[j].content == prev_top_content) {
+                if (filtered[j].identity == prev_top_identity) {
                     found_prev = true;
                     break;
                 }
@@ -324,9 +349,9 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
     }
 
     // Emit newLinesAdded for the "new entries" pill.
-    if (!prev_top_content.isEmpty()) {
+    if (!prev_top_identity.isEmpty()) {
         for (int k = 0; k < m_all_lines.size(); k++) {
-            if (m_all_lines[k].content == prev_top_content) {
+            if (m_all_lines[k].identity == prev_top_identity) {
                 if (k > 0) Q_EMIT newLinesAdded(k);
                 break;
             }
@@ -384,6 +409,34 @@ void DebugLogModel::buildDisplayLines()
     beginResetModel();
     m_display_lines = filtered;
     endResetModel();
+}
+
+void DebugLogModel::PopulateParsedFields(LogLine& entry, const QString& raw_message)
+{
+    entry.content = raw_message.toHtmlEscaped();
+    entry.identity = QString::number(entry.timestamp_ms) + QStringLiteral("\n") + raw_message;
+
+    const QString trimmed = raw_message.trimmed();
+    entry.command.clear();
+    entry.message = trimmed;
+    entry.severity = InfoSeverity;
+
+    const QRegularExpressionMatch command_match = COMMAND_PREFIX_RX.match(trimmed);
+    if (command_match.hasMatch()) {
+        const QString command = command_match.captured(1).trimmed();
+        const QString message = command_match.captured(2).trimmed();
+        if (!command.isEmpty() && !message.isEmpty()) {
+            entry.command = command;
+            entry.message = message;
+        }
+    }
+
+    const QString severity_source = entry.command.isEmpty() ? trimmed : entry.command;
+    if (severity_source.compare(QLatin1String("ERROR"), Qt::CaseInsensitive) == 0) {
+        entry.severity = ErrorSeverity;
+    } else if (severity_source.compare(QLatin1String("WARNING"), Qt::CaseInsensitive) == 0) {
+        entry.severity = WarningSeverity;
+    }
 }
 
 QString DebugLogModel::relativeTimeLabel(qint64 timestamp_ms, qint64 now_ms) const

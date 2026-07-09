@@ -57,10 +57,7 @@ QString Transaction::prettyAmount(int display_unit) const
 {
     const CAmount net = netAmount();
     const bool plus_sign = (net > 0);
-    QmlBitcoinUnits::Unit unit = (display_unit == 1)
-        ? QmlBitcoinUnits::Unit::SAT
-        : QmlBitcoinUnits::Unit::BTC;
-    return QmlBitcoinUnits::format(unit, net, plus_sign);
+    return QmlBitcoinUnits::format(QmlBitcoinUnits::fromDisplayUnit(display_unit), net, plus_sign);
 }
 
 QString Transaction::dateTimeString() const

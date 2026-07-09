@@ -6,7 +6,8 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
-#include <QQmlEngine>
+#include <QFont>
+#include <QHash>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -18,6 +19,7 @@
 #include <qqml.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include <qml/components/blockclockdial.h>
@@ -63,7 +65,18 @@ Q_SIGNALS:
 private:
     bool m_is_desktop{true};
     bool m_wallet_enabled{true};
-    QString m_state{QStringLiteral("desktop")};
+    QString m_state{QStringLiteral("DESKTOP")};
+};
+
+class MockBuildInfo : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool isDebug READ isDebug CONSTANT)
+    Q_PROPERTY(QString fullClientVersion READ fullClientVersion CONSTANT)
+
+public:
+    bool isDebug() const { return false; }
+    QString fullClientVersion() const { return QStringLiteral("v0.0.0-test"); }
 };
 
 class MockPeerDetailsModel : public QObject
@@ -140,6 +153,8 @@ class MockBitcoinAmount : public QObject
 public:
     enum Unit {
         BTC,
+        mBTC,
+        uBTC,
         SAT
     };
     Q_ENUM(Unit)
@@ -168,7 +183,16 @@ public:
         }
 
         const double value = amount_text.toDouble(&ok);
-        return ok ? static_cast<qint64>(value * 100000000.0 + 0.5) : 0;
+        const double factor = m_unit == mBTC ? 100000.0 : (m_unit == uBTC ? 100.0 : 100000000.0);
+        return ok ? static_cast<qint64>(value * factor + 0.5) : 0;
+    }
+    QString unitLabel() const
+    {
+        if (m_unit == BTC) return QStringLiteral("BTC");
+        if (m_unit == mBTC) return QStringLiteral("mBTC");
+        if (m_unit == uBTC) return QStringLiteral("bits");
+        const qint64 sats = satoshi();
+        return sats == 1 || sats == -1 ? QStringLiteral("sat") : QStringLiteral("sats");
     }
     void setSatoshi(qint64 sats)
     {
@@ -185,12 +209,6 @@ public:
         m_display = normalized;
         Q_EMIT displayChanged();
         Q_EMIT amountChanged();
-    }
-    QString unitLabel() const
-    {
-        if (m_unit == BTC) return QStringLiteral("BTC");
-        const qint64 sats = satoshi();
-        return sats == 1 || sats == -1 ? QStringLiteral("sat") : QStringLiteral("sats");
     }
     QString displayWithUnit() const { return m_display.isEmpty() ? QString{} : m_display + QStringLiteral(" ") + unitLabel(); }
     Q_INVOKABLE void format()
@@ -1292,9 +1310,21 @@ class MockWalletController : public QObject
     Q_PROPERTY(bool initialized MEMBER m_initialized NOTIFY initializedChanged)
     Q_PROPERTY(bool isWalletLoaded MEMBER m_is_wallet_loaded NOTIFY isWalletLoadedChanged)
     Q_PROPERTY(bool noWalletsFound MEMBER m_no_wallets_found NOTIFY noWalletsFoundChanged)
-    Q_PROPERTY(QString walletLoadError MEMBER m_wallet_load_error NOTIFY walletLoadErrorChanged)
-    Q_PROPERTY(QString walletCreateError MEMBER m_wallet_create_error NOTIFY walletCreateErrorChanged)
     Q_PROPERTY(bool walletLoadInProgress MEMBER m_wallet_load_in_progress NOTIFY walletLoadInProgressChanged)
+    Q_PROPERTY(QString walletLoadError MEMBER m_wallet_load_error NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletLoadWarnings MEMBER m_wallet_load_warnings NOTIFY walletLoadWarningsChanged)
+    Q_PROPERTY(QString walletImportErrorTitle READ walletImportErrorTitle NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletImportErrorDescription READ walletImportErrorDescription NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletImportErrorHelpText READ walletImportErrorHelpText NOTIFY walletLoadErrorChanged)
+    Q_PROPERTY(QString walletCreateError MEMBER m_wallet_create_error NOTIFY walletCreateErrorChanged)
+    Q_PROPERTY(bool walletMigrationInProgress MEMBER m_wallet_migration_in_progress NOTIFY walletMigrationInProgressChanged)
+    Q_PROPERTY(QString walletMigrationError MEMBER m_wallet_migration_error NOTIFY walletMigrationErrorChanged)
+    Q_PROPERTY(QString lastImportedWalletName MEMBER m_last_imported_wallet_name NOTIFY lastImportedWalletInfoChanged)
+    Q_PROPERTY(QString lastImportedWalletKeyScheme MEMBER m_last_imported_wallet_key_scheme NOTIFY lastImportedWalletInfoChanged)
+    Q_PROPERTY(bool canCreateExternalSignerWallet MEMBER m_can_create_external_signer_wallet NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString externalSignerName MEMBER m_external_signer_name NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString externalSignerError MEMBER m_external_signer_error NOTIFY externalSignerStatusChanged)
+    Q_PROPERTY(QString suggestedExternalSignerWalletName MEMBER m_suggested_external_signer_wallet_name NOTIFY externalSignerStatusChanged)
     Q_PROPERTY(QString lastSelectedWalletName READ lastSelectedWalletName NOTIFY lastSelectedWalletNameChanged)
     Q_PROPERTY(QString lastClosedWalletName READ lastClosedWalletName NOTIFY lastClosedWalletNameChanged)
     Q_PROPERTY(int closeWalletCalls READ closeWalletCalls NOTIFY closeWalletCallsChanged)
@@ -1308,9 +1338,18 @@ public:
     bool m_initialized{true};
     bool m_is_wallet_loaded{true};
     bool m_no_wallets_found{false};
-    QString m_wallet_load_error;
-    QString m_wallet_create_error;
     bool m_wallet_load_in_progress{false};
+    QString m_wallet_load_error;
+    QString m_wallet_load_warnings;
+    QString m_wallet_create_error;
+    bool m_wallet_migration_in_progress{false};
+    QString m_wallet_migration_error;
+    QString m_last_imported_wallet_name;
+    QString m_last_imported_wallet_key_scheme;
+    bool m_can_create_external_signer_wallet{false};
+    QString m_external_signer_name;
+    QString m_external_signer_error;
+    QString m_suggested_external_signer_wallet_name{QStringLiteral("external_signer")};
     QObject* m_selected_wallet{nullptr};
     QString m_last_selected_wallet_name;
     QString m_last_closed_wallet_name;
@@ -1328,9 +1367,68 @@ public:
     int closeWalletCalls() const { return m_close_wallet_calls; }
     QString walletLocationOpenError() const { return m_wallet_location_open_error; }
     int openSelectedWalletLocationCalls() const { return m_open_selected_wallet_location_calls; }
+    QString walletImportErrorTitle() const { return m_wallet_load_error.isEmpty() ? QString{} : QStringLiteral("Failed to load wallet"); }
+    QString walletImportErrorDescription() const { return m_wallet_load_error; }
+    QString walletImportErrorHelpText() const { return QString{}; }
     Q_INVOKABLE QString homePath() const { return QStringLiteral("/tmp"); }
     Q_INVOKABLE QString normalizeWalletPath(const QString& path) const { return path; }
     Q_INVOKABLE bool walletPathExists(const QString&) const { return false; }
+    Q_INVOKABLE QString walletNameAvailabilityError(const QString&) const { return QString{}; }
+    Q_INVOKABLE void refreshExternalSignerStatus() { Q_EMIT externalSignerStatusChanged(); }
+    Q_INVOKABLE void clearWalletLoadStatus()
+    {
+        m_wallet_load_error.clear();
+        m_wallet_load_warnings.clear();
+        m_wallet_load_in_progress = false;
+        Q_EMIT walletLoadErrorChanged();
+        Q_EMIT walletLoadWarningsChanged();
+        Q_EMIT walletLoadInProgressChanged();
+    }
+    Q_INVOKABLE void clearWalletCreateStatus()
+    {
+        m_wallet_create_error.clear();
+        Q_EMIT walletCreateErrorChanged();
+    }
+    Q_INVOKABLE void clearWalletMigrationStatus()
+    {
+        m_wallet_migration_in_progress = false;
+        m_wallet_migration_error.clear();
+        Q_EMIT walletMigrationInProgressChanged();
+        Q_EMIT walletMigrationErrorChanged();
+    }
+    Q_INVOKABLE void createWatchOnlyWallet(const QString& /*name*/, const QString& /*xpub*/)
+    {
+        clearWalletLoadStatus();
+        Q_EMIT walletCreateSucceeded();
+    }
+    Q_INVOKABLE void createSingleSigWallet(const QString&, const QString&)
+    {
+        clearWalletCreateStatus();
+        clearWalletLoadStatus();
+        Q_EMIT walletCreateSucceeded();
+    }
+    Q_INVOKABLE bool createExternalSignerWallet(const QString&)
+    {
+        clearWalletLoadStatus();
+        if (!m_can_create_external_signer_wallet) {
+            m_wallet_load_error = QStringLiteral("Connect an external signer and try again.");
+            Q_EMIT walletLoadErrorChanged();
+            return false;
+        }
+        Q_EMIT walletCreateSucceeded();
+        return true;
+    }
+    Q_INVOKABLE void importWallet(const QString&)
+    {
+        clearWalletLoadStatus();
+        Q_EMIT walletImportSucceeded();
+    }
+    Q_INVOKABLE void migrateWallet(const QString&, const QString& = QString())
+    {
+        clearWalletMigrationStatus();
+        Q_EMIT walletMigrationSucceeded();
+    }
+    Q_INVOKABLE void requestOpenWalletSettings() { Q_EMIT openWalletSettingsRequested(); }
     void setSelectedWalletObject(QObject* wallet)
     {
         if (m_selected_wallet == wallet) return;
@@ -1352,6 +1450,24 @@ public:
         Q_EMIT lastClosedWalletNameChanged();
         Q_EMIT closeWalletCallsChanged();
     }
+    Q_INVOKABLE void setInitialized(bool initialized)
+    {
+        if (m_initialized == initialized) return;
+        m_initialized = initialized;
+        Q_EMIT initializedChanged();
+    }
+    Q_INVOKABLE void setWalletLoaded(bool loaded)
+    {
+        if (m_is_wallet_loaded == loaded) return;
+        m_is_wallet_loaded = loaded;
+        Q_EMIT isWalletLoadedChanged();
+    }
+    Q_INVOKABLE void setNoWalletsFound(bool no_wallets_found)
+    {
+        if (m_no_wallets_found == no_wallets_found) return;
+        m_no_wallets_found = no_wallets_found;
+        Q_EMIT noWalletsFoundChanged();
+    }
     Q_INVOKABLE void reset()
     {
         m_last_selected_wallet_name.clear();
@@ -1363,12 +1479,23 @@ public:
         m_open_selected_wallet_location_result = true;
         m_open_selected_wallet_location_error.clear();
         clearWalletLocationOpenError();
+        clearWalletLoadStatus();
+        clearWalletCreateStatus();
+        clearWalletMigrationStatus();
+        m_last_imported_wallet_name.clear();
+        m_last_imported_wallet_key_scheme.clear();
+        m_can_create_external_signer_wallet = false;
+        m_external_signer_name.clear();
+        m_external_signer_error.clear();
+        m_suggested_external_signer_wallet_name = QStringLiteral("external_signer");
         Q_EMIT lastSelectedWalletNameChanged();
         Q_EMIT lastClosedWalletNameChanged();
         Q_EMIT closeWalletCallsChanged();
         Q_EMIT closePaymentRequestDetailRequestsChanged();
         Q_EMIT openReceiveRequestsChanged();
         Q_EMIT openSelectedWalletLocationCallsChanged();
+        Q_EMIT lastImportedWalletInfoChanged();
+        Q_EMIT externalSignerStatusChanged();
     }
     Q_INVOKABLE void requestClosePaymentRequestDetail()
     {
@@ -1387,10 +1514,6 @@ public:
         QString t = xpub.trimmed();
         return t.length() >= 100 && (t.startsWith("xpub") || t.startsWith("tpub"));
     }
-    Q_INVOKABLE void createWatchOnlyWallet(const QString& /*name*/, const QString& /*xpub*/) { Q_EMIT walletCreateSucceeded(); }
-    Q_INVOKABLE void createSingleSigWallet(const QString& /*name*/, const QString& /*passphrase*/) { Q_EMIT walletCreateSucceeded(); }
-    Q_INVOKABLE void clearWalletLoadStatus() { m_wallet_load_error.clear(); Q_EMIT walletLoadErrorChanged(); }
-    Q_INVOKABLE void clearWalletCreateStatus() { m_wallet_create_error.clear(); Q_EMIT walletCreateErrorChanged(); }
     Q_INVOKABLE void setOpenSelectedWalletLocationResult(const bool result, const QString& error = QString())
     {
         m_open_selected_wallet_location_result = result;
@@ -1421,9 +1544,14 @@ Q_SIGNALS:
     void initializedChanged();
     void isWalletLoadedChanged();
     void noWalletsFoundChanged();
-    void walletLoadErrorChanged();
-    void walletCreateErrorChanged();
     void walletLoadInProgressChanged();
+    void walletLoadErrorChanged();
+    void walletLoadWarningsChanged();
+    void walletCreateErrorChanged();
+    void walletMigrationInProgressChanged();
+    void walletMigrationErrorChanged();
+    void lastImportedWalletInfoChanged();
+    void externalSignerStatusChanged();
     void lastSelectedWalletNameChanged();
     void lastClosedWalletNameChanged();
     void closeWalletCallsChanged();
@@ -1432,22 +1560,272 @@ Q_SIGNALS:
     void closePaymentRequestDetailRequested();
     void openReceiveRequestsChanged();
     void openReceiveRequested();
+    void openWalletSettingsRequested();
     void walletCreateSucceeded();
+    void walletImportSucceeded();
+    void walletMigrationSucceeded();
     void walletLocationOpenErrorChanged();
     void openSelectedWalletLocationCallsChanged();
 };
 
+class MockCoreSettingsModel;
+
+class MockCoreSettingEntryModel : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QString key READ key CONSTANT)
+    Q_PROPERTY(QVariant value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+    Q_PROPERTY(QString address READ address WRITE setAddress NOTIFY addressChanged)
+    Q_PROPERTY(QVariantMap status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool canEdit READ canEdit NOTIFY statusChanged)
+    Q_PROPERTY(QString infoText READ infoText NOTIFY statusChanged)
+
+public:
+    MockCoreSettingEntryModel(QString key, MockCoreSettingsModel& model, QObject* parent = nullptr);
+
+    QString key() const { return m_key; }
+    QVariant value() const;
+    void setValue(const QVariant& value);
+    bool enabled() const;
+    void setEnabled(bool enabled);
+    QString address() const;
+    void setAddress(const QString& address);
+    QVariantMap status() const;
+    bool canEdit() const;
+    QString infoText() const;
+
+    Q_INVOKABLE QString validate(const QString& value) const;
+    Q_INVOKABLE bool commitAddress(const QString& address);
+    Q_INVOKABLE QString defaultAddress() const;
+
+Q_SIGNALS:
+    void valueChanged();
+    void enabledChanged();
+    void addressChanged();
+    void statusChanged();
+
+private:
+    QString m_key;
+    MockCoreSettingsModel& m_model;
+};
+
+class MockCoreSettingsModel : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QVariantMap statuses READ statuses NOTIFY statusesChanged)
+
+public:
+    explicit MockCoreSettingsModel(QObject* parent = nullptr) : QObject{parent} {}
+
+    Q_INVOKABLE QObject* entry(const QString& key)
+    {
+        if (MockCoreSettingEntryModel* existing = m_entries.value(key)) return existing;
+        auto* entry = new MockCoreSettingEntryModel{key, *this, this};
+        m_entries.insert(key, entry);
+        return entry;
+    }
+
+    bool listen() const { return m_listen; }
+    bool natpmp() const { return m_natpmp; }
+    bool server() const { return m_server; }
+    bool prune() const { return m_prune; }
+    int pruneSizeGB() const { return m_prune_size_gb; }
+    bool proxyEnabled() const { return m_proxy_enabled; }
+    bool torEnabled() const { return m_tor_enabled; }
+    QString proxyAddress() const { return m_proxy_address; }
+    QString torAddress() const { return m_tor_address; }
+    QVariantMap statuses() const { return m_statuses; }
+    QVariantMap status(const QString& key) const { return m_statuses.value(key).toMap(); }
+    bool canEdit(const QString& key) const { return status(key).value(QStringLiteral("canEdit"), true).toBool(); }
+    QString defaultAddress() const { return QStringLiteral("127.0.0.1:9050"); }
+    QString validateAddress(const QString& value) const { return value.length() > 0 ? QString{} : QStringLiteral("Proxy location is required."); }
+
+    void setStatuses(const QVariantMap& statuses)
+    {
+        m_statuses = statuses;
+        Q_EMIT statusesChanged();
+        for (MockCoreSettingEntryModel* entry : std::as_const(m_entries)) {
+            Q_EMIT entry->statusChanged();
+        }
+    }
+
+    void setListen(bool value) { setBool(QStringLiteral("listen"), m_listen, value); }
+    void setNatpmp(bool value) { setBool(QStringLiteral("natpmp"), m_natpmp, value); }
+    void setServer(bool value) { setBool(QStringLiteral("server"), m_server, value); }
+    void setPrune(bool value) { setBool(QStringLiteral("prune"), m_prune, value); }
+    void setPruneSizeGB(int value)
+    {
+        if (!canEdit(QStringLiteral("prune")) || value == m_prune_size_gb || value < 1) return;
+        m_prune_size_gb = value;
+        Q_EMIT static_cast<MockCoreSettingEntryModel*>(entry(QStringLiteral("prune")))->valueChanged();
+        Q_EMIT changed();
+    }
+    void setProxyEnabled(bool value) { setBool(QStringLiteral("proxy"), m_proxy_enabled, value); }
+    void setTorEnabled(bool value) { setBool(QStringLiteral("onion"), m_tor_enabled, value); }
+    bool setProxyAddress(const QString& value) { return setAddress(QStringLiteral("proxy"), m_proxy_address, value); }
+    bool setTorAddress(const QString& value) { return setAddress(QStringLiteral("onion"), m_tor_address, value); }
+
+Q_SIGNALS:
+    void changed();
+    void statusesChanged();
+
+private:
+    friend class MockCoreSettingEntryModel;
+
+    void setBool(const QString& key, bool& field, bool value)
+    {
+        if (!canEdit(key) || value == field) return;
+        field = value;
+        auto* entry_model = static_cast<MockCoreSettingEntryModel*>(entry(key));
+        Q_EMIT entry_model->valueChanged();
+        Q_EMIT entry_model->enabledChanged();
+        Q_EMIT changed();
+    }
+
+    bool setAddress(const QString& key, QString& field, const QString& value)
+    {
+        if (!canEdit(key) || !validateAddress(value).isEmpty()) return false;
+        if (value == field) return true;
+        field = value;
+        auto* entry_model = static_cast<MockCoreSettingEntryModel*>(entry(key));
+        Q_EMIT entry_model->addressChanged();
+        Q_EMIT entry_model->valueChanged();
+        Q_EMIT changed();
+        return true;
+    }
+
+    bool m_listen{true};
+    bool m_natpmp{false};
+    bool m_server{false};
+    bool m_prune{true};
+    int m_prune_size_gb{2};
+    bool m_proxy_enabled{false};
+    bool m_tor_enabled{false};
+    QString m_proxy_address{QStringLiteral("127.0.0.1:9050")};
+    QString m_tor_address{QStringLiteral("127.0.0.1:9050")};
+    QVariantMap m_statuses;
+    QHash<QString, MockCoreSettingEntryModel*> m_entries;
+};
+
+MockCoreSettingEntryModel::MockCoreSettingEntryModel(QString key, MockCoreSettingsModel& model, QObject* parent)
+    : QObject{parent}
+    , m_key{std::move(key)}
+    , m_model{model}
+{
+}
+
+QVariant MockCoreSettingEntryModel::value() const
+{
+    if (m_key == QStringLiteral("listen")) return m_model.listen();
+    if (m_key == QStringLiteral("natpmp")) return m_model.natpmp();
+    if (m_key == QStringLiteral("server")) return m_model.server();
+    if (m_key == QStringLiteral("prune")) return m_model.pruneSizeGB();
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyAddress();
+    if (m_key == QStringLiteral("onion")) return m_model.torAddress();
+    return {};
+}
+
+void MockCoreSettingEntryModel::setValue(const QVariant& value)
+{
+    if (m_key == QStringLiteral("listen")) {
+        m_model.setListen(value.toBool());
+    } else if (m_key == QStringLiteral("natpmp")) {
+        m_model.setNatpmp(value.toBool());
+    } else if (m_key == QStringLiteral("server")) {
+        m_model.setServer(value.toBool());
+    } else if (m_key == QStringLiteral("prune")) {
+        m_model.setPruneSizeGB(value.toInt());
+    } else if (m_key == QStringLiteral("proxy")) {
+        m_model.setProxyAddress(value.toString());
+    } else if (m_key == QStringLiteral("onion")) {
+        m_model.setTorAddress(value.toString());
+    }
+}
+
+bool MockCoreSettingEntryModel::enabled() const
+{
+    if (m_key == QStringLiteral("listen")) return m_model.listen();
+    if (m_key == QStringLiteral("natpmp")) return m_model.natpmp();
+    if (m_key == QStringLiteral("server")) return m_model.server();
+    if (m_key == QStringLiteral("prune")) return m_model.prune();
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyEnabled();
+    if (m_key == QStringLiteral("onion")) return m_model.torEnabled();
+    return false;
+}
+
+void MockCoreSettingEntryModel::setEnabled(bool enabled)
+{
+    if (m_key == QStringLiteral("listen")) {
+        m_model.setListen(enabled);
+    } else if (m_key == QStringLiteral("natpmp")) {
+        m_model.setNatpmp(enabled);
+    } else if (m_key == QStringLiteral("server")) {
+        m_model.setServer(enabled);
+    } else if (m_key == QStringLiteral("prune")) {
+        m_model.setPrune(enabled);
+    } else if (m_key == QStringLiteral("proxy")) {
+        m_model.setProxyEnabled(enabled);
+    } else if (m_key == QStringLiteral("onion")) {
+        m_model.setTorEnabled(enabled);
+    }
+}
+
+QString MockCoreSettingEntryModel::address() const
+{
+    if (m_key == QStringLiteral("proxy")) return m_model.proxyAddress();
+    if (m_key == QStringLiteral("onion")) return m_model.torAddress();
+    return {};
+}
+
+void MockCoreSettingEntryModel::setAddress(const QString& address)
+{
+    commitAddress(address);
+}
+
+QVariantMap MockCoreSettingEntryModel::status() const
+{
+    return m_model.status(m_key);
+}
+
+bool MockCoreSettingEntryModel::canEdit() const
+{
+    return status().value(QStringLiteral("canEdit"), true).toBool();
+}
+
+QString MockCoreSettingEntryModel::infoText() const
+{
+    return status().value(QStringLiteral("infoText")).toString();
+}
+
+QString MockCoreSettingEntryModel::validate(const QString& value) const
+{
+    return m_model.validateAddress(value);
+}
+
+bool MockCoreSettingEntryModel::commitAddress(const QString& address)
+{
+    if (m_key == QStringLiteral("proxy")) return m_model.setProxyAddress(address);
+    if (m_key == QStringLiteral("onion")) return m_model.setTorAddress(address);
+    return false;
+}
+
+QString MockCoreSettingEntryModel::defaultAddress() const
+{
+    return m_model.defaultAddress();
+}
+
 class MockOptionsModel : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool listen MEMBER m_listen NOTIFY listenChanged)
-    Q_PROPERTY(bool natpmp MEMBER m_natpmp NOTIFY natpmpChanged)
-    Q_PROPERTY(bool server MEMBER m_server NOTIFY serverChanged)
+    Q_PROPERTY(bool listen READ listen WRITE setListen NOTIFY listenChanged)
+    Q_PROPERTY(bool natpmp READ natpmp WRITE setNatpmp NOTIFY natpmpChanged)
+    Q_PROPERTY(bool server READ server WRITE setServer NOTIFY serverChanged)
     Q_PROPERTY(int maxMempoolSizeMB READ maxMempoolSizeMB WRITE setMaxMempoolSizeMB NOTIFY maxMempoolSizeMBChanged)
     Q_PROPERTY(int maxMaxMempoolSizeMB MEMBER m_max_max_mempool_size_mb CONSTANT)
     Q_PROPERTY(int minMaxMempoolSizeMB MEMBER m_min_max_mempool_size_mb CONSTANT)
-    Q_PROPERTY(bool prune MEMBER m_prune NOTIFY pruneChanged)
-    Q_PROPERTY(int pruneSizeGB MEMBER m_prune_size_gb NOTIFY pruneSizeGBChanged)
+    Q_PROPERTY(bool prune READ prune WRITE setPrune NOTIFY pruneChanged)
+    Q_PROPERTY(int pruneSizeGB READ pruneSizeGB WRITE setPruneSizeGB NOTIFY pruneSizeGBChanged)
     Q_PROPERTY(QString dataDir MEMBER m_data_dir NOTIFY dataDirChanged)
     Q_PROPERTY(QString getDefaultDataDirString READ getDefaultDataDirString CONSTANT)
     Q_PROPERTY(int displayUnit READ displayUnit WRITE setDisplayUnit NOTIFY displayUnitChanged)
@@ -1455,6 +1833,37 @@ class MockOptionsModel : public QObject
     Q_PROPERTY(QString languageSummary READ languageSummary NOTIFY languageChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QStringList availableLanguages READ availableLanguages CONSTANT)
+    Q_PROPERTY(bool connectionSettingsDirty MEMBER m_connection_settings_dirty NOTIFY connectionSettingsDirtyChanged)
+    Q_PROPERTY(bool storageSettingsDirty MEMBER m_storage_settings_dirty NOTIFY storageSettingsDirtyChanged)
+    Q_PROPERTY(bool developerSettingsDirty MEMBER m_developer_settings_dirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool mempoolSettingsDirty MEMBER m_mempool_settings_dirty NOTIFY mempoolSettingsDirtyChanged)
+    Q_PROPERTY(bool proxySettingsDirty MEMBER m_proxy_settings_dirty NOTIFY proxySettingsDirtyChanged)
+    Q_PROPERTY(bool walletSettingsDirty MEMBER m_wallet_settings_dirty NOTIFY walletSettingsDirtyChanged)
+    Q_PROPERTY(bool restartRequired MEMBER m_restart_required NOTIFY restartRequiredChanged)
+    Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
+    Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
+    Q_PROPERTY(QString previewError MEMBER m_preview_error NOTIFY previewErrorChanged)
+    Q_PROPERTY(bool canFinish READ canFinish NOTIFY canFinishChanged)
+    Q_PROPERTY(int assumedBlockchainSize MEMBER m_assumed_blockchain_size NOTIFY assumedSizesChanged)
+    Q_PROPERTY(int assumedChainstateSize MEMBER m_assumed_chainstate_size NOTIFY assumedSizesChanged)
+    Q_PROPERTY(bool existingProfile READ existingProfile WRITE setExistingProfile NOTIFY storageStatusChanged)
+    Q_PROPERTY(bool storageCheckPending MEMBER m_storage_check_pending NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageStatus READ storageStatus NOTIFY storageStatusChanged)
+    Q_PROPERTY(int storageAvailableGB MEMBER m_storage_available_gb NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageAvailableText READ storageAvailableText NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storagePathMessage MEMBER m_storage_path_message NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageWarningText MEMBER m_storage_warning_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString storageErrorText MEMBER m_storage_error_text NOTIFY storageStatusChanged)
+    Q_PROPERTY(int storageMinimumRequiredGB READ storageMinimumRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(int fullStorageRequiredGB READ fullStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(int prunedStorageRequiredGB READ prunedStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(int selectedStorageRequiredGB READ selectedStorageRequiredGB NOTIFY storageStatusChanged)
+    Q_PROPERTY(bool storageEnoughForSelected READ storageEnoughForSelected NOTIFY storageStatusChanged)
+    Q_PROPERTY(bool storageEnoughForFull READ storageEnoughForFull NOTIFY storageStatusChanged)
+    Q_PROPERTY(QString thirdPartyTransactionUrls MEMBER m_third_party_transaction_urls NOTIFY thirdPartyTransactionUrlsChanged)
+    Q_PROPERTY(QString moneyFontChoice MEMBER m_money_font_choice NOTIFY moneyFontChoiceChanged)
+    Q_PROPERTY(QString externalSignerPath MEMBER m_external_signer_path NOTIFY externalSignerPathChanged)
+    Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
 public:
     bool m_listen{true};
@@ -1467,7 +1876,45 @@ public:
     int m_prune_size_gb{2};
     QString m_data_dir{QStringLiteral("/tmp/bitcoin-default")};
     QString m_custom_data_dir{QStringLiteral("/tmp/bitcoin-custom")};
+    bool m_connection_settings_dirty{false};
+    bool m_storage_settings_dirty{false};
+    bool m_developer_settings_dirty{false};
+    bool m_mempool_settings_dirty{false};
+    bool m_proxy_settings_dirty{false};
+    bool m_wallet_settings_dirty{false};
+    bool m_restart_required{false};
+    QString m_preview_error;
+    int m_assumed_blockchain_size{610};
+    int m_assumed_chainstate_size{12};
+    bool m_existing_profile{false};
+    bool m_storage_check_pending{false};
+    int m_storage_available_gb{123};
+    QString m_storage_path_message{QStringLiteral("Directory already exists.")};
+    QString m_storage_warning_text;
+    QString m_storage_error_text;
+    QString m_third_party_transaction_urls;
+    QString m_money_font_choice{QStringLiteral("embedded")};
+    QString m_external_signer_path;
+    QVariantMap m_core_setting_status_overrides;
+    MockCoreSettingsModel m_core_settings;
 
+    MockOptionsModel()
+    {
+        connect(&m_core_settings, &MockCoreSettingsModel::changed, this, &MockOptionsModel::syncCoreSettingsFromDocument);
+        m_core_settings.setListen(m_listen);
+        m_core_settings.setNatpmp(m_natpmp);
+        m_core_settings.setServer(m_server);
+        m_core_settings.setPrune(m_prune);
+        m_core_settings.setPruneSizeGB(m_prune_size_gb);
+        m_core_settings.setStatuses(coreSettingStatuses());
+    }
+
+    bool listen() const { return m_core_settings.listen(); }
+    void setListen(bool value) { m_core_settings.setListen(value); }
+    bool natpmp() const { return m_core_settings.natpmp(); }
+    void setNatpmp(bool value) { m_core_settings.setNatpmp(value); }
+    bool server() const { return m_core_settings.server(); }
+    void setServer(bool value) { m_core_settings.setServer(value); }
     int maxMempoolSizeMB() const { return m_max_mempool_size_mb; }
     void setMaxMempoolSizeMB(int value)
     {
@@ -1476,18 +1923,135 @@ public:
         Q_EMIT maxMempoolSizeMBChanged(value);
     }
     QString getDefaultDataDirString() const { return QStringLiteral("/tmp/bitcoin-default"); }
+    bool canFinish() const { return m_preview_error.isEmpty() && !m_storage_check_pending && m_storage_error_text.isEmpty(); }
+    QString storageStatus() const
+    {
+        if (m_storage_check_pending) return QStringLiteral("checking");
+        if (!m_storage_error_text.isEmpty()) return QStringLiteral("error");
+        if (!m_storage_warning_text.isEmpty()) return QStringLiteral("warning");
+        return QStringLiteral("ok");
+    }
+    QString storageAvailableText() const
+    {
+        return m_storage_check_pending ? QStringLiteral("Checking available storage...") : QStringLiteral("%1GB available").arg(m_storage_available_gb);
+    }
+    bool existingProfile() const { return m_existing_profile; }
+    void setExistingProfile(bool value)
+    {
+        if (m_existing_profile == value) return;
+        m_existing_profile = value;
+        Q_EMIT storageStatusChanged();
+        Q_EMIT canFinishChanged();
+    }
+    int storageMinimumRequiredGB() const { return m_existing_profile ? 1 : m_assumed_chainstate_size + 2; }
+    int fullStorageRequiredGB() const { return m_assumed_blockchain_size + m_assumed_chainstate_size; }
+    bool prune() const { return m_core_settings.prune(); }
+    void setPrune(bool value) { m_core_settings.setPrune(value); }
+    int pruneSizeGB() const { return m_core_settings.pruneSizeGB(); }
+    void setPruneSizeGB(int value) { m_core_settings.setPruneSizeGB(value); }
+    int prunedStorageRequiredGB() const { return pruneSizeGB() + m_assumed_chainstate_size; }
+    int selectedStorageRequiredGB() const { return m_existing_profile ? storageMinimumRequiredGB() : (prune() ? prunedStorageRequiredGB() : fullStorageRequiredGB()); }
+    bool storageEnoughForSelected() const { return m_storage_available_gb >= selectedStorageRequiredGB(); }
+    bool storageEnoughForFull() const { return m_existing_profile ? storageEnoughForSelected() : m_storage_available_gb >= fullStorageRequiredGB(); }
     Q_INVOKABLE QString getCustomDataDirString() const { return m_custom_data_dir; }
     Q_INVOKABLE void setCustomDataDirString(const QString& dir) { m_custom_data_dir = dir; }
-    Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { m_data_dir = dir; }
-    Q_INVOKABLE void onboard() {}
+    Q_INVOKABLE void setCustomDataDirArgs(const QString& dir) { selectCustomDataDir(dir); }
+    Q_INVOKABLE QString validateCustomDataDir(const QString&) const { return {}; }
+    Q_INVOKABLE bool selectCustomDataDir(const QString& dir) { m_custom_data_dir = dir; m_data_dir = dir; Q_EMIT dataDirChanged(); return true; }
+    Q_INVOKABLE void useDefaultDataDir() { m_data_dir = getDefaultDataDirString(); Q_EMIT dataDirChanged(); }
+    Q_INVOKABLE void setStorageStatusForTest(bool pending, int available_gb, const QString& error_text, const QString& warning_text) {
+        m_storage_check_pending = pending;
+        m_storage_available_gb = available_gb;
+        m_storage_error_text = error_text;
+        m_storage_warning_text = warning_text;
+        Q_EMIT storageStatusChanged();
+        Q_EMIT canFinishChanged();
+    }
+    Q_INVOKABLE QString validateProxyLocation(const QString& location) const { return location.length() > 0 ? QString{} : QStringLiteral("Proxy location is required."); }
+    Q_INVOKABLE bool commitProxyLocation(const QString&) { return true; }
+    Q_INVOKABLE bool commitTorLocation(const QString&) { return true; }
+    Q_INVOKABLE QString defaultProxyAddress() const { return QStringLiteral("127.0.0.1:9050"); }
+    QObject* coreSettings() { return &m_core_settings; }
+    QVariantMap coreSettingStatuses() const {
+        QVariantMap statuses;
+        const QStringList names{
+            QStringLiteral("listen"),
+            QStringLiteral("natpmp"),
+            QStringLiteral("server"),
+            QStringLiteral("prune"),
+            QStringLiteral("dbcache"),
+            QStringLiteral("par"),
+            QStringLiteral("maxmempool"),
+            QStringLiteral("proxy"),
+            QStringLiteral("onion"),
+            QStringLiteral("signer"),
+            QStringLiteral("lang"),
+        };
+        for (const QString& name : names) {
+            statuses.insert(name, coreSettingStatus(name));
+        }
+        return statuses;
+    }
+    Q_INVOKABLE QVariantMap coreSettingStatus(const QString& name) const {
+        if (m_core_setting_status_overrides.contains(name)) {
+            return m_core_setting_status_overrides.value(name).toMap();
+        }
+        return defaultCoreSettingStatus();
+    }
+    Q_INVOKABLE void setCoreSettingStatusForTest(const QString& name, bool can_edit, const QString& source, const QString& info_text, bool creates_gui_override) {
+        QVariantMap status = defaultCoreSettingStatus();
+        status.insert(QStringLiteral("source"), source);
+        status.insert(QStringLiteral("canEdit"), can_edit);
+        status.insert(QStringLiteral("commandLineOverridden"), !can_edit);
+        status.insert(QStringLiteral("hasRwSetting"), source == QStringLiteral("settings_json"));
+        status.insert(QStringLiteral("hasConfigSetting"), source == QStringLiteral("bitcoin_conf"));
+        status.insert(QStringLiteral("createsGuiOverride"), creates_gui_override);
+        status.insert(QStringLiteral("infoText"), info_text);
+        m_core_setting_status_overrides.insert(name, status);
+        m_core_settings.setStatuses(coreSettingStatuses());
+        Q_EMIT coreSettingStatusesChanged();
+    }
+    Q_INVOKABLE void clearCoreSettingStatusesForTest() {
+        m_core_setting_status_overrides.clear();
+        m_core_settings.setStatuses(coreSettingStatuses());
+        Q_EMIT coreSettingStatusesChanged();
+    }
+    QVariantMap defaultCoreSettingStatus() const {
+        QVariantMap status;
+        status.insert(QStringLiteral("source"), QStringLiteral("default"));
+        status.insert(QStringLiteral("canEdit"), true);
+        status.insert(QStringLiteral("commandLineOverridden"), false);
+        status.insert(QStringLiteral("hasRwSetting"), false);
+        status.insert(QStringLiteral("hasConfigSetting"), false);
+        status.insert(QStringLiteral("createsGuiOverride"), false);
+        status.insert(QStringLiteral("infoText"), QString{});
+        return status;
+    }
+    Q_INVOKABLE QVariantList thirdPartyTransactionLinks(const QString& txid) const {
+        QVariantList result;
+        if (m_third_party_transaction_urls.isEmpty()) return result;
+        QVariantMap link;
+        link.insert("host", "example.com");
+        link.insert("url", QString("https://example.com/tx/%1").arg(txid));
+        result.push_back(link);
+        return result;
+    }
 
     int displayUnit() const { return m_displayUnit; }
     void setDisplayUnit(int u) {
         if (u != m_displayUnit) { m_displayUnit = u; Q_EMIT displayUnitChanged(u); }
     }
-    QString displayUnitLabel() const { return m_displayUnit == 1 ? "sat" : "BTC"; }
+    QString displayUnitLabel() const
+    {
+        if (m_displayUnit == 1) return QStringLiteral("mBTC");
+        if (m_displayUnit == 2) return QStringLiteral("bits");
+        if (m_displayUnit == 3) return QStringLiteral("sat");
+        return QStringLiteral("BTC");
+    }
     Q_INVOKABLE QString displayUnitLabelForAmount(qint64 satoshi) const {
-        if (m_displayUnit != 1) return QString("₿");
+        if (m_displayUnit == 1) return QString("mBTC");
+        if (m_displayUnit == 2) return QString("bits");
+        if (m_displayUnit != 3) return QString("₿");
         return (qAbs(satoshi) == 1) ? QString("sat") : QString("sats");
     }
     QString language() const { return m_language; }
@@ -1496,12 +2060,38 @@ public:
     }
     QString languageSummary() const { return m_language.isEmpty() ? "System default" : m_language; }
     QStringList availableLanguages() const { return {"", "de", "es", "fr"}; }
+    QFont moneyFont() const { return QFont(QStringLiteral("Roboto Mono")); }
     Q_INVOKABLE QString languageLabel(const QString& tag) const {
         if (tag.isEmpty()) return "System default";
         if (tag == "de") return "Deutsch — German";
         if (tag == "es") return "Español — Spanish";
         if (tag == "fr") return "Français — French";
         return tag;
+    }
+
+    void syncCoreSettingsFromDocument() {
+        if (m_listen != m_core_settings.listen()) {
+            m_listen = m_core_settings.listen();
+            Q_EMIT listenChanged();
+        }
+        if (m_natpmp != m_core_settings.natpmp()) {
+            m_natpmp = m_core_settings.natpmp();
+            Q_EMIT natpmpChanged();
+        }
+        if (m_server != m_core_settings.server()) {
+            m_server = m_core_settings.server();
+            Q_EMIT serverChanged();
+        }
+        if (m_prune != m_core_settings.prune()) {
+            m_prune = m_core_settings.prune();
+            Q_EMIT pruneChanged();
+            Q_EMIT storageStatusChanged();
+        }
+        if (m_prune_size_gb != m_core_settings.pruneSizeGB()) {
+            m_prune_size_gb = m_core_settings.pruneSizeGB();
+            Q_EMIT pruneSizeGBChanged();
+            Q_EMIT storageStatusChanged();
+        }
     }
 
 Q_SIGNALS:
@@ -1514,6 +2104,22 @@ Q_SIGNALS:
     void dataDirChanged();
     void displayUnitChanged(int unit);
     void languageChanged();
+    void connectionSettingsDirtyChanged();
+    void storageSettingsDirtyChanged();
+    void developerSettingsDirtyChanged();
+    void mempoolSettingsDirtyChanged();
+    void proxySettingsDirtyChanged();
+    void walletSettingsDirtyChanged();
+    void restartRequiredChanged();
+    void coreSettingStatusesChanged();
+    void previewErrorChanged();
+    void canFinishChanged();
+    void assumedSizesChanged();
+    void storageStatusChanged();
+    void thirdPartyTransactionUrlsChanged();
+    void moneyFontChoiceChanged();
+    void externalSignerPathChanged();
+    void moneyFontChanged();
 
 private:
     int m_displayUnit{0};
@@ -1942,6 +2548,7 @@ class MockWalletListModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(int listWalletDirCalls READ listWalletDirCalls NOTIFY listWalletDirCallsChanged)
+    Q_PROPERTY(bool walletDirLoaded READ walletDirLoaded WRITE setWalletDirLoaded NOTIFY walletDirLoadedChanged)
 
 public:
     enum class LoadState {
@@ -1995,18 +2602,28 @@ public:
     }
 
     int listWalletDirCalls() const { return m_list_wallet_dir_calls; }
+    bool walletDirLoaded() const { return m_wallet_dir_loaded; }
 
     Q_INVOKABLE void listWalletDir()
     {
         ++m_list_wallet_dir_calls;
         Q_EMIT listWalletDirCallsChanged();
+        setWalletDirLoaded(true);
     }
     Q_INVOKABLE void reset()
     {
         m_list_wallet_dir_calls = 0;
+        m_wallet_dir_loaded = false;
         Q_EMIT listWalletDirCallsChanged();
+        Q_EMIT walletDirLoadedChanged();
         setWalletLoadState(QStringLiteral("testwallet"), 1);
         setWalletLoadState(QStringLiteral("secondarywallet"), 0);
+    }
+    Q_INVOKABLE void setWalletDirLoaded(bool loaded)
+    {
+        if (m_wallet_dir_loaded == loaded) return;
+        m_wallet_dir_loaded = loaded;
+        Q_EMIT walletDirLoadedChanged();
     }
     Q_INVOKABLE void setWalletLoadState(const QString& name, int state)
     {
@@ -2019,9 +2636,11 @@ public:
 
 Q_SIGNALS:
     void listWalletDirCallsChanged();
+    void walletDirLoadedChanged();
 
 private:
     int m_list_wallet_dir_calls{0};
+    bool m_wallet_dir_loaded{false};
     QStringList m_wallet_names{QStringLiteral("testwallet"), QStringLiteral("secondarywallet")};
     QVector<int> m_wallet_load_states{1, 0};
 };
@@ -2430,6 +3049,7 @@ public Q_SLOTS:
     {
         engine->addImportPath(QStringLiteral(BITCOINQML_QML_TEST_MOCKS_DIR));
         static MockAppMode app_mode;
+        static MockBuildInfo build_info;
         static MockOptionsModel options_model;
         static MockChainModel chain_model;
         static MockNodeModel node_model;
@@ -2459,6 +3079,7 @@ public Q_SLOTS:
         wallet_model.setCurrentPaymentRequest(&payment_request);
         wallet_controller.setSelectedWalletObject(&wallet_model);
         qmlRegisterSingletonInstance<MockAppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
+        qmlRegisterSingletonInstance<MockBuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
         qmlRegisterUncreatableType<MockPeerDetailsModel>(
             "org.bitcoincore.qt",
             1,
@@ -2485,7 +3106,6 @@ public Q_SLOTS:
         );
         qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
         qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
-        engine->rootContext()->setContextProperty(QStringLiteral("needOnboarding"), true);
         engine->rootContext()->setContextProperty(QStringLiteral("optionsModel"), &options_model);
         engine->rootContext()->setContextProperty(QStringLiteral("chainModel"), &chain_model);
         engine->rootContext()->setContextProperty(QStringLiteral("nodeModel"), &node_model);

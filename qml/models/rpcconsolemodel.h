@@ -36,6 +36,7 @@ public:
     enum Role {
         TimestampRole = Qt::UserRole + 1,
         ContentRole,
+        CategoryRole,
     };
 
     static constexpr int kMaxRows = 5000;
@@ -46,7 +47,7 @@ public:
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    void appendRow(const QString& timestamp, const QString& contentHtml);
+    void appendRow(const QString& timestamp, const QString& contentHtml, int category);
     void resetAll();
 
 Q_SIGNALS:
@@ -56,6 +57,7 @@ private:
     struct Row {
         QString timestamp;
         QString contentHtml;
+        int category;
     };
     QVector<Row> m_rows;
 };
@@ -107,6 +109,7 @@ public:
     QAbstractListModel* outputModel() { return &m_output_model; }
 
     Q_INVOKABLE bool submitCommand(const QString& command, const QString& wallet_name = {});
+    Q_INVOKABLE void ensureWelcomeMessage();
 
     /**
      * Navigate command history.
@@ -147,6 +150,7 @@ private:
     QColor m_reply_color{"#CCCCCC"};
     QColor m_error_color{"#EC6363"};
     QColor m_key_color{"#98C379"};
+    bool m_welcome_added{false};
 
     // History (stores redacted/filtered versions only)
     QStringList m_history;

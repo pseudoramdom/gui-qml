@@ -5,6 +5,7 @@
 #ifndef BITCOIN_QML_MODELS_OPTIONS_MODEL_H
 #define BITCOIN_QML_MODELS_OPTIONS_MODEL_H
 
+#include <common/args.h>
 #include <txdb.h>
 #include <common/settings.h>
 #include <node/caches.h>
@@ -14,11 +15,17 @@
 #include <policy/policy.h>
 #include <validation.h>
 
+#include <qml/core_settings.h>
+#include <qml/models/core_settings_model.h>
 #include <qml/models/settings_keys.h>
 
 #include <QObject>
+#include <QFont>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
+#include <QVariantList>
 #include <QUrl>
 
 namespace interfaces {
@@ -53,18 +60,28 @@ class OptionsQmlModel : public QObject
     Q_PROPERTY(QString externalSignerPath READ externalSignerPath WRITE setExternalSignerPath NOTIFY externalSignerPathChanged)
     Q_PROPERTY(bool proxySettingsDirty READ proxySettingsDirty NOTIFY proxySettingsDirtyChanged)
     Q_PROPERTY(bool walletSettingsDirty READ walletSettingsDirty NOTIFY walletSettingsDirtyChanged)
+    Q_PROPERTY(bool connectionSettingsDirty READ connectionSettingsDirty NOTIFY connectionSettingsDirtyChanged)
+    Q_PROPERTY(bool storageSettingsDirty READ storageSettingsDirty NOTIFY storageSettingsDirtyChanged)
+    Q_PROPERTY(bool developerSettingsDirty READ developerSettingsDirty NOTIFY developerSettingsDirtyChanged)
+    Q_PROPERTY(bool mempoolSettingsDirty READ mempoolSettingsDirty NOTIFY mempoolSettingsDirtyChanged)
+    Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY restartRequiredChanged)
+    Q_PROPERTY(QObject* coreSettings READ coreSettings CONSTANT)
+    Q_PROPERTY(QVariantMap coreSettingStatuses READ coreSettingStatuses NOTIFY coreSettingStatusesChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString languageSummary READ languageSummary NOTIFY languageChanged)
     Q_PROPERTY(QStringList availableLanguages READ availableLanguages CONSTANT)
     Q_PROPERTY(int displayUnit READ displayUnit WRITE setDisplayUnit NOTIFY displayUnitChanged)
     Q_PROPERTY(QString displayUnitLabel READ displayUnitLabel NOTIFY displayUnitChanged)
+    Q_PROPERTY(QString thirdPartyTransactionUrls READ thirdPartyTransactionUrls WRITE setThirdPartyTransactionUrls NOTIFY thirdPartyTransactionUrlsChanged)
+    Q_PROPERTY(QString moneyFontChoice READ moneyFontChoice WRITE setMoneyFontChoice NOTIFY moneyFontChoiceChanged)
+    Q_PROPERTY(QFont moneyFont READ moneyFont NOTIFY moneyFontChanged)
 
 public:
-    explicit OptionsQmlModel(interfaces::Node& node, bool is_onboarded);
+    explicit OptionsQmlModel(interfaces::Node& node, ArgsManager& args = gArgs);
 
     int dbcacheSizeMiB() const { return m_dbcache_size_mib; }
     void setDbcacheSizeMiB(int new_dbcache_size_mib);
-    bool listen() const { return m_listen; }
+    bool listen() const { return m_core_settings.values().listen; }
     void setListen(bool new_listen);
     int maxMempoolSizeMB() const { return m_max_mempool_size_mb; }
     void setMaxMempoolSizeMB(int new_max_mempool_size_mb);
@@ -74,15 +91,15 @@ public:
     int minDbcacheSizeMiB() const { return m_min_dbcache_size_mib; }
     int maxScriptThreads() const { return m_max_script_threads; }
     int minScriptThreads() const { return m_min_script_threads; }
-    bool natpmp() const { return m_natpmp; }
+    bool natpmp() const { return m_core_settings.values().natpmp; }
     void setNatpmp(bool new_natpmp);
-    bool prune() const { return m_prune; }
+    bool prune() const { return m_core_settings.values().prune; }
     void setPrune(bool new_prune);
-    int pruneSizeGB() const { return m_prune_size_gb; }
+    int pruneSizeGB() const { return m_core_settings.values().prune_size_gb; }
     void setPruneSizeGB(int new_prune_size);
     int scriptThreads() const { return m_script_threads; }
     void setScriptThreads(int new_script_threads);
-    bool server() const { return m_server; }
+    bool server() const { return m_core_settings.values().server; }
     void setServer(bool new_server);
     QString dataDir() const { return m_dataDir; }
     void setDataDir(QString new_data_dir);
@@ -90,29 +107,46 @@ public:
     QUrl getDefaultDataDirectory();
     Q_INVOKABLE bool setCustomDataDirArgs(QString path);
     Q_INVOKABLE QString getCustomDataDirString();
+    Q_INVOKABLE QString validateCustomDataDir(const QString& path) const;
+    Q_INVOKABLE bool selectCustomDataDir(const QString& path);
+    Q_INVOKABLE void useDefaultDataDir();
     Q_INVOKABLE QString externalSignerPathValidationError(const QString& path) const;
-    bool proxyEnabled() const { return m_proxy_enabled; }
+    bool proxyEnabled() const { return m_core_settings.values().proxy_enabled; }
     void setProxyEnabled(bool enabled);
-    QString proxyAddress() const { return m_proxy_address; }
+    QString proxyAddress() const { return m_core_settings.values().proxy_address; }
     void setProxyAddress(const QString& address);
-    bool torEnabled() const { return m_tor_enabled; }
+    bool torEnabled() const { return m_core_settings.values().tor_enabled; }
     void setTorEnabled(bool enabled);
-    QString torAddress() const { return m_tor_address; }
+    QString torAddress() const { return m_core_settings.values().tor_address; }
     void setTorAddress(const QString& address);
     QString externalSignerPath() const { return m_external_signer_path; }
     void setExternalSignerPath(const QString& path);
     bool proxySettingsDirty() const {
-        if (!m_onboarded) return false;
-        if (m_proxy_enabled != m_initial_proxy_enabled) return true;
-        if (m_proxy_enabled && m_proxy_address != m_initial_proxy_address) return true;
-        if (m_tor_enabled != m_initial_tor_enabled) return true;
-        if (m_tor_enabled && m_tor_address != m_initial_tor_address) return true;
+        const QmlCoreSettings::Values& values = m_core_settings.values();
+        if (values.proxy_enabled != m_initial_core_values.proxy_enabled) return true;
+        if (values.proxy_enabled && values.proxy_address != m_initial_core_values.proxy_address) return true;
+        if (values.tor_enabled != m_initial_core_values.tor_enabled) return true;
+        if (values.tor_enabled && values.tor_address != m_initial_core_values.tor_address) return true;
         return false;
     }
     bool walletSettingsDirty() const {
-        if (!m_onboarded) return false;
         return m_external_signer_path != m_initial_external_signer_path;
     }
+    bool connectionSettingsDirty() const;
+    bool storageSettingsDirty() const;
+    bool developerSettingsDirty() const;
+    bool mempoolSettingsDirty() const {
+        return m_max_mempool_size_mb != m_initial_max_mempool_size_mb;
+    }
+    bool restartRequired() const;
+    QObject* coreSettings() { return &m_core_settings; }
+    QVariantMap coreSettingStatuses() const;
+    Q_INVOKABLE QVariantMap coreSettingStatus(const QString& name) const;
+    Q_INVOKABLE QString validateProxyLocation(const QString& location) const;
+    Q_INVOKABLE bool commitProxyLocation(const QString& location);
+    Q_INVOKABLE bool commitTorLocation(const QString& location);
+    Q_INVOKABLE QString defaultProxyAddress() const;
+    Q_INVOKABLE QVariantList thirdPartyTransactionLinks(const QString& txid) const;
     QString language() const { return m_language; }
     void setLanguage(const QString& new_language);
     QString languageSummary() const;
@@ -122,12 +156,16 @@ public:
     void setDisplayUnit(int new_display_unit);
     QString displayUnitLabel() const;
     Q_INVOKABLE QString displayUnitLabelForAmount(qint64 satoshi) const;
+    QString thirdPartyTransactionUrls() const { return m_third_party_transaction_urls; }
+    void setThirdPartyTransactionUrls(const QString& urls);
+    QString moneyFontChoice() const { return m_money_font_choice; }
+    void setMoneyFontChoice(const QString& choice);
+    QFont moneyFont() const;
 
 public Q_SLOTS:
     void setCustomDataDirString(const QString &new_custom_datadir_string) {
         m_custom_datadir_string = new_custom_datadir_string;
     }
-    Q_INVOKABLE void onboard();
 
 Q_SIGNALS:
     void dbcacheSizeMiBChanged(int new_dbcache_size_mib);
@@ -147,18 +185,37 @@ Q_SIGNALS:
     void externalSignerPathChanged(QString path);
     void proxySettingsDirtyChanged();
     void walletSettingsDirtyChanged();
+    void connectionSettingsDirtyChanged();
+    void storageSettingsDirtyChanged();
+    void developerSettingsDirtyChanged();
+    void mempoolSettingsDirtyChanged();
+    void restartRequiredChanged();
+    void coreSettingStatusesChanged();
     void languageChanged();
     void displayUnitChanged(int new_display_unit);
+    void thirdPartyTransactionUrlsChanged();
+    void moneyFontChoiceChanged();
+    void moneyFontChanged();
 
 private:
+    struct DirtySnapshot {
+        bool connection{false};
+        bool storage{false};
+        bool developer{false};
+        bool mempool{false};
+        bool proxy{false};
+        bool wallet{false};
+        bool restart{false};
+    };
+
     interfaces::Node& m_node;
-    bool m_onboarded;
+    ArgsManager& m_args;
+    CoreSettingsModel m_core_settings;
 
     // Properties that are exposed to QML.
     int m_dbcache_size_mib;
     const int m_min_dbcache_size_mib{MIN_DB_CACHE >> 20};
     const int m_max_dbcache_size_mib{MAX_COINS_DB_CACHE >> 20};
-    bool m_listen;
     int m_max_mempool_size_mb;
     const int m_min_max_mempool_size_mb{
         static_cast<int>((DEFAULT_DESCENDANT_SIZE_LIMIT_KVB * 1000 * 40 + 999999) / 1000000)
@@ -168,28 +225,31 @@ private:
     };
     const int m_max_script_threads{MAX_SCRIPTCHECK_THREADS};
     const int m_min_script_threads{-GetNumCores()};
-    bool m_natpmp;
-    bool m_prune;
-    int m_prune_size_gb;
     int m_script_threads;
-    bool m_server;
     QString m_custom_datadir_string;
     QString m_dataDir;
-    bool m_proxy_enabled;
-    QString m_proxy_address;
-    bool m_tor_enabled;
-    QString m_tor_address;
     QString m_external_signer_path;
-    bool m_initial_proxy_enabled;
-    QString m_initial_proxy_address;
-    bool m_initial_tor_enabled;
-    QString m_initial_tor_address;
+    QmlCoreSettings::Values m_initial_core_values;
+    int m_initial_dbcache_size_mib;
+    int m_initial_max_mempool_size_mb;
+    int m_initial_script_threads;
     QString m_initial_external_signer_path;
     QString m_language;
     QStringList m_available_languages;
     int m_display_unit{0};
+    QString m_third_party_transaction_urls;
+    QString m_money_font_choice;
+    DirtySnapshot m_core_change_dirty_snapshot;
+    QVariantMap m_core_setting_statuses;
 
-    common::SettingsValue pruneSetting() const;
+    common::SettingsValue currentCoreSettingValue(const QString& name) const;
+    bool canEditCoreSetting(const QString& name) const;
+    bool writeCoreSettingOverride(const QString& name, const common::SettingsValue& value);
+    void refreshCoreSettingStatuses();
+    void resetDirtySnapshots();
+    DirtySnapshot dirtySnapshot() const;
+    void emitDirtySignals(const DirtySnapshot& before);
+    void applyRuntimeCoreChange(const QmlCoreSettings::Change& change, const DirtySnapshot& before);
     void buildAvailableLanguages();
 };
 

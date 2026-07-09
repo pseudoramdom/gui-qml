@@ -12,6 +12,7 @@ import "../controls"
 ColumnLayout {
     id: root
     spacing: 4
+    readonly property var maxMempoolStatus: (optionsModel.coreSettingStatuses || ({})).maxmempool || ({})
 
     function formatMegabytes(valueMb) {
         const rounded = Math.round(valueMb)
@@ -22,12 +23,11 @@ ColumnLayout {
     Setting {
         objectName: "mempoolTransactionsRow"
         Layout.fillWidth: true
-        state: "DISABLED"
-        disabledStateColor: Theme.color.neutral9
+        interactive: false
         header: qsTr("Transactions")
         actionItem: CoreText {
             text: Number(nodeModel.mempoolTransactionCount).toLocaleString(Qt.locale(), 'f', 0)
-            color: Theme.color.neutral7
+            color: Theme.color.neutral9
             font.pixelSize: 18
             fontStyleName: "Regular"
             horizontalAlignment: Text.AlignRight
@@ -41,14 +41,13 @@ ColumnLayout {
     Setting {
         objectName: "mempoolMemoryUsedRow"
         Layout.fillWidth: true
-        state: "DISABLED"
-        disabledStateColor: Theme.color.neutral9
+        interactive: false
         header: qsTr("Memory used")
         actionItem: CoreText {
             text: qsTr("%1 / %2")
                 .arg(root.formatMegabytes(nodeModel.mempoolUsageMB))
                 .arg(root.formatMegabytes(nodeModel.mempoolMaxUsageMB))
-            color: Theme.color.neutral7
+            color: Theme.color.neutral9
             font.pixelSize: 18
             fontStyleName: "Regular"
             horizontalAlignment: Text.AlignRight
@@ -64,14 +63,15 @@ ColumnLayout {
         objectName: "mempoolSizeLimitRow"
         Layout.fillWidth: true
         header: qsTr("Mempool size limit")
-        description: qsTr("Applies after restart")
-        descriptionColor: Theme.color.neutral7
+        state: root.maxMempoolStatus.canEdit === false ? "DISABLED" : "FILLED"
         errorText: qsTr("This is not a valid mempool size. Please choose a value between %1 and %2 MB.")
             .arg(optionsModel.minMaxMempoolSizeMB)
             .arg(optionsModel.maxMaxMempoolSizeMB)
         showErrorText: false
+        infoText: root.maxMempoolStatus.infoText || ""
+        showInfoText: !showErrorText && infoText.length > 0
         actionItem: ValueInput {
-            parentState: mempoolLimitSetting.state
+            parentState: mempoolLimitSetting.visualState
             description: optionsModel.maxMempoolSizeMB
             validator: QtQuickBase.IntValidator {
                 bottom: optionsModel.minMaxMempoolSizeMB

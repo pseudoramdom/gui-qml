@@ -11,6 +11,10 @@ PageStack {
     id: root
 
     signal finished()
+    property var settingsModel: optionsModel
+    property bool preInit: false
+    property int assumedBlockchainSize: 0
+    property int assumedChainstateSize: 0
     initialItem: cover
 
     Component {
@@ -36,6 +40,8 @@ PageStack {
     Component {
         id: storageLocation
         OnboardingStorageLocation {
+            settingsModel: root.settingsModel
+            assumedChainstateSize: root.assumedChainstateSize
             onBack: root.pop()
             onNext: root.push(storageAmount)
         }
@@ -43,6 +49,9 @@ PageStack {
     Component {
         id: storageAmount
         OnboardingStorageAmount {
+            settingsModel: root.settingsModel
+            assumedBlockchainSize: root.assumedBlockchainSize
+            assumedChainstateSize: root.assumedChainstateSize
             onBack: root.pop()
             onNext: root.push(connection)
         }
@@ -50,6 +59,7 @@ PageStack {
     Component {
         id: connection
         OnboardingConnection {
+            settingsModel: root.settingsModel
             onBack: root.pop()
             onNext: root.finished()
         }

@@ -14,6 +14,7 @@ Page {
     objectName: "onboardingConnection"
     signal back
     signal next
+    property var settingsModel: optionsModel
     background: null
     clip: true
     PageStack {
@@ -53,7 +54,7 @@ Page {
                     }
                 }
                 lastPage: true
-                buttonText: qsTr("Next")
+                buttonText: qsTr("Start")
                 buttonMargin: 20
                 onNext: root.next()
             }
@@ -62,6 +63,7 @@ Page {
             id: connectionSettings
             SettingsConnection {
                 onboarding: true
+                settingsModel: root.settingsModel
                 onBack: connectionStack.pop()
             }
         }

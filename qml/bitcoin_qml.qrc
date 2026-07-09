@@ -13,6 +13,7 @@
         <file>components/BlockCounter.qml</file>
         <file>components/ConnectionOptions.qml</file>
         <file>components/ConnectionSettings.qml</file>
+        <file>components/DebugLogOutputView.qml</file>
         <file>components/MempoolInformationRows.qml</file>
         <file>components/DeveloperOptions.qml</file>
         <file>components/ExternalSignerReviewActions.qml</file>
@@ -31,6 +32,7 @@
         <file>components/OptionPopup.qml</file>
         <file>components/PeersIndicator.qml</file>
         <file>components/ProxySettings.qml</file>
+        <file>components/SettingsRestartNotice.qml</file>
         <file>components/StorageLocations.qml</file>
         <file>components/Separator.qml</file>
         <file>components/StorageOptions.qml</file>
@@ -69,7 +71,6 @@
         <file>controls/Icon.qml</file>
         <file>controls/IconButton.qml</file>
         <file>controls/InformationPage.qml</file>
-        <file>controls/IPAddressValueInput.qml</file>
         <file>controls/KeyValueRow.qml</file>
         <file>controls/LabeledTextInput.qml</file>
         <file>controls/LabeledCoinControlButton.qml</file>
@@ -83,7 +84,9 @@
         <file>controls/PageIndicator.qml</file>
         <file>controls/PageStack.qml</file>
         <file>controls/ProgressIndicator.qml</file>
+        <file>controls/ProxyLocationInput.qml</file>
         <file>controls/QRImage.qml</file>
+        <file>controls/RightContentIcon.qml</file>
         <file>controls/qmldir</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>
@@ -98,7 +101,8 @@
         <file>controls/ValueInput.qml</file>
         <file>controls/WalletTypeListItem.qml</file>
         <file>pages/initerrormessage.qml</file>
-        <file>pages/main.qml</file>
+        <file>pages/MainWindow.qml</file>
+        <file>pages/preinit.qml</file>
         <file>pages/node/BannedPeers.qml</file>
         <file>pages/node/CommandConsole.qml</file>
         <file>pages/node/NetworkTraffic.qml</file>

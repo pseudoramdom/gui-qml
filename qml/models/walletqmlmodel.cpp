@@ -513,10 +513,7 @@ QString WalletQmlModel::balance() const
     if (!m_wallet) {
         return "0";
     }
-    QmlBitcoinUnits::Unit unit = (m_display_unit == 1)
-        ? QmlBitcoinUnits::Unit::SAT
-        : QmlBitcoinUnits::Unit::BTC;
-    return QmlBitcoinUnits::format(unit, m_wallet->getBalance());
+    return QmlBitcoinUnits::format(QmlBitcoinUnits::fromDisplayUnit(m_display_unit), m_wallet->getBalance());
 }
 
 qint64 WalletQmlModel::balanceSatoshi() const

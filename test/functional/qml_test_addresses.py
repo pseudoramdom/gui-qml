@@ -29,7 +29,8 @@ def wait_for_text(gui, object_name, expected, timeout_ms=10000):
 
 def create_wallet_through_gui(harness, gui):
     complete_onboarding(gui)
-    gui.click("createWalletWizardExitButton")
+    if gui.object_exists("createWalletWizard"):
+        gui.click("createWalletWizardExitButton")
     gui.wait_for_property("walletBadge", "loading", False, timeout_ms=30000)
     wait_for_rpc(harness.gui_rpc_port, timeout=30)
     gui.click("walletBadge")
@@ -119,7 +120,7 @@ def create_payment_request_from_first_unused_address(gui, expected_address):
 def run_test():
     harness = WalletFlowHarness("qml_addresses", port_offset=70)
     try:
-        harness.start_gui(reset_gui_settings=True)
+        harness.start_gui()
         gui = harness.driver
         create_wallet_through_gui(harness, gui)
         fund_wallet_for_send_context(harness)

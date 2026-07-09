@@ -31,6 +31,7 @@ TestCase {
 
     function init() {
         nodeModel.resetMempoolInfoPollingTestState()
+        optionsModel.mempoolSettingsDirty = false
     }
 
     function createMempoolInformationSettingsPage() {
@@ -62,5 +63,20 @@ TestCase {
         page.destroy()
         wait(0)
         compare(nodeModel.mempoolInfoPollingActive, false)
+    }
+
+    function test_restart_notice_hidden_when_mempool_settings_unchanged() {
+        const page = createMempoolInformationSettingsPage()
+        const notice = findChild(page, "mempoolRestartNotice")
+        verify(notice !== null)
+        compare(notice.visible, false)
+    }
+
+    function test_restart_notice_visible_when_mempool_settings_changed() {
+        optionsModel.mempoolSettingsDirty = true
+        const page = createMempoolInformationSettingsPage()
+        const notice = findChild(page, "mempoolRestartNotice")
+        verify(notice !== null)
+        compare(notice.visible, true)
     }
 }

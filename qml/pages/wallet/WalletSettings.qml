@@ -267,9 +267,6 @@ Page {
             objectName: "settingsAddresses"
             Layout.fillWidth: true
             header: qsTr("Addresses")
-            filledStateColor: Theme.color.neutral7
-            hoverStateColor: Theme.color.orange
-            activeStateColor: Theme.color.orange
             actionItem: CaretRightIcon {
                 color: addressesSetting.stateColor
             }
@@ -290,9 +287,6 @@ Page {
             visible: root.canManagePassphrase
             Layout.fillWidth: true
             header: root.wallet && root.wallet.isEncrypted ? qsTr("Update password") : qsTr("Set password")
-            filledStateColor: Theme.color.neutral7
-            hoverStateColor: Theme.color.orange
-            activeStateColor: Theme.color.orange
             actionItem: CaretRightIcon {
                 color: passwordSetting.stateColor
             }
@@ -306,9 +300,6 @@ Page {
             objectName: "walletSettingsBackupRow"
             Layout.fillWidth: true
             header: qsTr("Back up wallet")
-            filledStateColor: Theme.color.neutral7
-            hoverStateColor: Theme.color.orange
-            activeStateColor: Theme.color.orange
             actionItem: CaretRightIcon {
                 color: backupSetting.stateColor
             }
@@ -322,9 +313,6 @@ Page {
             objectName: "walletSettingsSignVerifyMessageRow"
             Layout.fillWidth: true
             header: qsTr("Sign or verify message")
-            filledStateColor: Theme.color.neutral7
-            hoverStateColor: Theme.color.orange
-            activeStateColor: Theme.color.orange
             actionItem: CaretRightIcon {
                 color: signVerifyMessageSetting.stateColor
             }

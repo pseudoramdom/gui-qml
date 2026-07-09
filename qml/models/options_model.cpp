@@ -9,36 +9,31 @@
 #include <common/system.h>
 #include <interfaces/node.h>
 #include <mapport.h>
-#include <node/caches.h>
+#include <qml/bitcoinunits.h>
+#include <net.h>
+#include <qml/core_settings.h>
 #include <node/chainstatemanager_args.h>
+#include <qml/datadir.h>
 #include <qml/guiconstants.h>
-#include <txdb.h>
+#include <qml/legacy_settings_migration.h>
 #include <univalue.h>
-#include <util/fs.h>
-#include <util/fs_helpers.h>
-#include <validation.h>
 
 #include <cassert>
 
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSet>
 #include <QStringList>
+#include <QTimer>
+#include <QUrl>
+#include <QVariantMap>
 
 namespace {
-int PruneMiBtoGB(int64_t mib)
-{
-    return (mib * 1024 * 1024 + GB_BYTES - 1) / GB_BYTES;
-}
-
-int64_t PruneGBtoMiB(int gb)
-{
-    return gb * GB_BYTES / 1024 / 1024;
-}
-
 QString NormalizeCommandPath(const QString& path)
 {
     const QString trimmed = path.trimmed();
@@ -87,233 +82,338 @@ bool TokenLooksLikePath(const QString& token)
            token.contains(QLatin1Char('\\')) ||
            QDir::isAbsolutePath(token);
 }
+
+constexpr const char* MONEY_FONT_EMBEDDED{"embedded"};
+constexpr const char* MONEY_FONT_BEST_SYSTEM{"best_system"};
+
+int NormalizeDisplayUnit(int display_unit)
+{
+    return display_unit >= 0 && display_unit <= 3 ? display_unit : 0;
+}
+
+bool IsThirdPartyTransactionUrlSchemeAllowed(const QUrl& url)
+{
+    const QString scheme = url.scheme().toLower();
+    return scheme == QStringLiteral("http") || scheme == QStringLiteral("https");
+}
+
+QVariantMap CoreSettingStatusesForNames(const QVariantMap& statuses, const QStringList& names)
+{
+    QVariantMap subset;
+    for (const QString& name : names) {
+        const auto it = statuses.constFind(name);
+        if (it != statuses.constEnd()) {
+            subset.insert(name, *it);
+        }
+    }
+    return subset;
+}
 } // namespace
 
-OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, bool is_onboarded)
+OptionsQmlModel::OptionsQmlModel(interfaces::Node& node, ArgsManager& args)
     : m_node{node}
-    , m_onboarded{is_onboarded}
+    , m_args{args}
+    , m_core_settings{QmlCoreSettings::LoadDisplayValues(node, args)}
 {
-    m_dbcache_size_mib = SettingToInt(m_node.getPersistentSetting("dbcache"), DEFAULT_DB_CACHE >> 20);
+    m_core_setting_statuses = QmlCoreSettings::BuildCoreSettingStatuses(m_args, QmlCoreSettings::CoreSettingNames());
+    m_core_settings.setStatuses(CoreSettingStatusesForNames(m_core_setting_statuses, QmlCoreSettings::OnboardingCoreSettingNames()));
 
-    m_listen = SettingToBool(m_node.getPersistentSetting("listen"), DEFAULT_LISTEN);
+    m_dbcache_size_mib = SettingToInt(QmlCoreSettings::DisplaySettingValue(m_node, m_args, QStringLiteral("dbcache")), DEFAULT_DB_CACHE >> 20);
 
-    m_max_mempool_size_mb = SettingToInt(m_node.getPersistentSetting("maxmempool"), DEFAULT_MAX_MEMPOOL_SIZE_MB);
+    m_max_mempool_size_mb = SettingToInt(QmlCoreSettings::DisplaySettingValue(m_node, m_args, QStringLiteral("maxmempool")), DEFAULT_MAX_MEMPOOL_SIZE_MB);
 
-    m_natpmp = SettingToBool(m_node.getPersistentSetting("natpmp"), DEFAULT_NATPMP);
+    m_script_threads = SettingToInt(QmlCoreSettings::DisplaySettingValue(m_node, m_args, QStringLiteral("par")), DEFAULT_SCRIPTCHECK_THREADS);
 
-    int64_t prune_value{SettingToInt(m_node.getPersistentSetting("prune"), 0)};
-    m_prune = (prune_value > 1);
-    m_prune_size_gb = m_prune ? PruneMiBtoGB(prune_value) : DEFAULT_PRUNE_TARGET_GB;
+    m_external_signer_path = QString::fromStdString(SettingToString(QmlCoreSettings::DisplaySettingValue(m_node, m_args, QStringLiteral("signer")), ""));
 
-    m_script_threads = SettingToInt(m_node.getPersistentSetting("par"), DEFAULT_SCRIPTCHECK_THREADS);
+    resetDirtySnapshots();
 
-    m_server = SettingToBool(m_node.getPersistentSetting("server"), false);
-
-    m_dataDir = getDefaultDataDirString();
-
-    QString proxy_setting = QString::fromStdString(SettingToString(m_node.getPersistentSetting("proxy"), ""));
-    if (proxy_setting == "0") proxy_setting.clear();
-    m_proxy_enabled = !proxy_setting.isEmpty();
-    m_proxy_address = proxy_setting;
-
-    QString onion_setting = QString::fromStdString(SettingToString(m_node.getPersistentSetting("onion"), ""));
-    if (onion_setting == "0") onion_setting.clear();
-    m_tor_enabled = !onion_setting.isEmpty();
-    m_tor_address = onion_setting;
-
-    m_external_signer_path = QString::fromStdString(SettingToString(m_node.getPersistentSetting("signer"), ""));
-
-    m_initial_proxy_enabled = m_proxy_enabled;
-    m_initial_proxy_address = m_proxy_address;
-    m_initial_tor_enabled   = m_tor_enabled;
-    m_initial_tor_address   = m_tor_address;
-    m_initial_external_signer_path = m_external_signer_path;
-
+    const QString gui_data_dir = QmlDataDir::ReadGuiDataDir();
+    const QString active_data_dir = QString::fromStdString(m_args.GetDataDirBase().utf8string());
+    if (!active_data_dir.isEmpty() &&
+        (QmlDataDir::HasExplicitDataDirArg(m_args) || QmlDataDir::IsDefaultDataDir(gui_data_dir))) {
+        m_dataDir = active_data_dir;
+    } else {
+        m_dataDir = gui_data_dir;
+    }
+    if (!QmlDataDir::IsDefaultDataDir(m_dataDir)) {
+        m_custom_datadir_string = m_dataDir;
+    }
     QSettings settings;
-    m_language = settings.value(SettingsKeys::LANGUAGE, "").toString();
-    m_display_unit = settings.value(SettingsKeys::DISPLAY_UNIT, 0).toInt();
+    m_language = QString::fromStdString(SettingToString(QmlCoreSettings::DisplaySettingValue(m_node, m_args, QStringLiteral("lang")), ""));
+    if (m_language.isEmpty() && !QmlCoreSettings::IsCommandLineOverridden(m_args, QStringLiteral("lang"))) {
+        m_language = settings.value(SettingsKeys::LANGUAGE, "").toString();
+    }
+    const QString command_line_language = QString::fromStdString(m_args.GetArg("-lang", ""));
+    if (!command_line_language.isEmpty()) {
+        m_language = command_line_language;
+    }
+    const int display_unit_fallback{QmlLegacySettings::ReadLegacyGuiDisplayUnit(QString::fromStdString(m_args.GetChainTypeString()), 0)};
+    m_display_unit = NormalizeDisplayUnit(settings.value(SettingsKeys::DISPLAY_UNIT, display_unit_fallback).toInt());
+    m_third_party_transaction_urls = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, "").toString();
+    m_money_font_choice = settings.value(SettingsKeys::MONEY_FONT_CHOICE, MONEY_FONT_EMBEDDED).toString();
+    if (m_money_font_choice != MONEY_FONT_EMBEDDED && m_money_font_choice != MONEY_FONT_BEST_SYSTEM) {
+        m_money_font_choice = MONEY_FONT_EMBEDDED;
+    }
 
     buildAvailableLanguages();
+
+    m_core_settings.setBeforeChangeHandler([this](CoreSettingsModel::ChangeOrigin) {
+        m_core_change_dirty_snapshot = dirtySnapshot();
+    });
+    m_core_settings.setAfterChangeHandler([this](const QmlCoreSettings::Change& change, CoreSettingsModel::ChangeOrigin) {
+        applyRuntimeCoreChange(change, m_core_change_dirty_snapshot);
+    });
+}
+
+bool OptionsQmlModel::connectionSettingsDirty() const
+{
+    const QmlCoreSettings::Values& values = m_core_settings.values();
+    return values.listen != m_initial_core_values.listen || values.server != m_initial_core_values.server;
+}
+
+bool OptionsQmlModel::storageSettingsDirty() const
+{
+    const QmlCoreSettings::Values& values = m_core_settings.values();
+    if (values.prune != m_initial_core_values.prune) return true;
+    return values.prune && values.prune_size_gb != m_initial_core_values.prune_size_gb;
+}
+
+bool OptionsQmlModel::developerSettingsDirty() const
+{
+    return m_dbcache_size_mib != m_initial_dbcache_size_mib ||
+           m_script_threads != m_initial_script_threads;
+}
+
+bool OptionsQmlModel::restartRequired() const
+{
+    return connectionSettingsDirty() ||
+           storageSettingsDirty() ||
+           developerSettingsDirty() ||
+           mempoolSettingsDirty() ||
+           proxySettingsDirty() ||
+           walletSettingsDirty();
+}
+
+QVariantMap OptionsQmlModel::coreSettingStatuses() const
+{
+    return m_core_setting_statuses;
+}
+
+QVariantMap OptionsQmlModel::coreSettingStatus(const QString& name) const
+{
+    const auto it = m_core_setting_statuses.constFind(name);
+    if (it != m_core_setting_statuses.constEnd()) {
+        return it->toMap();
+    }
+    return QmlCoreSettings::CoreSettingStatus(m_args, name);
+}
+
+void OptionsQmlModel::resetDirtySnapshots()
+{
+    m_initial_core_values = m_core_settings.values();
+    m_initial_dbcache_size_mib = m_dbcache_size_mib;
+    m_initial_max_mempool_size_mb = m_max_mempool_size_mb;
+    m_initial_script_threads = m_script_threads;
+    m_initial_external_signer_path = m_external_signer_path;
+}
+
+OptionsQmlModel::DirtySnapshot OptionsQmlModel::dirtySnapshot() const
+{
+    DirtySnapshot snapshot;
+    snapshot.connection = connectionSettingsDirty();
+    snapshot.storage = storageSettingsDirty();
+    snapshot.developer = developerSettingsDirty();
+    snapshot.mempool = mempoolSettingsDirty();
+    snapshot.proxy = proxySettingsDirty();
+    snapshot.wallet = walletSettingsDirty();
+    snapshot.restart = restartRequired();
+    return snapshot;
+}
+
+void OptionsQmlModel::emitDirtySignals(const DirtySnapshot& before)
+{
+    if (connectionSettingsDirty() != before.connection) Q_EMIT connectionSettingsDirtyChanged();
+    if (storageSettingsDirty() != before.storage) Q_EMIT storageSettingsDirtyChanged();
+    if (developerSettingsDirty() != before.developer) Q_EMIT developerSettingsDirtyChanged();
+    if (mempoolSettingsDirty() != before.mempool) Q_EMIT mempoolSettingsDirtyChanged();
+    if (proxySettingsDirty() != before.proxy) Q_EMIT proxySettingsDirtyChanged();
+    if (walletSettingsDirty() != before.wallet) Q_EMIT walletSettingsDirtyChanged();
+    if (restartRequired() != before.restart) Q_EMIT restartRequiredChanged();
+}
+
+void OptionsQmlModel::applyRuntimeCoreChange(const QmlCoreSettings::Change& change, const DirtySnapshot& before)
+{
+    if (!change.accepted || !QmlCoreSettings::ValuesChanged(change)) return;
+    m_core_settings.writeToNode(m_node, m_args, change.setting_name);
+    refreshCoreSettingStatuses();
+    QmlCoreSettings::EmitCoreSettingSignals(*this, change);
+    if (change.setting_name == QStringLiteral("natpmp")) {
+        // NAT-PMP mirrors Qt Widgets as a live-applied option, not a
+        // restart-required connection setting.
+        // Disabling NAT-PMP joins the mapport thread and can briefly block.
+        // Defer the live apply so the switch state and animation are not
+        // held behind that work.
+        QTimer::singleShot(200, this, [this, natpmp = change.after.natpmp] {
+            m_node.mapPort(natpmp);
+        });
+    }
+    emitDirtySignals(before);
+}
+
+common::SettingsValue OptionsQmlModel::currentCoreSettingValue(const QString& name) const
+{
+    if (QmlCoreSettings::OnboardingCoreSettingNames().contains(name)) return m_core_settings.settingValue(name);
+    if (name == QStringLiteral("dbcache")) return m_dbcache_size_mib;
+    if (name == QStringLiteral("par")) return m_script_threads;
+    if (name == QStringLiteral("maxmempool")) return m_max_mempool_size_mb;
+    if (name == QStringLiteral("signer")) return common::SettingsValue{m_external_signer_path.toStdString()};
+    if (name == QStringLiteral("lang")) return common::SettingsValue{m_language.toStdString()};
+    return {};
+}
+
+bool OptionsQmlModel::canEditCoreSetting(const QString& name) const
+{
+    if (QmlCoreSettings::OnboardingCoreSettingNames().contains(name)) return m_core_settings.canEdit(name);
+    const QVariantMap status = coreSettingStatus(name);
+    return status.isEmpty() ? QmlCoreSettings::CanEditCoreSetting(m_args, name) : status.value(QStringLiteral("canEdit"), true).toBool();
+}
+
+bool OptionsQmlModel::writeCoreSettingOverride(const QString& name, const common::SettingsValue& value)
+{
+    if (!canEditCoreSetting(name)) return false;
+    QmlCoreSettings::UpdateRwSetting(m_node, name, QmlCoreSettings::GuiOverrideValue(m_args, name, value));
+    refreshCoreSettingStatuses();
+    return true;
+}
+
+void OptionsQmlModel::refreshCoreSettingStatuses()
+{
+    const QVariantMap statuses = QmlCoreSettings::BuildCoreSettingStatuses(m_args, QmlCoreSettings::CoreSettingNames());
+    if (statuses == m_core_setting_statuses) return;
+    m_core_setting_statuses = statuses;
+    m_core_settings.setStatuses(CoreSettingStatusesForNames(m_core_setting_statuses, QmlCoreSettings::OnboardingCoreSettingNames()));
+    Q_EMIT coreSettingStatusesChanged();
 }
 
 void OptionsQmlModel::setDbcacheSizeMiB(int new_dbcache_size_mib)
 {
+    if (!canEditCoreSetting(QStringLiteral("dbcache"))) return;
     if (new_dbcache_size_mib != m_dbcache_size_mib) {
+        const DirtySnapshot before = dirtySnapshot();
         m_dbcache_size_mib = new_dbcache_size_mib;
-        if (m_onboarded) {
-            m_node.updateRwSetting("dbcache", new_dbcache_size_mib);
-        }
+        writeCoreSettingOverride(QStringLiteral("dbcache"), currentCoreSettingValue(QStringLiteral("dbcache")));
         Q_EMIT dbcacheSizeMiBChanged(new_dbcache_size_mib);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setListen(bool new_listen)
 {
-    if (new_listen != m_listen) {
-        m_listen = new_listen;
-        if (m_onboarded) {
-            m_node.updateRwSetting("listen", new_listen);
-        }
-        Q_EMIT listenChanged(new_listen);
-    }
+    m_core_settings.changeListen(new_listen);
 }
 
 void OptionsQmlModel::setMaxMempoolSizeMB(int new_max_mempool_size_mb)
 {
+    if (!canEditCoreSetting(QStringLiteral("maxmempool"))) return;
     if (new_max_mempool_size_mb != m_max_mempool_size_mb) {
+        const DirtySnapshot before = dirtySnapshot();
         m_max_mempool_size_mb = new_max_mempool_size_mb;
-        if (m_onboarded) {
-            m_node.updateRwSetting("maxmempool", new_max_mempool_size_mb);
-        }
+        writeCoreSettingOverride(QStringLiteral("maxmempool"), currentCoreSettingValue(QStringLiteral("maxmempool")));
         Q_EMIT maxMempoolSizeMBChanged(new_max_mempool_size_mb);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setNatpmp(bool new_natpmp)
 {
-    if (new_natpmp != m_natpmp) {
-        m_natpmp = new_natpmp;
-        if (m_onboarded) {
-            m_node.updateRwSetting("natpmp", new_natpmp);
-        }
-        Q_EMIT natpmpChanged(new_natpmp);
-    }
+    m_core_settings.changeNatpmp(new_natpmp);
 }
 
 void OptionsQmlModel::setPrune(bool new_prune)
 {
-    if (new_prune != m_prune) {
-        m_prune = new_prune;
-        if (m_onboarded) {
-            m_node.updateRwSetting("prune", pruneSetting());
-        }
-        Q_EMIT pruneChanged(new_prune);
-    }
+    m_core_settings.changePrune(new_prune);
 }
 
 void OptionsQmlModel::setPruneSizeGB(int new_prune_size_gb)
 {
-    if (new_prune_size_gb != m_prune_size_gb) {
-        m_prune_size_gb = new_prune_size_gb;
-        if (m_onboarded) {
-            m_node.updateRwSetting("prune", pruneSetting());
-        }
-        Q_EMIT pruneSizeGBChanged(new_prune_size_gb);
-    }
+    m_core_settings.changePruneSizeGB(new_prune_size_gb);
 }
 
 void OptionsQmlModel::setScriptThreads(int new_script_threads)
 {
+    if (!canEditCoreSetting(QStringLiteral("par"))) return;
     if (new_script_threads != m_script_threads) {
+        const DirtySnapshot before = dirtySnapshot();
         m_script_threads = new_script_threads;
-        if (m_onboarded) {
-            m_node.updateRwSetting("par", new_script_threads);
-        }
+        writeCoreSettingOverride(QStringLiteral("par"), currentCoreSettingValue(QStringLiteral("par")));
         Q_EMIT scriptThreadsChanged(new_script_threads);
+        emitDirtySignals(before);
     }
 }
 
 void OptionsQmlModel::setServer(bool new_server)
 {
-    if (new_server != m_server) {
-        m_server = new_server;
-        if (m_onboarded) {
-            m_node.updateRwSetting("server", new_server);
-        }
-        Q_EMIT serverChanged(new_server);
-    }
+    m_core_settings.changeServer(new_server);
 }
 
 void OptionsQmlModel::setProxyEnabled(bool enabled)
 {
-    if (enabled != m_proxy_enabled) {
-        bool was_dirty = proxySettingsDirty();
-        m_proxy_enabled = enabled;
-        if (m_onboarded) {
-            if (enabled && !m_proxy_address.isEmpty()) {
-                m_node.updateRwSetting("proxy", m_proxy_address.toStdString());
-            } else {
-                m_node.updateRwSetting("proxy", common::SettingsValue{});
-            }
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT proxyEnabledChanged(enabled);
-    }
+    m_core_settings.changeProxyEnabled(enabled);
 }
 
 void OptionsQmlModel::setProxyAddress(const QString& address)
 {
-    if (address != m_proxy_address) {
-        bool was_dirty = proxySettingsDirty();
-        m_proxy_address = address;
-        if (m_onboarded && m_proxy_enabled) {
-            m_node.updateRwSetting("proxy", address.toStdString());
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT proxyAddressChanged(address);
-    }
+    commitProxyLocation(address);
 }
 
 void OptionsQmlModel::setTorEnabled(bool enabled)
 {
-    if (enabled != m_tor_enabled) {
-        bool was_dirty = proxySettingsDirty();
-        m_tor_enabled = enabled;
-        if (m_onboarded) {
-            if (enabled && !m_tor_address.isEmpty()) {
-                m_node.updateRwSetting("onion", m_tor_address.toStdString());
-            } else {
-                m_node.updateRwSetting("onion", common::SettingsValue{});
-            }
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT torEnabledChanged(enabled);
-    }
+    m_core_settings.changeTorEnabled(enabled);
 }
 
 void OptionsQmlModel::setTorAddress(const QString& address)
 {
-    if (address != m_tor_address) {
-        bool was_dirty = proxySettingsDirty();
-        m_tor_address = address;
-        if (m_onboarded && m_tor_enabled) {
-            m_node.updateRwSetting("onion", address.toStdString());
-        }
-        if (proxySettingsDirty() != was_dirty) {
-            Q_EMIT proxySettingsDirtyChanged();
-        }
-        Q_EMIT torAddressChanged(address);
-    }
+    commitTorLocation(address);
+}
+
+QString OptionsQmlModel::validateProxyLocation(const QString& location) const
+{
+    return m_core_settings.validateProxyLocation(location);
+}
+
+bool OptionsQmlModel::commitProxyLocation(const QString& location)
+{
+    const QmlCoreSettings::Change change = m_core_settings.changeProxyLocation(location);
+    return change.accepted;
+}
+
+bool OptionsQmlModel::commitTorLocation(const QString& location)
+{
+    const QmlCoreSettings::Change change = m_core_settings.changeTorLocation(location);
+    return change.accepted;
+}
+
+QString OptionsQmlModel::defaultProxyAddress() const
+{
+    return m_core_settings.defaultProxyAddress();
 }
 
 void OptionsQmlModel::setExternalSignerPath(const QString& path)
 {
+    if (!canEditCoreSetting(QStringLiteral("signer"))) return;
     const QString normalized_path = NormalizeCommandPath(path);
     if (normalized_path != m_external_signer_path) {
-        bool was_dirty = walletSettingsDirty();
+        const DirtySnapshot before = dirtySnapshot();
         m_external_signer_path = normalized_path;
         if (m_external_signer_path.isEmpty()) {
             m_node.forceSetting("signer", common::SettingsValue{});
         } else {
             m_node.forceSetting("signer", m_external_signer_path.toStdString());
         }
-        if (m_onboarded) {
-            if (m_external_signer_path.isEmpty()) {
-                m_node.updateRwSetting("signer", common::SettingsValue{});
-            } else {
-                m_node.updateRwSetting("signer", m_external_signer_path.toStdString());
-            }
-        }
-        if (walletSettingsDirty() != was_dirty) {
-            Q_EMIT walletSettingsDirtyChanged();
-        }
+        writeCoreSettingOverride(QStringLiteral("signer"), currentCoreSettingValue(QStringLiteral("signer")));
         Q_EMIT externalSignerPathChanged(m_external_signer_path);
+        emitDirtySignals(before);
     }
 }
 
@@ -342,20 +442,9 @@ QString OptionsQmlModel::externalSignerPathValidationError(const QString& path) 
     return {};
 }
 
-common::SettingsValue OptionsQmlModel::pruneSetting() const
-{
-    assert(!m_prune || m_prune_size_gb >= 1);
-    return m_prune ? PruneGBtoMiB(m_prune_size_gb) : 0;
-}
-
-QString PathToQString(const fs::path &path)
-{
-    return QString::fromStdString(path.utf8string());
-}
-
 QString OptionsQmlModel::getDefaultDataDirString()
 {
-    return PathToQString(GetDefaultDataDir());
+    return QmlDataDir::DefaultDataDirString();
 }
 
 
@@ -367,24 +456,7 @@ QUrl OptionsQmlModel::getDefaultDataDirectory()
 
 bool OptionsQmlModel::setCustomDataDirArgs(QString path)
 {
-    if (!path.isEmpty()) {
-    // TODO: add actual custom data wiring
-#ifdef __ANDROID__
-    QString uri = path;
-    QString originalPrefix = "content://com.android.externalstorage.documents/tree/primary%3A";
-    QString newPrefix = "/storage/self/primary/";
-    QString path = uri.replace(originalPrefix, newPrefix);
-#else
-    path = QUrl(path).toLocalFile();
-#endif // __ANDROID__
-        qDebug() << "PlaceHolder: Created data directory: " << path;
-
-        m_custom_datadir_string = path;
-        Q_EMIT customDataDirStringChanged(path);
-        setDataDir(path);
-        return true;
-    }
-    return false;
+    return selectCustomDataDir(path);
 }
 
 QString OptionsQmlModel::getCustomDataDirString()
@@ -395,17 +467,44 @@ QString OptionsQmlModel::getCustomDataDirString()
     return m_custom_datadir_string;
 }
 
+QString OptionsQmlModel::validateCustomDataDir(const QString& path) const
+{
+    return QmlDataDir::ValidateCustomDataDir(path);
+}
+
+bool OptionsQmlModel::selectCustomDataDir(const QString& path)
+{
+    const QString local_path = QmlDataDir::NormalizeLocalPath(path);
+    if (local_path == m_custom_datadir_string && m_dataDir == local_path) {
+        return true;
+    }
+
+    QString error;
+    if (!QmlDataDir::PersistGuiDataDirSelection(local_path, &error)) {
+        return false;
+    }
+
+    m_custom_datadir_string = local_path;
+    Q_EMIT customDataDirStringChanged(local_path);
+    setDataDir(local_path);
+    return true;
+}
+
+void OptionsQmlModel::useDefaultDataDir()
+{
+    m_custom_datadir_string.clear();
+    QmlDataDir::PersistDefaultDataDirSelection();
+    Q_EMIT customDataDirStringChanged({});
+    setDataDir(getDefaultDataDirString());
+}
+
 void OptionsQmlModel::setDataDir(QString new_data_dir)
 {
-    if (new_data_dir != m_dataDir) {
-        m_dataDir = new_data_dir;
-        if (!getCustomDataDirString().isEmpty() && (new_data_dir != getDefaultDataDirString())) {
-            m_dataDir = getCustomDataDirString();
-        } else {
-            m_dataDir = getDefaultDataDirString();
-        }
-        Q_EMIT dataDirChanged(new_data_dir);
-    }
+    const QString normalized = QmlDataDir::NormalizeLocalPath(new_data_dir);
+    const QString effective = normalized.isEmpty() ? getDefaultDataDirString() : normalized;
+    if (effective == m_dataDir) return;
+    m_dataDir = effective;
+    Q_EMIT dataDirChanged(m_dataDir);
 }
 
 void OptionsQmlModel::buildAvailableLanguages()
@@ -431,10 +530,12 @@ void OptionsQmlModel::buildAvailableLanguages()
 
 void OptionsQmlModel::setLanguage(const QString& new_language)
 {
+    if (!canEditCoreSetting(QStringLiteral("lang"))) return;
     if (new_language != m_language) {
         m_language = new_language;
         QSettings settings;
         settings.setValue(SettingsKeys::LANGUAGE, m_language);
+        writeCoreSettingOverride(QStringLiteral("lang"), currentCoreSettingValue(QStringLiteral("lang")));
         Q_EMIT languageChanged();
     }
 }
@@ -470,6 +571,7 @@ QString OptionsQmlModel::languageLabel(const QString& locale_tag) const
 
 void OptionsQmlModel::setDisplayUnit(int new_display_unit)
 {
+    new_display_unit = NormalizeDisplayUnit(new_display_unit);
     if (new_display_unit != m_display_unit) {
         m_display_unit = new_display_unit;
         QSettings settings;
@@ -478,57 +580,61 @@ void OptionsQmlModel::setDisplayUnit(int new_display_unit)
     }
 }
 
+void OptionsQmlModel::setThirdPartyTransactionUrls(const QString& urls)
+{
+    if (urls == m_third_party_transaction_urls) return;
+    m_third_party_transaction_urls = urls;
+    QSettings settings;
+    settings.setValue(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS, m_third_party_transaction_urls);
+    Q_EMIT thirdPartyTransactionUrlsChanged();
+}
+
+QVariantList OptionsQmlModel::thirdPartyTransactionLinks(const QString& txid) const
+{
+    QVariantList links;
+    const QStringList urls = m_third_party_transaction_urls.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+    for (QString url : urls) {
+        url = url.trimmed();
+        if (!url.contains(QStringLiteral("%s"))) continue;
+        const QUrl parsed{url, QUrl::StrictMode};
+        if (!IsThirdPartyTransactionUrlSchemeAllowed(parsed)) continue;
+        const QString host = parsed.host();
+        if (host.isEmpty()) continue;
+        QVariantMap link;
+        link.insert(QStringLiteral("host"), host);
+        link.insert(QStringLiteral("url"), url.replace(QStringLiteral("%s"), txid));
+        links.push_back(link);
+    }
+    return links;
+}
+
+void OptionsQmlModel::setMoneyFontChoice(const QString& choice)
+{
+    const QString normalized = choice == MONEY_FONT_BEST_SYSTEM ? QString{MONEY_FONT_BEST_SYSTEM} : QString{MONEY_FONT_EMBEDDED};
+    if (normalized == m_money_font_choice) return;
+    m_money_font_choice = normalized;
+    QSettings settings;
+    settings.setValue(SettingsKeys::MONEY_FONT_CHOICE, m_money_font_choice);
+    Q_EMIT moneyFontChoiceChanged();
+    Q_EMIT moneyFontChanged();
+}
+
+QFont OptionsQmlModel::moneyFont() const
+{
+    if (m_money_font_choice == MONEY_FONT_BEST_SYSTEM) {
+        return QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    }
+    QFont font{QStringLiteral("Roboto Mono")};
+    font.setStyleName(QStringLiteral("Regular"));
+    return font;
+}
+
 QString OptionsQmlModel::displayUnitLabel() const
 {
-    return (m_display_unit == 1) ? QStringLiteral("sat") : QStringLiteral("BTC");
+    return QmlBitcoinUnits::label(QmlBitcoinUnits::fromDisplayUnit(m_display_unit));
 }
 
 QString OptionsQmlModel::displayUnitLabelForAmount(qint64 satoshi) const
 {
-    if (m_display_unit != 1) return QStringLiteral("₿");
-    return (qAbs(satoshi) == 1) ? QStringLiteral("sat") : QStringLiteral("sats");
-}
-
-
-void OptionsQmlModel::onboard()
-{
-    m_node.resetSettings();
-    if (m_external_signer_path.isEmpty()) {
-        m_node.forceSetting("signer", common::SettingsValue{});
-    } else {
-        m_node.forceSetting("signer", m_external_signer_path.toStdString());
-    }
-    if (m_dbcache_size_mib != DEFAULT_DB_CACHE >> 20) {
-        m_node.updateRwSetting("dbcache", m_dbcache_size_mib);
-    }
-    if (m_listen) {
-        m_node.updateRwSetting("listen", m_listen);
-    }
-    if (m_natpmp) {
-        m_node.updateRwSetting("natpmp", m_natpmp);
-    }
-    if (m_prune) {
-        m_node.updateRwSetting("prune", pruneSetting());
-    }
-    if (m_script_threads != DEFAULT_SCRIPTCHECK_THREADS) {
-        m_node.updateRwSetting("par", m_script_threads);
-    }
-    if (m_server) {
-        m_node.updateRwSetting("server", m_server);
-    }
-    if (m_proxy_enabled && !m_proxy_address.isEmpty()) {
-        m_node.updateRwSetting("proxy", m_proxy_address.toStdString());
-    }
-    if (m_tor_enabled && !m_tor_address.isEmpty()) {
-        m_node.updateRwSetting("onion", m_tor_address.toStdString());
-    }
-    if (!m_external_signer_path.isEmpty()) {
-        m_node.updateRwSetting("signer", m_external_signer_path.toStdString());
-    }
-    m_onboarded = true;
-    m_initial_proxy_enabled = m_proxy_enabled;
-    m_initial_proxy_address = m_proxy_address;
-    m_initial_tor_enabled   = m_tor_enabled;
-    m_initial_tor_address   = m_tor_address;
-    m_initial_external_signer_path = m_external_signer_path;
+    return QmlBitcoinUnits::displayLabel(QmlBitcoinUnits::fromDisplayUnit(m_display_unit), satoshi);
 }

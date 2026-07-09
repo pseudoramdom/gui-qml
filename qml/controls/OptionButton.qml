@@ -9,29 +9,35 @@ import QtQuick.Layouts 1.15
 Button {
     id: button
     property string description
+    property string errorText: ""
+    property bool showErrorText: errorText.length > 0
     property bool recommended: false
     property string image: ""
     property string customDir: ""
     padding: 15
     checkable: true
+    hoverEnabled: enabled
     implicitWidth: 450
     background: Rectangle {
+        objectName: "optionButtonBackground"
         border.width: 1
-        border.color: button.checked ? Theme.color.orange : button.hovered ? Theme.color.neutral9 : Theme.color.neutral5
+        border.color: !button.enabled ? Theme.color.neutral4 : button.checked ? Theme.color.orange : button.hovered ? Theme.color.neutral9 : Theme.color.neutral5
         radius: 10
         color: "transparent"
         FocusBorder {
-            visible: button.visualFocus
+            visible: button.enabled && button.visualFocus
             borderRadius: 14
         }
     }
 
     MouseArea {
         anchors.fill: parent
+        enabled: button.enabled
         onClicked: button.clicked()
     }
 
     contentItem: RowLayout {
+        opacity: button.enabled ? 1 : 0.55
         spacing: 3
         Loader {
             active: button.image !== ""
@@ -109,13 +115,33 @@ Button {
                     }
                 }
             }
+            Loader {
+                Layout.topMargin: 3
+                Layout.fillWidth: true
+                active: button.showErrorText && button.errorText.length > 0
+                visible: active
+                sourceComponent: Label {
+                    objectName: "optionButtonErrorText"
+                    Layout.fillWidth: true
+                    font.family: "BitcoinCoreSans"
+                    font.styleName: "Regular"
+                    font.pixelSize: 15
+                    color: Theme.color.red
+                    text: button.errorText
+                    horizontalAlignment: Text.AlignLeft
+                    wrapMode: Text.WordWrap
+                }
+            }
         }
         Item {
-            height: parent.height
-            width: 40
+            visible: button.checked
+            Layout.alignment: Qt.AlignVCenter
+            Layout.minimumWidth: visible ? 30 : 0
+            Layout.preferredWidth: visible ? 30 : 0
+            Layout.maximumWidth: visible ? 30 : 0
+            Layout.preferredHeight: 30
             Icon {
                 anchors.centerIn: parent
-                visible: button.checked
                 source: "image://images/check"
                 color: Theme.color.neutral9
                 size: 24

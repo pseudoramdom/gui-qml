@@ -124,6 +124,18 @@ def _set_activity_search_visible(gui, visible):
     gui.wait_for_property("activitySearchToggle", "checked", visible, timeout_ms=5000)
 
 
+def _activity_transaction_row(gui):
+    row_count = int(gui.get_property("activityListView", "count"))
+    for row in range(row_count):
+        gui.set_property("activityListView", "currentIndex", row)
+        gui.invoke("activityListView", "forceLayout")
+        gui.settle()
+        txid = gui.get_list_item_property("activityListView", row, "txid")
+        if txid:
+            return txid, gui.get_list_item_property("activityListView", row, "amount")
+    raise AssertionError("Expected Activity list to contain a transaction row")
+
+
 def run_test(save_screenshots=False, screenshot_root=None):
     case_name = "qml_activity_filter_export"
     harness = WalletFlowHarness(case_name, port_offset=90)
@@ -218,7 +230,7 @@ def run_test(save_screenshots=False, screenshot_root=None):
         checkpoints.checkpoint("display unit switched to sats", gui)
 
         gui.click("activityTabButton")
-        gui.wait_for_property("activityFilterProxyModel", "displayUnit", 1, timeout_ms=5000)
+        gui.wait_for_property("activityFilterProxyModel", "displayUnit", 3, timeout_ms=5000)
         gui.wait_for_property("activityFilterProxyModel", "count", 1, timeout_ms=10000)
         checkpoints.checkpoint("returned to filtered Activity in sats", gui)
 
@@ -259,6 +271,16 @@ def run_test(save_screenshots=False, screenshot_root=None):
         assert type_filter in (0, "TypeAll"), f"Type filter was not reset: {type_filter!r}"
         gui.wait_for_property("activityFilterProxyModel", "count", 2, timeout_ms=10000)
         checkpoints.checkpoint("search controls closed and filters reset", gui)
+
+        txid, expected_amount = _activity_transaction_row(gui)
+        gui.invoke("activityStack", "navigateToTransaction", [txid])
+        gui.wait_for_page("activityDetailsPage", timeout_ms=10000)
+        actual_amount = gui.get_property("activityDetailsPage", "amount")
+        assert actual_amount == expected_amount, (
+            "Activity details did not use the selected display unit: "
+            f"expected {expected_amount!r}, got {actual_amount!r}"
+        )
+        checkpoints.checkpoint("Activity details amount uses selected display unit", gui)
 
         print(f"[{case_name}] completed")
         return 0

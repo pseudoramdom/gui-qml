@@ -35,12 +35,9 @@ BitcoinAmount* WalletQmlModelTransaction::amountAmount() const
 
 QString WalletQmlModelTransaction::formatWithUnit(CAmount value, int display_unit)
 {
-    auto unit = (display_unit == 1) ? QmlBitcoinUnits::Unit::SAT : QmlBitcoinUnits::Unit::BTC;
-    QString num = QmlBitcoinUnits::format(unit, value, false, QmlBitcoinUnits::SeparatorStyle::STANDARD);
-    if (display_unit == 1) {
-        return num + " " + ((qAbs(value) == 1) ? QStringLiteral("sat") : QStringLiteral("sats"));
-    }
-    return num + " ₿";
+    const QmlBitcoinUnits::Unit unit = QmlBitcoinUnits::fromDisplayUnit(display_unit);
+    const QString num = QmlBitcoinUnits::format(unit, value, false, QmlBitcoinUnits::SeparatorStyle::STANDARD);
+    return num + " " + QmlBitcoinUnits::displayLabel(unit, value);
 }
 
 QString WalletQmlModelTransaction::amount() const

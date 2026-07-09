@@ -70,6 +70,7 @@ def _relaunch_gui(harness):
         f"-datadir={harness.gui_datadir}",
         f"-test-automation={harness.socket_path}",
     ] + settings_args + [
+        "-qml_onboarded=1",
         "-logtimemicros",
         "-debug",
         "-debugexclude=libevent",

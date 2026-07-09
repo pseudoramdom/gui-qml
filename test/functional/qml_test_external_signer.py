@@ -226,8 +226,12 @@ def ensure_desktop_wallets_visible(gui):
     except QmlDriverError:
         pass
 
-    gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=10000)
-    gui.click("createWalletWizardExitButton")
+    try:
+        gui.wait_for_property("createWalletWizardExitButton", "visible", True, timeout_ms=1000)
+        gui.click("createWalletWizardExitButton")
+    except QmlDriverError:
+        gui.wait_for_property("typeSelectorCancelButton", "visible", True, timeout_ms=10000)
+        gui.click("typeSelectorCancelButton")
     gui.wait_for_property("desktopWalletSettingsTabButton", "visible", True, timeout_ms=10000)
 
 
@@ -482,7 +486,7 @@ def run_test(args):
         no_signer_path = find_mock_signer_path("no_signer")
 
         print(f"[{case_name}] starting")
-        harness.start_gui(reset_gui_settings=True, cwd=harness.tmpdir)
+        harness.start_gui(cwd=harness.tmpdir)
         checkpoints.checkpoint("GUI launched", harness.driver)
         harness.finish_onboarding()
         wait_for_rpc(harness.gui_rpc_port)
