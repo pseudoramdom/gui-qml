@@ -97,17 +97,43 @@ void DebugLogModel::setLoadLimit(int limit)
     Q_EMIT loadLimitChanged();
 }
 
+void DebugLogModel::setActive(bool active)
+{
+    if (m_active == active || m_stopping) return;
+
+    m_active = active;
+    ++m_activation_generation;
+    Q_EMIT activeChanged();
+
+    const QString path_str = QString::fromStdString(m_log_path.utf8string());
+    if (m_active) {
+        if (!path_str.isEmpty() && !m_watcher.files().contains(path_str)) {
+            m_watcher.addPath(path_str);
+        }
+        refresh(/*full_load=*/true);
+        return;
+    }
+
+    m_debounce.stop();
+    const auto watched_files = m_watcher.files();
+    if (!watched_files.isEmpty()) {
+        m_watcher.removePaths(watched_files);
+    }
+    m_refresh_pending = false;
+    m_pending_full_load = false;
+}
+
 void DebugLogModel::setFilter(const QString& filter)
 {
     if (m_filter == filter) return;
     m_filter = filter;
     Q_EMIT filterChanged();
-    buildDisplayLines();
+    if (m_active) buildDisplayLines();
 }
 
 void DebugLogModel::refresh(bool full_load)
 {
-    if (m_stopping) return;
+    if (!m_active || m_stopping) return;
 
     // Single-read-in-flight guard. If a read is already running, fold this
     // request into a trailing re-run rather than piling another job onto the
@@ -129,6 +155,7 @@ void DebugLogModel::refresh(bool full_load)
 
     const fs::path path = m_log_path;
     const int load_limit = m_load_limit;
+    const quint64 activation_generation = m_activation_generation;
 
     if (!m_reader || !m_reader_thread || !m_reader_thread->isRunning()) {
         m_read_in_flight = false;
@@ -136,7 +163,7 @@ void DebugLogModel::refresh(bool full_load)
     }
 
     const bool queued = QMetaObject::invokeMethod(m_reader,
-        [this, path, load_limit, full_load, prev_top_identity]() mutable {
+        [this, path, load_limit, full_load, prev_top_identity, activation_generation]() mutable {
             if (m_read_cancelled.load(std::memory_order_relaxed)) return;
 
             ReadResult result = ReadAndFilter(path, load_limit, full_load, m_read_cancelled);
@@ -146,8 +173,19 @@ void DebugLogModel::refresh(bool full_load)
                 [this,
                  result = std::move(result),
                  prev_top_identity,
-                 full_load]() mutable {
+                 full_load,
+                 activation_generation]() mutable {
                     if (m_stopping || m_read_cancelled.load(std::memory_order_relaxed)) return;
+                    if (!m_active || activation_generation != m_activation_generation) {
+                        m_read_in_flight = false;
+                        if (m_active && m_refresh_pending) {
+                            m_refresh_pending = false;
+                            const bool do_full = m_pending_full_load;
+                            m_pending_full_load = false;
+                            refresh(do_full);
+                        }
+                        return;
+                    }
                     onReadCompleted(result, prev_top_identity, full_load);
                 },
                 Qt::QueuedConnection);
@@ -196,7 +234,7 @@ bool DebugLogModel::openLogFile()
 
 void DebugLogModel::updateRelativeTimes()
 {
-    if (m_all_lines.isEmpty() && m_display_lines.isEmpty()) return;
+    if (!m_active || (m_all_lines.isEmpty() && m_display_lines.isEmpty())) return;
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
 
     for (LogLine& line : m_all_lines) {
@@ -351,7 +389,7 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
                                    const QString& prev_top_identity,
                                    bool full_load)
 {
-    if (m_stopping) return;
+    if (!m_active || m_stopping) return;
 
     // Propagate open-error state from the background read.
     if (!result.file_opened) {
@@ -377,7 +415,7 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
     // if the log file did not exist yet. Re-add after a successful read so
     // auto-refresh works from here on.
     const QString path_str = QString::fromStdString(m_log_path.utf8string());
-    if (!m_watcher.files().contains(path_str)) {
+    if (m_active && !m_watcher.files().contains(path_str)) {
         m_watcher.addPath(path_str);
     }
 
@@ -458,14 +496,15 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
 void DebugLogModel::connectFileWatcher()
 {
     const QString path_str = QString::fromStdString(m_log_path.utf8string());
-    if (path_str.isEmpty()) return;
-    m_watcher.addPath(path_str);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
             this, [this](const QString& path) {
-                if (m_stopping) return;
+                if (!m_active || m_stopping) return;
                 m_watcher.addPath(path); // re-add in case of log rotation
                 m_debounce.start();
             });
+    if (m_active && !path_str.isEmpty()) {
+        m_watcher.addPath(path_str);
+    }
 }
 
 void DebugLogModel::buildDisplayLines()

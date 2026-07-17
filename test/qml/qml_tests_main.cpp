@@ -3078,6 +3078,65 @@ private:
     bool m_minimize_on_close{false};
 };
 
+class MockDebugLogModel : public QAbstractListModel
+{
+    Q_OBJECT
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
+    Q_PROPERTY(bool hasMoreLines READ hasMoreLines NOTIFY hasMoreLinesChanged)
+    Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
+    Q_PROPERTY(QString openError READ openError NOTIFY openErrorChanged)
+
+public:
+    enum Severity {
+        InfoSeverity = 0,
+        WarningSeverity,
+        ErrorSeverity,
+    };
+    Q_ENUM(Severity)
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        Q_UNUSED(parent);
+        return 0;
+    }
+
+    QVariant data(const QModelIndex&, int = Qt::DisplayRole) const override { return {}; }
+
+    bool active() const { return m_active; }
+    void setActive(bool active)
+    {
+        if (m_active == active) return;
+        m_active = active;
+        Q_EMIT activeChanged();
+    }
+
+    bool hasMoreLines() const { return false; }
+    QString filter() const { return m_filter; }
+    void setFilter(const QString& filter)
+    {
+        if (m_filter == filter) return;
+        m_filter = filter;
+        Q_EMIT filterChanged();
+    }
+    QString openError() const { return {}; }
+
+    Q_INVOKABLE void refresh(bool = false) {}
+    Q_INVOKABLE void loadMore() {}
+    Q_INVOKABLE bool openLogFile() { return true; }
+    Q_INVOKABLE void updateRelativeTimes() {}
+
+Q_SIGNALS:
+    void activeChanged();
+    void hasMoreLinesChanged();
+    void filterChanged();
+    void openErrorChanged();
+    void newLinesAdded(int count);
+
+private:
+    bool m_active{false};
+    QString m_filter;
+};
+
 class QmlTestsSetup : public QObject
 {
     Q_OBJECT
@@ -3108,6 +3167,7 @@ public Q_SLOTS:
         static MockActivityListModel activity_list_model;
         static MockBumpTransactionModel bump_model;
         static MockDesktopWindowBehaviorModel desktop_window_behavior_model;
+        static MockDebugLogModel debug_log_model;
         recipients_model.setCurrent(&send_recipient);
         wallet_model.setActivityListModel(&activity_list_model);
         wallet_model.setBumpModel(&bump_model);
@@ -3142,6 +3202,13 @@ public Q_SLOTS:
             "WalletQmlModelTransaction",
             "Test stub type"
         );
+        qmlRegisterUncreatableType<MockDebugLogModel>(
+            "org.bitcoincore.qt",
+            1,
+            0,
+            "DebugLogModel",
+            "Test stub type"
+        );
         qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
         qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
         engine->rootContext()->setContextProperty(QStringLiteral("optionsModel"), &options_model);
@@ -3166,6 +3233,8 @@ public Q_SLOTS:
         engine->rootContext()->setContextProperty(QStringLiteral("testCoinsListModel"), &coins_list_model);
         engine->rootContext()->setContextProperty(QStringLiteral("testBumpModel"), &bump_model);
         engine->rootContext()->setContextProperty(QStringLiteral("desktopWindowBehaviorModel"), &desktop_window_behavior_model);
+        engine->rootContext()->setContextProperty(QStringLiteral("debugLogModel"), &debug_log_model);
+        engine->rootContext()->setContextProperty(QStringLiteral("testDebugLogModel"), &debug_log_model);
         engine->addImportPath(QStringLiteral(BITCOINQML_QML_SOURCE_DIR));
     }
 };

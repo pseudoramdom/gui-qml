@@ -40,6 +40,7 @@ TestCase {
         AppMode.walletEnabled = true
         AppMode.isDesktop = true
         testNetworkTrafficTower.active = false
+        testDebugLogModel.active = false
     }
 
     function createNodeSettingsPage() {
@@ -116,6 +117,39 @@ TestCase {
         tryCompare(testNetworkTrafficTower, "active", false)
         tryVerify(function() { return findChild(page, "networkTrafficPage") === null })
     }
+
+    function test_debug_log_only_active_while_selected() {
+        const page = createNodeSettingsPage()
+
+        compare(testDebugLogModel.active, false)
+        verify(findChild(page, "settingsDebugLog") === null)
+
+        const debugLogItem = findChild(page, "settings_debuglog")
+        verify(debugLogItem !== null)
+        mouseClick(debugLogItem, debugLogItem.width / 2, debugLogItem.height / 2)
+        tryCompare(page, "currentSection", 8)
+        tryCompare(testDebugLogModel, "active", true)
+        verify(findChild(page, "settingsDebugLog") !== null)
+
+        // DesktopWallets keeps NodeSettings in its outer StackLayout. Leaving
+        // Settings for Send must unload the debug log even if it remains the
+        // selected Settings section.
+        page.visible = false
+        tryCompare(testDebugLogModel, "active", false)
+        tryVerify(function() { return findChild(page, "settingsDebugLog") === null })
+
+        page.visible = true
+        tryCompare(testDebugLogModel, "active", true)
+        verify(findChild(page, "settingsDebugLog") !== null)
+
+        const displayItem = findChild(page, "settings_display")
+        verify(displayItem !== null)
+        mouseClick(displayItem, displayItem.width / 2, displayItem.height / 2)
+        tryCompare(page, "currentSection", 2)
+        tryCompare(testDebugLogModel, "active", false)
+        tryVerify(function() { return findChild(page, "settingsDebugLog") === null })
+    }
+
     function test_wallet_section_hidden_when_disabled() {
         AppMode.walletEnabled = false
 

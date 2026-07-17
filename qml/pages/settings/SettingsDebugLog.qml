@@ -320,5 +320,6 @@ Page {
         }
     }
 
-    Component.onCompleted: debugLogModel.refresh(true)
+    Component.onCompleted: debugLogModel.active = true
+    Component.onDestruction: debugLogModel.active = false
 }

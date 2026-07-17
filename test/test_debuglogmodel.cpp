@@ -18,9 +18,45 @@ class DebugLogModelTests : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void inactiveModel_ignoresRefreshUntilActivated();
     void parsed_roles_extract_structured_log_lines();
     void refresh_resetsOnlyOnContentChange();
 };
+
+void DebugLogModelTests::inactiveModel_ignoresRefreshUntilActivated()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString log_path = dir.filePath("debug.log");
+
+    QFile file(log_path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("2026-06-19T10:00:00Z line one\n");
+    file.close();
+
+    DebugLogModel model(fs::PathFromString(log_path.toStdString()));
+    QVERIFY(!model.active());
+
+    model.refresh(/*full_load=*/true);
+    QTest::qWait(50);
+    QCOMPARE(model.rowCount(), 0);
+
+    model.setActive(true);
+    QTRY_COMPARE(model.rowCount(), 1);
+
+    model.setActive(false);
+    QVERIFY(!model.active());
+
+    QVERIFY(file.open(QIODevice::Append | QIODevice::WriteOnly));
+    file.write("2026-06-19T10:00:01Z line two\n");
+    file.close();
+    model.refresh(/*full_load=*/true);
+    QTest::qWait(50);
+    QCOMPARE(model.rowCount(), 1);
+
+    model.setActive(true);
+    QTRY_COMPARE(model.rowCount(), 2);
+}
 
 void DebugLogModelTests::parsed_roles_extract_structured_log_lines()
 {
@@ -40,7 +76,7 @@ void DebugLogModelTests::parsed_roles_extract_structured_log_lines()
     append_line("2026-06-19T10:00:02Z UpdateTip: new best=abc height=1");
 
     DebugLogModel model(fs::PathFromString(log_path.toStdString()));
-    model.refresh(/*full_load=*/true);
+    model.setActive(true);
     QTRY_COMPARE(model.rowCount(), 4);
 
     const QModelIndex update_tip = model.index(0, 0);
@@ -96,7 +132,7 @@ void DebugLogModelTests::refresh_resetsOnlyOnContentChange()
     append_line("2026-06-19T10:00:02Z line three");
 
     DebugLogModel model(fs::PathFromString(log_path.toStdString()));
-    model.refresh(/*full_load=*/true);
+    model.setActive(true);
     QTRY_COMPARE(model.rowCount(), 3);
 
     QSignalSpy reset_spy(&model, &QAbstractItemModel::modelReset);

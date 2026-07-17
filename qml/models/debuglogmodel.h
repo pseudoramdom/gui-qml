@@ -33,15 +33,16 @@ class QThread;
 //! Pagination: only the most recent `loadLimit` lines are kept in memory.
 //! Call loadMore() to increase the limit by 1000, up to kMaxLoadLimit.
 //!
-//! File watching: the model connects a QFileSystemWatcher to the log file and
-//! coalesces rapid writes with a 500 ms debounce timer before calling refresh().
-//! Reads themselves run on a dedicated worker thread so a busy, noisy node cannot
+//! File watching: the model only watches the log while active and coalesces
+//! rapid writes with a 500 ms debounce timer before calling refresh(). Reads
+//! themselves run on a dedicated worker thread so a busy, noisy node cannot
 //! stall the UI on every debug-log burst.
 class DebugLogModel : public QAbstractListModel
 {
     Q_OBJECT
 
     Q_PROPERTY(bool hasMoreLines READ hasMoreLines NOTIFY hasMoreLinesChanged)
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(int  loadLimit   READ loadLimit    WRITE setLoadLimit   NOTIFY loadLimitChanged)
     Q_PROPERTY(QString filter   READ filter       WRITE setFilter      NOTIFY filterChanged)
     Q_PROPERTY(QString openError READ openError   NOTIFY openErrorChanged)
@@ -78,6 +79,9 @@ public:
 
     bool hasMoreLines() const { return m_has_more_lines; }
 
+    bool active() const { return m_active; }
+    void setActive(bool active);
+
     int loadLimit() const { return m_load_limit; }
     void setLoadLimit(int limit);
 
@@ -94,6 +98,7 @@ public:
 
 Q_SIGNALS:
     void hasMoreLinesChanged();
+    void activeChanged();
     void loadLimitChanged();
     void filterChanged();
     void openErrorChanged();
@@ -183,7 +188,9 @@ private:
     bool m_read_in_flight{false};
     bool m_refresh_pending{false};
     bool m_pending_full_load{false};
+    bool m_active{false};
     bool m_stopping{false};
+    quint64 m_activation_generation{0};
     std::atomic_bool m_read_cancelled{false};
 };
 
