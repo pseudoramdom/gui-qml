@@ -592,7 +592,7 @@ int QmlGuiMain(int argc, char* argv[])
     }, Qt::QueuedConnection);
     QObject::connect(&init_executor, &QmlInitExecutor::runawayException, &node_model, &NodeModel::handleRunawayException);
 
-    NetworkTrafficTower network_traffic_tower{node_model};
+    NetworkTrafficTower network_traffic_tower{*node};
     NetworkStatusModel network_status_model;
 #ifdef __ANDROID__
     AndroidNotifier android_notifier{node_model};

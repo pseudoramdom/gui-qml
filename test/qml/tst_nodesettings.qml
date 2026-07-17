@@ -39,6 +39,7 @@ TestCase {
         nodeModel.mempoolInformationAvailable = true
         AppMode.walletEnabled = true
         AppMode.isDesktop = true
+        testNetworkTrafficTower.active = false
     }
 
     function createNodeSettingsPage() {
@@ -85,6 +86,36 @@ TestCase {
         compare(page.currentSection, 5)
     }
 
+    function test_network_traffic_only_publishes_while_selected() {
+        const page = createNodeSettingsPage()
+
+        compare(testNetworkTrafficTower.active, false)
+        verify(findChild(page, "networkTrafficPage") === null)
+
+        const networkTrafficItem = findChild(page, "settings_networktraffic")
+        verify(networkTrafficItem !== null)
+        mouseClick(networkTrafficItem, networkTrafficItem.width / 2, networkTrafficItem.height / 2)
+        tryCompare(page, "currentSection", 6)
+        tryCompare(testNetworkTrafficTower, "active", true)
+        verify(findChild(page, "networkTrafficPage") !== null)
+
+        // Leaving Settings unloads both graphs and suppresses worker snapshots,
+        // while the C++ sampler continues retaining raw history off-thread.
+        page.visible = false
+        tryCompare(testNetworkTrafficTower, "active", false)
+        tryVerify(function() { return findChild(page, "networkTrafficPage") === null })
+
+        page.visible = true
+        tryCompare(testNetworkTrafficTower, "active", true)
+        verify(findChild(page, "networkTrafficPage") !== null)
+
+        const displayItem = findChild(page, "settings_display")
+        verify(displayItem !== null)
+        mouseClick(displayItem, displayItem.width / 2, displayItem.height / 2)
+        tryCompare(page, "currentSection", 2)
+        tryCompare(testNetworkTrafficTower, "active", false)
+        tryVerify(function() { return findChild(page, "networkTrafficPage") === null })
+    }
     function test_wallet_section_hidden_when_disabled() {
         AppMode.walletEnabled = false
 

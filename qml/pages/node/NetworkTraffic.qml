@@ -12,6 +12,7 @@ import org.bitcoincore.qt 1.0
 
 InformationPage {
     id: root
+    objectName: "networkTrafficPage"
     property int trafficGraphScale: 300
     property bool showBackButton: true
 
@@ -170,4 +171,10 @@ InformationPage {
         }
         return bytes.toFixed(0) + " " + suffixes[index];
     }
+
+    Component.onCompleted: {
+        networkTrafficTower.updateFilterWindowSize(root.trafficGraphScale / 10)
+        networkTrafficTower.active = true
+    }
+    Component.onDestruction: networkTrafficTower.active = false
 }

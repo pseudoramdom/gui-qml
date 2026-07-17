@@ -273,7 +273,12 @@ Page {
                     SettingsWindowBehavior { showBackButton: false }
                     SettingsStorage { showBackButton: false }
                     SettingsConnection { showBackButton: false }
-                    NetworkTraffic { showBackButton: false; showHeader: false }
+                    Loader {
+                        id: networkTrafficLoader
+                        objectName: "networkTrafficLoader"
+                        active: root.visible && root.currentSection === 6
+                        sourceComponent: NetworkTraffic { showBackButton: false; showHeader: false }
+                    }
                     MempoolInformationSettings { showBackButton: false }
                     SettingsDebugLog { showBackButton: false }
                     PageStack {
