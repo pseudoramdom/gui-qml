@@ -228,7 +228,6 @@ class WalletFlowHarness:
         ) + [
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
             "-nolisten",
         ]

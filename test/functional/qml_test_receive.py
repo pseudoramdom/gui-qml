@@ -73,7 +73,6 @@ def _relaunch_gui(harness):
         "-qml_onboarded=1",
         "-logtimemicros",
         "-debug",
-        "-debugexclude=libevent",
         "-debugexclude=leveldb",
         "-nolisten",
     ]

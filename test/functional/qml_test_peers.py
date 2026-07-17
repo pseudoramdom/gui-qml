@@ -188,7 +188,6 @@ class PeerQmlTestHarness:
             "-qml_onboarded=1",
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
         ]
         print(f"Starting GUI node: {' '.join(gui_args)}")
@@ -367,7 +366,6 @@ class PeerQmlTestHarness:
             "-qml_onboarded=1",
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
         ]
         print(f"  Restarting GUI: {' '.join(gui_args)}")
