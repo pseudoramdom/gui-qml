@@ -131,7 +131,6 @@ def launch_bitcoin_qt(bitcoin_qt, harness):
         "-nosplash",
         "-min",
         "-debug",
-        "-debugexclude=libevent",
         "-debugexclude=leveldb",
         "-printtoconsole=1",
     ]

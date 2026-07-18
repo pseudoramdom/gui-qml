@@ -119,7 +119,6 @@ def start_gui_without_driver(harness):
         "-qml_onboarded=1",
         "-logtimemicros",
         "-debug",
-        "-debugexclude=libevent",
         "-debugexclude=leveldb",
         "-nolisten",
     ]

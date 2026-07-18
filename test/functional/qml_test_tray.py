@@ -78,7 +78,6 @@ def run_tests():
             "-qml_onboarded=1",
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
             "-nolisten",
         ]

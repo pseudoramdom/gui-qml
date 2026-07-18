@@ -58,7 +58,6 @@ class DebugLogHarness:
             "-disablewallet",
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
             "-nolisten",
         ]

@@ -201,7 +201,6 @@ class QmlTestHarness:
         ) + [
             "-logtimemicros",
             "-debug",
-            "-debugexclude=libevent",
             "-debugexclude=leveldb",
         ] + self.extra_args
         if self.no_listen_arg:
