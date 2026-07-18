@@ -79,8 +79,17 @@ void ActivityFilterProxyModel::setSearchText(const QString& search_text)
 {
     if (m_search_text == search_text) return;
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+#endif
+
     m_search_text = search_text;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
     invalidateFilter();
+#endif
     Q_EMIT searchTextChanged();
     Q_EMIT countChanged();
 }
@@ -94,8 +103,17 @@ void ActivityFilterProxyModel::setDateFilter(DateFilter date_filter)
 {
     if (m_date_filter == date_filter) return;
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+#endif
+
     m_date_filter = date_filter;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
     invalidateFilter();
+#endif
     Q_EMIT dateFilterChanged();
     Q_EMIT countChanged();
 }
@@ -109,8 +127,17 @@ void ActivityFilterProxyModel::setTypeFilter(TypeFilter type_filter)
 {
     if (m_type_filter == type_filter) return;
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+#endif
+
     m_type_filter = type_filter;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
     invalidateFilter();
+#endif
     Q_EMIT typeFilterChanged();
     Q_EMIT countChanged();
 }
