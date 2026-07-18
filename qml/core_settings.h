@@ -28,9 +28,9 @@ struct Values {
     bool natpmp{false};
     bool server{false};
     bool proxy_enabled{false};
-    QString proxy_address;
+    QString proxy_address{};
     bool tor_enabled{false};
-    QString tor_address;
+    QString tor_address{};
 };
 
 struct Change {
