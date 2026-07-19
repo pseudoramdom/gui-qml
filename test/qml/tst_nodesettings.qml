@@ -41,6 +41,8 @@ TestCase {
         AppMode.isDesktop = true
         testNetworkTrafficTower.active = false
         testDebugLogModel.active = false
+        testDebugLogModel.filter = ""
+        testDebugLogModel.resetForTest(0, false)
     }
 
     function createNodeSettingsPage() {
@@ -150,6 +152,64 @@ TestCase {
         tryVerify(function() { return findChild(page, "settingsDebugLog") === null })
     }
 
+    function test_debug_log_load_more_appends_without_jumping_to_new_bottom() {
+        testDebugLogModel.resetForTest(100, true)
+        const page = createNodeSettingsPage()
+
+        const debugLogItem = findChild(page, "settings_debuglog")
+        verify(debugLogItem !== null)
+        mouseClick(debugLogItem, debugLogItem.width / 2, debugLogItem.height / 2)
+        tryCompare(page, "currentSection", 8)
+
+        const logView = findChild(page, "debugLogListView")
+        const loadMoreButton = findChild(page, "debugLogLoadMoreButton")
+        verify(logView !== null)
+        verify(loadMoreButton !== null)
+        tryCompare(logView, "count", 100)
+
+        logView.scrollToBottom()
+        tryCompare(logView, "atBottom", true)
+        tryCompare(loadMoreButton, "visible", true)
+        const anchoredContentY = logView.contentY
+        mouseClick(loadMoreButton, loadMoreButton.width / 2, loadMoreButton.height / 2)
+
+        tryCompare(testDebugLogModel, "loadMoreCalls", 1)
+        tryCompare(logView, "count", 120)
+        tryCompare(loadMoreButton, "visible", false)
+        verify(Math.abs(logView.contentY - anchoredContentY) < 0.5,
+               "Loading older rows should leave the previous bottom entries anchored: before="
+               + anchoredContentY + ", after=" + logView.contentY
+               + ", contentHeight=" + logView.contentHeight)
+        compare(logView.atBottom, false)
+    }
+
+    function test_debug_log_filter_matches_model_after_page_reentry() {
+        testDebugLogModel.filter = "retained filter"
+        const page = createNodeSettingsPage()
+
+        const debugLogItem = findChild(page, "settings_debuglog")
+        verify(debugLogItem !== null)
+        mouseClick(debugLogItem, debugLogItem.width / 2, debugLogItem.height / 2)
+        tryCompare(page, "currentSection", 8)
+
+        let searchField = findChild(page, "debugLogSearchField")
+        verify(searchField !== null)
+        compare(searchField.text, "retained filter")
+        searchField.text = "updated filter"
+        tryCompare(testDebugLogModel, "filter", "updated filter", 1000)
+
+        const displayItem = findChild(page, "settings_display")
+        verify(displayItem !== null)
+        mouseClick(displayItem, displayItem.width / 2, displayItem.height / 2)
+        tryCompare(page, "currentSection", 2)
+        tryVerify(function() { return findChild(page, "settingsDebugLog") === null })
+
+        mouseClick(debugLogItem, debugLogItem.width / 2, debugLogItem.height / 2)
+        tryCompare(page, "currentSection", 8)
+        searchField = findChild(page, "debugLogSearchField")
+        verify(searchField !== null)
+        compare(searchField.text, "updated filter")
+    }
     function test_wallet_section_hidden_when_disabled() {
         AppMode.walletEnabled = false
 
