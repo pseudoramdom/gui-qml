@@ -3,15 +3,9 @@ cmake_minimum_required(VERSION 3.22)
 # Tests for the QML/Qt6 app
 
 find_package(Qt 6.2 MODULE REQUIRED COMPONENTS Core Gui Network Test Qml Quick QuickTest Widgets)
-find_package(GTest REQUIRED)
-
-if(NOT TARGET GTest::gmock)
-  message(FATAL_ERROR "GTest::gmock target is required for app unit tests. Ensure gmock is installed and exported by the active GTest package.")
-endif()
 
 add_executable(bitcoinqml_unit_tests
   test_unit_tests_main.cpp
-  gmocktestfixture.h
   test_bitcoinaddress.cpp
   test_blockclockdial.cpp
   test_bitcoinuri.cpp
@@ -70,7 +64,6 @@ target_link_libraries(bitcoinqml_unit_tests
     bitcoin_common
     bitcoin_util
     bitcoin_node
-    GTest::gmock
     Qt6::Core
     Qt6::Gui
     Qt6::Quick

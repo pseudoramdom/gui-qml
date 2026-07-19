@@ -4,7 +4,6 @@
 
 #include <QtTest/QtTest>
 
-#include <test/gmocktestfixture.h>
 #include <test/mocks/mocknode.h>
 #include <test/qt_test_registry.h>
 
@@ -29,11 +28,6 @@
 #include <QTimer>
 
 namespace {
-using ::testing::Invoke;
-using ::testing::NiceMock;
-using ::testing::Return;
-using ::testing::Truly;
-
 constexpr int ASYNC_TIMEOUT_MS{1'000};
 
 std::unique_ptr<interfaces::Handler> MakeNoopHandler()
@@ -54,46 +48,22 @@ struct PeerCountState {
     std::atomic<size_t> outbound{0};
 };
 
-void InstallDefaultHandlers(NiceMock<MockNode>& node)
+void ConfigureNodeModelDefaults(MockNode& node)
 {
-    ON_CALL(node, handleNotifyBlockTip(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyBlockTipFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyHeaderTip(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyHeaderTipFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyNumConnectionsChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyNumConnectionsChangedFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyNetworkActiveChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyNetworkActiveChangedFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyAlertChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyAlertChangedFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::MessageBoxFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleQuestion(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::QuestionFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleBannedListChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::BannedListChangedFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, getWarnings()).WillByDefault(Return(Untranslated("")));
+    node.handle_notify_block_tip_fn = [](interfaces::Node::NotifyBlockTipFn) { return MakeNoopHandler(); };
+    node.handle_notify_header_tip_fn = [](interfaces::Node::NotifyHeaderTipFn) { return MakeNoopHandler(); };
+    node.handle_notify_num_connections_changed_fn = [](interfaces::Node::NotifyNumConnectionsChangedFn) { return MakeNoopHandler(); };
+    node.handle_notify_network_active_changed_fn = [](interfaces::Node::NotifyNetworkActiveChangedFn) { return MakeNoopHandler(); };
+    node.handle_notify_alert_changed_fn = [](interfaces::Node::NotifyAlertChangedFn) { return MakeNoopHandler(); };
+    node.handle_message_box_fn = [](interfaces::Node::MessageBoxFn) { return MakeNoopHandler(); };
+    node.handle_question_fn = [](interfaces::Node::QuestionFn) { return MakeNoopHandler(); };
+    node.handle_banned_list_changed_fn = [](interfaces::Node::BannedListChangedFn) { return MakeNoopHandler(); };
+    node.get_warnings_fn = [] { return Untranslated(""); };
 }
 
-void InstallPeerCountGetters(NiceMock<MockNode>& node, PeerCountState& peers)
+void ConfigurePeerCountGetters(MockNode& node, PeerCountState& peers)
 {
-    ON_CALL(node, getNodeCount(testing::_)).WillByDefault(Invoke([&peers](ConnectionDirection direction) {
+    node.get_node_count_fn = [&peers](ConnectionDirection direction) {
         switch (direction) {
         case ConnectionDirection::Both:
             return peers.total.load();
@@ -105,21 +75,21 @@ void InstallPeerCountGetters(NiceMock<MockNode>& node, PeerCountState& peers)
             return size_t{0};
         }
         return size_t{0};
-    }));
+    };
 }
 
-void InstallMempoolGetters(NiceMock<MockNode>& node, MempoolState& mempool)
+void ConfigureMempoolGetters(MockNode& node, MempoolState& mempool)
 {
-    ON_CALL(node, getMempoolSize()).WillByDefault(Invoke([&mempool] {
+    node.get_mempool_size_fn = [&mempool] {
         return mempool.count.load();
-    }));
-    ON_CALL(node, getMempoolDynamicUsage()).WillByDefault(Invoke([&mempool] {
+    };
+    node.get_mempool_dynamic_usage_fn = [&mempool] {
         return mempool.usage_bytes.load();
-    }));
-    ON_CALL(node, getMempoolMaxUsage()).WillByDefault(Invoke([&mempool] {
+    };
+    node.get_mempool_max_usage_fn = [&mempool] {
         ++mempool.max_usage_calls;
         return mempool.max_bytes.load();
-    }));
+    };
 }
 
 void WaitForInitialMempoolRefresh(MempoolState& mempool)
@@ -129,7 +99,7 @@ void WaitForInitialMempoolRefresh(MempoolState& mempool)
 }
 } // namespace
 
-class NodeModelTests : public GmockTestFixture
+class NodeModelTests : public QObject
 {
     Q_OBJECT
 
@@ -172,10 +142,10 @@ private Q_SLOTS:
 
 void NodeModelTests::refreshMempoolInfoUpdatesProperties()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -195,10 +165,10 @@ void NodeModelTests::refreshMempoolInfoUpdatesProperties()
 
 void NodeModelTests::activatingMempoolPollingEmitsSignalsAndRefreshesImmediately()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -227,7 +197,7 @@ void NodeModelTests::activatingMempoolPollingEmitsSignalsAndRefreshesImmediately
 
 void NodeModelTests::peerCountsInitializeAndRefreshFromDirectionalNodeCounts()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     PeerCountState peers;
     interfaces::Node::NotifyNumConnectionsChangedFn connections_changed_fn;
@@ -236,14 +206,13 @@ void NodeModelTests::peerCountsInitializeAndRefreshFromDirectionalNodeCounts()
     peers.inbound = 1;
     peers.outbound = 2;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    InstallPeerCountGetters(node, peers);
-    ON_CALL(node, handleNotifyNumConnectionsChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyNumConnectionsChangedFn fn) {
-            connections_changed_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    ConfigurePeerCountGetters(node, peers);
+    node.handle_notify_num_connections_changed_fn = [&](interfaces::Node::NotifyNumConnectionsChangedFn fn) {
+        connections_changed_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -283,33 +252,40 @@ void NodeModelTests::peerCountsInitializeAndRefreshFromDirectionalNodeCounts()
 
 void NodeModelTests::disconnectPeerReturnsNodeResult()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
 
-    EXPECT_CALL(node, disconnectById(7)).Times(1).WillOnce(Return(true));
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    std::vector<NodeId> disconnected_ids;
+    node.disconnect_by_id_fn = [&](NodeId id) {
+        disconnected_ids.push_back(id);
+        return id == 7;
+    };
+    node.ExpectExactly(node.calls.disconnectById, 2);
     QVERIFY(model.disconnectPeer(7));
 
-    EXPECT_CALL(node, disconnectById(8)).Times(1).WillOnce(Return(false));
     QVERIFY(!model.disconnectPeer(8));
+    QCOMPARE(disconnected_ids, std::vector<NodeId>({7, 8}));
 }
 
 void NodeModelTests::banPeerRejectsInvalidInputs()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
 
-    EXPECT_CALL(node, ban(testing::_, testing::_)).Times(0);
-    EXPECT_CALL(node, disconnectByAddress(testing::_)).Times(0);
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.ExpectNoCalls(node.calls.ban);
+    node.ExpectNoCalls(node.calls.disconnectByAddress);
 
     QVERIFY(!model.banPeer(QStringLiteral("not an address"), 3600));
     QVERIFY(!model.banPeer(QStringLiteral("127.0.0.1"), 0));
@@ -318,47 +294,62 @@ void NodeModelTests::banPeerRejectsInvalidInputs()
 
 void NodeModelTests::banPeerReturnsFalseWithoutDisconnectWhenBackendFails()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
 
-    EXPECT_CALL(node, ban(Truly([](const CNetAddr& value) {
-        return value.ToStringAddr() == "127.0.0.1";
-    }), 3600)).Times(1).WillOnce(Return(false));
-    EXPECT_CALL(node, disconnectByAddress(testing::_)).Times(0);
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    bool received_expected_ban{false};
+    node.ban_fn = [&](const CNetAddr& value, int64_t duration) {
+        received_expected_ban = value.ToStringAddr() == "127.0.0.1" && duration == 3600;
+        return false;
+    };
+    node.ExpectExactly(node.calls.ban, 1);
+    node.ExpectNoCalls(node.calls.disconnectByAddress);
 
     QVERIFY(!model.banPeer(QStringLiteral("127.0.0.1"), 3600));
+    QVERIFY(received_expected_ban);
 }
 
 void NodeModelTests::banPeerDisconnectsAddressAfterSuccessfulBan()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
 
-    auto is_loopback = [](const CNetAddr& value) {
-        return value.ToStringAddr() == "127.0.0.1";
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    bool received_expected_ban{false};
+    bool received_expected_disconnect{false};
+    node.ban_fn = [&](const CNetAddr& value, int64_t duration) {
+        received_expected_ban = value.ToStringAddr() == "127.0.0.1" && duration == 3600;
+        return true;
     };
-    EXPECT_CALL(node, ban(Truly(is_loopback), 3600)).Times(1).WillOnce(Return(true));
-    EXPECT_CALL(node, disconnectByAddress(Truly(is_loopback))).Times(1).WillOnce(Return(true));
+    node.disconnect_by_address_fn = [&](const CNetAddr& value) {
+        received_expected_disconnect = value.ToStringAddr() == "127.0.0.1";
+        return true;
+    };
+    node.ExpectExactly(node.calls.ban, 1);
+    node.ExpectExactly(node.calls.disconnectByAddress, 1);
 
     QVERIFY(model.banPeer(QStringLiteral("127.0.0.1"), 3600));
+    QVERIFY(received_expected_ban);
+    QVERIFY(received_expected_disconnect);
 }
 
 void NodeModelTests::requestShutdownEmitsOnlyOnce()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -372,11 +363,11 @@ void NodeModelTests::requestShutdownEmitsOnlyOnce()
 
 void NodeModelTests::initializationFailureRequestsShutdownWhenCoreWasInterrupted()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, shutdownRequested()).WillByDefault(Return(true));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.shutdown_requested_fn = [] { return true; };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -394,11 +385,11 @@ void NodeModelTests::initializationFailureRequestsShutdownWhenCoreWasInterrupted
 
 void NodeModelTests::initializationFailureWithoutCoreInterruptOnlySetsErrorState()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, shutdownRequested()).WillByDefault(Return(false));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.shutdown_requested_fn = [] { return false; };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -416,11 +407,11 @@ void NodeModelTests::initializationFailureWithoutCoreInterruptOnlySetsErrorState
 
 void NodeModelTests::initializationSuccessDuringCoreShutdownSkipsReadyState()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, shutdownRequested()).WillByDefault(Return(true));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.shutdown_requested_fn = [] { return true; };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -437,46 +428,38 @@ void NodeModelTests::initializationSuccessDuringCoreShutdownSkipsReadyState()
 
 void NodeModelTests::destructorUnsubscribesCoreSignalsBeforeStoppingPolling()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     std::atomic<int> disconnected_handlers{0};
     auto counted_handler = [&] {
         return interfaces::MakeCleanupHandler([&] { ++disconnected_handlers; });
     };
 
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleNotifyBlockTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyBlockTipFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleNotifyHeaderTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyHeaderTipFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleNotifyNumConnectionsChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyNumConnectionsChangedFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleNotifyNetworkActiveChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyNetworkActiveChangedFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleNotifyAlertChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyAlertChangedFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleQuestion(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::QuestionFn) {
-            return counted_handler();
-        }));
-    ON_CALL(node, handleBannedListChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::BannedListChangedFn) {
-            return counted_handler();
-        }));
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_notify_block_tip_fn = [&](interfaces::Node::NotifyBlockTipFn) {
+        return counted_handler();
+    };
+    node.handle_notify_header_tip_fn = [&](interfaces::Node::NotifyHeaderTipFn) {
+        return counted_handler();
+    };
+    node.handle_notify_num_connections_changed_fn = [&](interfaces::Node::NotifyNumConnectionsChangedFn) {
+        return counted_handler();
+    };
+    node.handle_notify_network_active_changed_fn = [&](interfaces::Node::NotifyNetworkActiveChangedFn) {
+        return counted_handler();
+    };
+    node.handle_notify_alert_changed_fn = [&](interfaces::Node::NotifyAlertChangedFn) {
+        return counted_handler();
+    };
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn) {
+        return counted_handler();
+    };
+    node.handle_question_fn = [&](interfaces::Node::QuestionFn) {
+        return counted_handler();
+    };
+    node.handle_banned_list_changed_fn = [&](interfaces::Node::BannedListChangedFn) {
+        return counted_handler();
+    };
 
     auto model{std::make_unique<NodeModel>(node)};
     WaitForInitialMempoolRefresh(mempool);
@@ -501,31 +484,28 @@ void NodeModelTests::destructorUnsubscribesCoreSignalsBeforeStoppingPolling()
 
 void NodeModelTests::nodeNotificationHandlersUpdateModelThroughQueuedSignals()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     PeerCountState peers;
     interfaces::Node::NotifyBlockTipFn block_tip_fn;
     interfaces::Node::NotifyNumConnectionsChangedFn connections_changed_fn;
     interfaces::Node::BannedListChangedFn banned_list_changed_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    InstallPeerCountGetters(node, peers);
-    ON_CALL(node, handleNotifyBlockTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyBlockTipFn fn) {
-            block_tip_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyNumConnectionsChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyNumConnectionsChangedFn fn) {
-            connections_changed_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleBannedListChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::BannedListChangedFn fn) {
-            banned_list_changed_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    ConfigurePeerCountGetters(node, peers);
+    node.handle_notify_block_tip_fn = [&](interfaces::Node::NotifyBlockTipFn fn) {
+        block_tip_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
+    node.handle_notify_num_connections_changed_fn = [&](interfaces::Node::NotifyNumConnectionsChangedFn fn) {
+        connections_changed_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
+    node.handle_banned_list_changed_fn = [&](interfaces::Node::BannedListChangedFn fn) {
+        banned_list_changed_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -566,25 +546,22 @@ void NodeModelTests::nodeNotificationHandlersUpdateModelThroughQueuedSignals()
 
 void NodeModelTests::blockTipUpdatesQueuedAcrossThreadsRetainPayloadValues()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::NotifyBlockTipFn block_tip_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleNotifyBlockTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyBlockTipFn fn) {
-            block_tip_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleNotifyNumConnectionsChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::NotifyNumConnectionsChangedFn) {
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleBannedListChanged(testing::_))
-        .WillByDefault(Invoke([](interfaces::Node::BannedListChangedFn) {
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_notify_block_tip_fn = [&](interfaces::Node::NotifyBlockTipFn fn) {
+        block_tip_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
+    node.handle_notify_num_connections_changed_fn = [](interfaces::Node::NotifyNumConnectionsChangedFn) {
+        return MakeNoopHandler();
+    };
+    node.handle_banned_list_changed_fn = [](interfaces::Node::BannedListChangedFn) {
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -626,19 +603,18 @@ void NodeModelTests::blockTipUpdatesQueuedAcrossThreadsRetainPayloadValues()
 
 void NodeModelTests::blockSyncActiveFollowsInitializationAndBlockTipState()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::NotifyBlockTipFn block_tip_fn;
     bool initial_block_download{true};
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, isInitialBlockDownload()).WillByDefault(Invoke([&] { return initial_block_download; }));
-    ON_CALL(node, handleNotifyBlockTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyBlockTipFn fn) {
-            block_tip_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.is_initial_block_download_fn = [&] { return initial_block_download; };
+    node.handle_notify_block_tip_fn = [&](interfaces::Node::NotifyBlockTipFn fn) {
+        block_tip_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -679,19 +655,18 @@ void NodeModelTests::blockSyncActiveFollowsInitializationAndBlockTipState()
 
 void NodeModelTests::alertNotificationsRefreshWarningList()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::NotifyAlertChangedFn alert_changed_fn;
     bilingual_str warnings{Untranslated("")};
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, getWarnings()).WillByDefault(Invoke([&] { return warnings; }));
-    ON_CALL(node, handleNotifyAlertChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyAlertChangedFn fn) {
-            alert_changed_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.get_warnings_fn = [&] { return warnings; };
+    node.handle_notify_alert_changed_fn = [&](interfaces::Node::NotifyAlertChangedFn fn) {
+        alert_changed_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -710,17 +685,16 @@ void NodeModelTests::alertNotificationsRefreshWarningList()
 
 void NodeModelTests::headerTipNotificationsExposeHeaderSyncProgress()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::NotifyHeaderTipFn header_tip_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleNotifyHeaderTip(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyHeaderTipFn fn) {
-            header_tip_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_notify_header_tip_fn = [&](interfaces::Node::NotifyHeaderTipFn fn) {
+        header_tip_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -743,25 +717,23 @@ void NodeModelTests::headerTipNotificationsExposeHeaderSyncProgress()
 
 void NodeModelTests::startupWarningsAreShownOnceAndDoNotBecomeCurrentWarnings()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
     interfaces::Node::NotifyAlertChangedFn alert_changed_fn;
     bilingual_str warnings{"network warning", "Translated network warning"};
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, getWarnings()).WillByDefault(Invoke([&] { return warnings; }));
-    ON_CALL(node, handleNotifyAlertChanged(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::NotifyAlertChangedFn fn) {
-            alert_changed_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.get_warnings_fn = [&] { return warnings; };
+    node.handle_notify_alert_changed_fn = [&](interfaces::Node::NotifyAlertChangedFn fn) {
+        alert_changed_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     model.addStartupWarnings({QStringLiteral("Translated early startup warning")});
@@ -802,17 +774,16 @@ void NodeModelTests::startupWarningsAreShownOnceAndDoNotBecomeCurrentWarnings()
 
 void NodeModelTests::runtimeMessageHandlerOpensAfterInitialization()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -848,17 +819,16 @@ void NodeModelTests::runtimeMessageHandlerOpensAfterInitialization()
 
 void NodeModelTests::runtimeQuestionHandlerBlocksForAnswerAndReturnsResult()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::QuestionFn question_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleQuestion(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::QuestionFn fn) {
-            question_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_question_fn = [&](interfaces::Node::QuestionFn fn) {
+        question_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -897,17 +867,16 @@ void NodeModelTests::runtimeQuestionHandlerBlocksForAnswerAndReturnsResult()
 
 void NodeModelTests::runtimeStartupQuestionFailureLetsInitializeResultRequestShutdown()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::QuestionFn question_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleQuestion(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::QuestionFn fn) {
-            question_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_question_fn = [&](interfaces::Node::QuestionFn fn) {
+        question_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -958,17 +927,16 @@ void NodeModelTests::runtimeStartupQuestionFailureLetsInitializeResultRequestShu
 
 void NodeModelTests::runtimeStartupErrorDialogLetsInitializeResultRequestShutdown()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1017,17 +985,16 @@ void NodeModelTests::runtimeStartupErrorDialogLetsInitializeResultRequestShutdow
 
 void NodeModelTests::runtimeDialogDefaultsToOkWhenNoButtonsAreSpecified()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1058,17 +1025,16 @@ void NodeModelTests::runtimeDialogDefaultsToOkWhenNoButtonsAreSpecified()
 
 void NodeModelTests::runtimeDialogExposesFullCoreButtonMask()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1103,17 +1069,16 @@ void NodeModelTests::runtimeDialogExposesFullCoreButtonMask()
 
 void NodeModelTests::runtimeBlockingDialogsAreQueued()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::QuestionFn question_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleQuestion(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::QuestionFn fn) {
-            question_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_question_fn = [&](interfaces::Node::QuestionFn fn) {
+        question_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1156,17 +1121,16 @@ void NodeModelTests::runtimeBlockingDialogsAreQueued()
 
 void NodeModelTests::runtimeNonBlockingDialogsAreQueued()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1200,12 +1164,12 @@ void NodeModelTests::runtimeNonBlockingDialogsAreQueued()
 
 void NodeModelTests::initializeFailureShowsStartupWarningsWithoutMakingThemCurrentWarnings()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, getWarnings()).WillByDefault(Return(bilingual_str{"pre-release warning", "Translated pre-release warning"}));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.get_warnings_fn = [] { return bilingual_str{"pre-release warning", "Translated pre-release warning"}; };
 
     NodeModel model{node};
     model.addStartupWarnings({QStringLiteral("Translated startup warning")});
@@ -1224,18 +1188,17 @@ void NodeModelTests::initializeFailureShowsStartupWarningsWithoutMakingThemCurre
 
 void NodeModelTests::initializeFailureUsesNodeErrorMessages()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     interfaces::Node::MessageBoxFn message_box_fn;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, getWarnings()).WillByDefault(Return(bilingual_str{"pre-release warning", "Translated pre-release warning"}));
-    ON_CALL(node, handleMessageBox(testing::_))
-        .WillByDefault(Invoke([&](interfaces::Node::MessageBoxFn fn) {
-            message_box_fn = std::move(fn);
-            return MakeNoopHandler();
-        }));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.get_warnings_fn = [] { return bilingual_str{"pre-release warning", "Translated pre-release warning"}; };
+    node.handle_message_box_fn = [&](interfaces::Node::MessageBoxFn fn) {
+        message_box_fn = std::move(fn);
+        return MakeNoopHandler();
+    };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1272,11 +1235,11 @@ void NodeModelTests::initializeFailureUsesNodeErrorMessages()
 
 void NodeModelTests::runawayExceptionSetsFatalStartupError()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1288,16 +1251,17 @@ void NodeModelTests::runawayExceptionSetsFatalStartupError()
 
 void NodeModelTests::nodeInformationRowsAvoidChainmanBeforeInitialization()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    EXPECT_CALL(node, getHeaderTip(testing::_, testing::_)).Times(0);
-    EXPECT_CALL(node, getNumBlocks()).Times(0);
-    EXPECT_CALL(node, getLastBlockTime()).Times(0);
-    EXPECT_CALL(node, getNetLocalAddresses()).Times(0);
-    EXPECT_CALL(node, getNetworkActive()).Times(0);
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.ExpectNoCalls(node.calls.getHeaderTip);
+    node.ExpectNoCalls(node.calls.getNumBlocks);
+    node.ExpectNoCalls(node.calls.getLastBlockTime);
+    node.ExpectNoCalls(node.calls.getNetLocalAddresses);
+    node.ExpectNoCalls(node.calls.getNetworkActive);
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1317,7 +1281,7 @@ void NodeModelTests::nodeInformationRowsAvoidChainmanBeforeInitialization()
 
 void NodeModelTests::nodeInformationRowsExposeDiagnostics()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
     PeerCountState peers;
 
@@ -1325,19 +1289,18 @@ void NodeModelTests::nodeInformationRowsExposeDiagnostics()
     peers.inbound = 1;
     peers.outbound = 2;
 
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    InstallPeerCountGetters(node, peers);
-    ON_CALL(node, getNumBlocks()).WillByDefault(Return(321));
-    ON_CALL(node, getHeaderTip(testing::_, testing::_))
-        .WillByDefault(Invoke([](int& height, int64_t& block_time) {
-            height = 333;
-            block_time = 1'700'000'333;
-            return true;
-        }));
-    ON_CALL(node, getLastBlockTime()).WillByDefault(Return(1'700'000'321));
-    ON_CALL(node, getNetworkActive()).WillByDefault(Return(true));
-    ON_CALL(node, getNetLocalAddresses()).WillByDefault(Return(std::map<CNetAddr, LocalServiceInfo>{}));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    ConfigurePeerCountGetters(node, peers);
+    node.get_num_blocks_fn = [] { return 321; };
+    node.get_header_tip_fn = [](int& height, int64_t& block_time) {
+        height = 333;
+        block_time = 1'700'000'333;
+        return true;
+    };
+    node.get_last_block_time_fn = [] { return int64_t{1'700'000'321}; };
+    node.get_network_active_fn = [] { return true; };
+    node.get_net_local_addresses_fn = [] { return std::map<CNetAddr, LocalServiceInfo>{}; };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
@@ -1366,8 +1329,8 @@ void NodeModelTests::nodeInformationRowsExposeDiagnostics()
 
 void NodeModelTests::initEmitsRequestedInitialize()
 {
-    NiceMock<MockNode> node;
-    InstallDefaultHandlers(node);
+    MockNode node;
+    ConfigureNodeModelDefaults(node);
     NodeModel model{node};
 
     QSignalSpy spy{&model, &NodeModel::requestedInitialize};
@@ -1377,8 +1340,8 @@ void NodeModelTests::initEmitsRequestedInitialize()
 
 void NodeModelTests::initGuardBlocksSecondEmission()
 {
-    NiceMock<MockNode> node;
-    InstallDefaultHandlers(node);
+    MockNode node;
+    ConfigureNodeModelDefaults(node);
     NodeModel model{node};
 
     QSignalSpy spy{&model, &NodeModel::requestedInitialize};
@@ -1389,20 +1352,22 @@ void NodeModelTests::initGuardBlocksSecondEmission()
 
 void NodeModelTests::shutdownPollingStartsShutdownBeforeEmittingSignal()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     MempoolState mempool;
-    InstallDefaultHandlers(node);
-    InstallMempoolGetters(node, mempool);
-    ON_CALL(node, shutdownRequested()).WillByDefault(Return(true));
+    ConfigureNodeModelDefaults(node);
+    ConfigureMempoolGetters(node, mempool);
+    node.shutdown_requested_fn = [] { return true; };
 
     NodeModel model{node};
     WaitForInitialMempoolRefresh(mempool);
 
     QSignalSpy shutdown_spy{&model, &NodeModel::requestedShutdown};
     bool started_before_signal{false};
-    EXPECT_CALL(node, startShutdown()).WillOnce(Invoke([&] {
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.start_shutdown_fn = [&] {
         started_before_signal = shutdown_spy.count() == 0;
-    }));
+    };
+    node.ExpectExactly(node.calls.startShutdown, 1);
 
     model.startShutdownPolling();
 

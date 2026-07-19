@@ -16,8 +16,6 @@
 #include <wallet/types.h>
 #include <wallet/walletutil.h>
 
-#include <gmock/gmock.h>
-
 #include <QDir>
 #include <QFileInfo>
 #include <QSemaphore>
@@ -259,21 +257,16 @@ private:
     State* m_state;
 };
 
-void ExpectControllerInitialization(MockNode& node, FakeWalletLoader& loader)
+void ConfigureExpectedControllerInitialization(MockNode& node, FakeWalletLoader& loader)
 {
-    using ::testing::_;
-    using ::testing::AtLeast;
-    using ::testing::Invoke;
-    using ::testing::Return;
-    using ::testing::ReturnRef;
-
-    ON_CALL(node, walletLoader()).WillByDefault(ReturnRef(loader));
-    EXPECT_CALL(node, walletLoader()).Times(AtLeast(2)).WillRepeatedly(ReturnRef(loader));
-    EXPECT_CALL(node, getPersistentSetting(_)).WillOnce(Return(common::SettingsValue{}));
-    EXPECT_CALL(node, forceSetting(_, _)).Times(1);
-    EXPECT_CALL(node, listExternalSigners()).WillOnce(Invoke([] {
-        return std::vector<std::unique_ptr<interfaces::ExternalSigner>>{};
-    }));
+    node.wallet_loader_fn = [&loader]() -> interfaces::WalletLoader& { return loader; };
+    node.get_persistent_setting_fn = [](const std::string&) { return common::SettingsValue{}; };
+    node.force_setting_fn = [](const std::string&, const common::SettingsValue&) {};
+    node.list_external_signers_fn = [] { return std::vector<std::unique_ptr<interfaces::ExternalSigner>>{}; };
+    node.ExpectAtLeast(node.calls.walletLoader, 2);
+    node.ExpectExactly(node.calls.getPersistentSetting, 1);
+    node.ExpectExactly(node.calls.forceSetting, 1);
+    node.ExpectExactly(node.calls.listExternalSigners, 1);
 }
 
 const QString VALID_XPUB{
@@ -336,8 +329,7 @@ void WalletQmlControllerTests::initTestCase()
 
 void WalletQmlControllerTests::validateXpubAcceptsValidKey()
 {
-    using ::testing::NiceMock;
-    NiceMock<MockNode> node;
+    MockNode node;
     WalletQmlController controller(node);
 
     QVERIFY(controller.validateXpub(VALID_XPUB));
@@ -345,8 +337,7 @@ void WalletQmlControllerTests::validateXpubAcceptsValidKey()
 
 void WalletQmlControllerTests::validateXpubRejectsGarbage()
 {
-    using ::testing::NiceMock;
-    NiceMock<MockNode> node;
+    MockNode node;
     WalletQmlController controller(node);
 
     QVERIFY(!controller.validateXpub("not-an-xpub"));
@@ -354,8 +345,7 @@ void WalletQmlControllerTests::validateXpubRejectsGarbage()
 
 void WalletQmlControllerTests::validateXpubRejectsEmpty()
 {
-    using ::testing::NiceMock;
-    NiceMock<MockNode> node;
+    MockNode node;
     WalletQmlController controller(node);
 
     QVERIFY(!controller.validateXpub(""));
@@ -363,8 +353,7 @@ void WalletQmlControllerTests::validateXpubRejectsEmpty()
 
 void WalletQmlControllerTests::validateXpubTrimsWhitespace()
 {
-    using ::testing::NiceMock;
-    NiceMock<MockNode> node;
+    MockNode node;
     WalletQmlController controller(node);
 
     QVERIFY(controller.validateXpub("  " + VALID_XPUB + "  "));
@@ -372,11 +361,10 @@ void WalletQmlControllerTests::validateXpubTrimsWhitespace()
 
 void WalletQmlControllerTests::createWatchOnlyInvalidXpubSetsError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -391,11 +379,10 @@ void WalletQmlControllerTests::createWatchOnlyInvalidXpubSetsError()
 
 void WalletQmlControllerTests::createWatchOnlyCleansUpWhenDescriptorImportFails()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -433,15 +420,11 @@ void WalletQmlControllerTests::createWatchOnlyCleansUpWhenDescriptorImportFails(
 
 void WalletQmlControllerTests::externalSignerCreationRequiresConfiguredPath()
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    EXPECT_CALL(node, listExternalSigners())
-        .WillOnce(Invoke([] { return MakeSigners({"Ledger Nano X"}); }));
+    MockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.get_persistent_setting_fn = [](const std::string&) { return common::SettingsValue{}; };
+    node.list_external_signers_fn = [] { return MakeSigners({"Ledger Nano X"}); };
+    node.ExpectExactly(node.calls.listExternalSigners, 1);
 
     WalletQmlController controller(node);
     controller.refreshExternalSignerStatus();
@@ -453,17 +436,13 @@ void WalletQmlControllerTests::externalSignerCreationRequiresConfiguredPath()
 
 void WalletQmlControllerTests::externalSignerCreationRequiresExactlyOneSigner()
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"signer"}))
-        .WillByDefault(Return(common::SettingsValue{std::string{"/usr/bin/hwi"}}));
-    EXPECT_CALL(node, listExternalSigners())
-        .WillOnce(Invoke([] { return MakeSigners({"Signer A", "Signer B"}); }));
+    MockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.get_persistent_setting_fn = [](const std::string& name) {
+        return name == "signer" ? common::SettingsValue{std::string{"/usr/bin/hwi"}} : common::SettingsValue{};
+    };
+    node.list_external_signers_fn = [] { return MakeSigners({"Signer A", "Signer B"}); };
+    node.ExpectExactly(node.calls.listExternalSigners, 1);
 
     WalletQmlController controller(node);
     controller.refreshExternalSignerStatus();
@@ -475,17 +454,13 @@ void WalletQmlControllerTests::externalSignerCreationRequiresExactlyOneSigner()
 
 void WalletQmlControllerTests::externalSignerSuggestionUsesSignerName()
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"signer"}))
-        .WillByDefault(Return(common::SettingsValue{std::string{"/usr/bin/hwi"}}));
-    EXPECT_CALL(node, listExternalSigners())
-        .WillOnce(Invoke([] { return MakeSigners({"Coldcard Mk4"}); }));
+    MockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.get_persistent_setting_fn = [](const std::string& name) {
+        return name == "signer" ? common::SettingsValue{std::string{"/usr/bin/hwi"}} : common::SettingsValue{};
+    };
+    node.list_external_signers_fn = [] { return MakeSigners({"Coldcard Mk4"}); };
+    node.ExpectExactly(node.calls.listExternalSigners, 1);
 
     WalletQmlController controller(node);
     controller.refreshExternalSignerStatus();
@@ -497,12 +472,11 @@ void WalletQmlControllerTests::externalSignerSuggestionUsesSignerName()
 
 void WalletQmlControllerTests::initializedControllerSignalsMigrationForLegacyWallet()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"legacy_wallet", "bdb"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -519,9 +493,8 @@ void WalletQmlControllerTests::initializedControllerSignalsMigrationForLegacyWal
 
 void WalletQmlControllerTests::createWalletBeforeInitializationReturnsFalseAndSetsError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     controller.createSingleSigWallet("test_wallet", "secret");
@@ -532,9 +505,8 @@ void WalletQmlControllerTests::createWalletBeforeInitializationReturnsFalseAndSe
 
 void WalletQmlControllerTests::importWalletBeforeInitializationSetsLoadError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     controller.importWallet("/tmp/test_wallet.dat");
@@ -543,9 +515,8 @@ void WalletQmlControllerTests::importWalletBeforeInitializationSetsLoadError()
 
 void WalletQmlControllerTests::migrateWalletBeforeInitializationSetsMigrationError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     controller.migrateWallet("legacy_wallet", "secret");
@@ -554,9 +525,8 @@ void WalletQmlControllerTests::migrateWalletBeforeInitializationSetsMigrationErr
 
 void WalletQmlControllerTests::selectWalletBeforeInitializationSetsLoadError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     controller.setSelectedWallet("test_wallet");
@@ -565,11 +535,10 @@ void WalletQmlControllerTests::selectWalletBeforeInitializationSetsLoadError()
 
 void WalletQmlControllerTests::initializedControllerPropagatesCreateErrors()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -601,12 +570,11 @@ void WalletQmlControllerTests::initializedControllerPropagatesCreateErrors()
 
 void WalletQmlControllerTests::initializedControllerForwardsMigrationPassphrase()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"legacy_wallet", "bdb"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -633,11 +601,10 @@ void WalletQmlControllerTests::initializedControllerForwardsMigrationPassphrase(
 
 void WalletQmlControllerTests::initializedControllerForwardsUtf8CreatePassphrase()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -665,11 +632,10 @@ void WalletQmlControllerTests::initializedControllerForwardsUtf8CreatePassphrase
 
 void WalletQmlControllerTests::initializedControllerEmitsWalletCreateSucceeded()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -696,11 +662,10 @@ void WalletQmlControllerTests::initializedControllerEmitsWalletCreateSucceeded()
 
 void WalletQmlControllerTests::initializedControllerDoesNotCompleteCreateForUnrelatedLoadNotification()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -740,12 +705,11 @@ void WalletQmlControllerTests::initializedControllerDoesNotCompleteCreateForUnre
 
 void WalletQmlControllerTests::initializedControllerDoesNotCompleteLoadForUnrelatedLoadNotification()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"target_wallet", "sqlite"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -783,11 +747,10 @@ void WalletQmlControllerTests::initializedControllerDoesNotCompleteLoadForUnrela
 
 void WalletQmlControllerTests::initializedControllerReportsCreateWarnings()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -810,11 +773,10 @@ void WalletQmlControllerTests::initializedControllerReportsCreateWarnings()
 
 void WalletQmlControllerTests::initializedControllerIgnoresDuplicateCreateWhileInProgress()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -839,9 +801,8 @@ void WalletQmlControllerTests::initializedControllerIgnoresDuplicateCreateWhileI
 
 void WalletQmlControllerTests::watchOnlyCreateBeforeInitializationSetsLoadError()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     controller.createWatchOnlyWallet("watch_only", VALID_XPUB);
@@ -852,11 +813,10 @@ void WalletQmlControllerTests::watchOnlyCreateBeforeInitializationSetsLoadError(
 
 void WalletQmlControllerTests::watchOnlyCreateWhileWalletLoadInProgressIsIgnored()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -889,11 +849,10 @@ void WalletQmlControllerTests::watchOnlyCreateWhileWalletLoadInProgressIsIgnored
 
 void WalletQmlControllerTests::watchOnlyCreateFailureAfterCreateDoesNotPublishWallet()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -926,15 +885,14 @@ void WalletQmlControllerTests::watchOnlyCreateFailureAfterCreateDoesNotPublishWa
 
 void WalletQmlControllerTests::initializedControllerRequestsPassphraseBeforeEncryptedMigration()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"legacy_wallet", "bdb"}};
     loader.is_encrypted_fn = [](const std::string& name) {
         return name == "legacy_wallet";
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -952,15 +910,14 @@ void WalletQmlControllerTests::initializedControllerRequestsPassphraseBeforeEncr
 
 void WalletQmlControllerTests::initializedControllerMigratesUnencryptedWalletWithoutPassphrase()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"legacy_wallet", "bdb"}};
     loader.is_encrypted_fn = [](const std::string&) {
         return false;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -985,9 +942,8 @@ void WalletQmlControllerTests::initializedControllerMigratesUnencryptedWalletWit
 
 void WalletQmlControllerTests::initializedControllerClosesSelectedWalletAndSelectsRemainingLoadedWallet()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -997,7 +953,7 @@ void WalletQmlControllerTests::initializedControllerClosesSelectedWalletAndSelec
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1034,9 +990,8 @@ void WalletQmlControllerTests::initializedControllerClosesSelectedWalletAndSelec
 
 void WalletQmlControllerTests::initializedControllerClosesNonSelectedWalletWithoutChangingSelection()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -1046,7 +1001,7 @@ void WalletQmlControllerTests::initializedControllerClosesNonSelectedWalletWitho
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1070,9 +1025,8 @@ void WalletQmlControllerTests::initializedControllerClosesNonSelectedWalletWitho
 
 void WalletQmlControllerTests::initializedControllerEmitsWalletLoadStateChanged()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -1082,7 +1036,7 @@ void WalletQmlControllerTests::initializedControllerEmitsWalletLoadStateChanged(
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     QSignalSpy load_state_spy(&controller, &WalletQmlController::walletLoadStateChanged);
@@ -1099,9 +1053,8 @@ void WalletQmlControllerTests::initializedControllerEmitsWalletLoadStateChanged(
 
 void WalletQmlControllerTests::initializedControllerHandlesExternalWalletUnload()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -1111,7 +1064,7 @@ void WalletQmlControllerTests::initializedControllerHandlesExternalWalletUnload(
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1136,9 +1089,8 @@ void WalletQmlControllerTests::initializedControllerHandlesExternalWalletUnload(
 
 void WalletQmlControllerTests::initializedControllerUnloadWalletsClearsSelectionAndOpenWallets()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -1148,7 +1100,7 @@ void WalletQmlControllerTests::initializedControllerUnloadWalletsClearsSelection
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1173,12 +1125,11 @@ void WalletQmlControllerTests::initializedControllerUnloadWalletsClearsSelection
 
 void WalletQmlControllerTests::initializedControllerEmitsLoadingThenLoadErrorOnFailedLoad()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"alpha_wallet", "sqlite"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1207,9 +1158,8 @@ void WalletQmlControllerTests::initializedControllerEmitsLoadingThenLoadErrorOnF
 
 void WalletQmlControllerTests::publishOpenWalletsInfoEmitsWalletInfoChangedForEachOpenWallet()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     FakeWallet::State alpha_state;
     FakeWallet::State beta_state;
@@ -1219,7 +1169,7 @@ void WalletQmlControllerTests::publishOpenWalletsInfoEmitsWalletInfoChangedForEa
         wallets.emplace_back(std::make_unique<FakeWallet>("beta_wallet", &beta_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1236,11 +1186,10 @@ void WalletQmlControllerTests::publishOpenWalletsInfoEmitsWalletInfoChangedForEa
 
 void WalletQmlControllerTests::walletNameAvailabilityErrorRejectsEmptyAndWhitespace()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1252,12 +1201,11 @@ void WalletQmlControllerTests::walletNameAvailabilityErrorRejectsEmptyAndWhitesp
 
 void WalletQmlControllerTests::walletNameAvailabilityErrorRejectsExistingNameWithSurroundingWhitespace()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"alpha_wallet", "sqlite"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1272,12 +1220,11 @@ void WalletQmlControllerTests::walletNameAvailabilityErrorRejectsExistingNameWit
 
 void WalletQmlControllerTests::walletNameAvailabilityErrorReturnsEmptyForAvailableName()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {{"alpha_wallet", "sqlite"}};
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1287,9 +1234,8 @@ void WalletQmlControllerTests::walletNameAvailabilityErrorReturnsEmptyForAvailab
 
 void WalletQmlControllerTests::openSelectedWalletLocationOpensWalletDirectory()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     QTemporaryDir wallet_dir;
     QVERIFY(wallet_dir.isValid());
@@ -1301,7 +1247,7 @@ void WalletQmlControllerTests::openSelectedWalletLocationOpensWalletDirectory()
         wallets.emplace_back(std::make_unique<FakeWallet>("created_wallet", &wallet_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1319,9 +1265,8 @@ void WalletQmlControllerTests::openSelectedWalletLocationOpensWalletDirectory()
 
 void WalletQmlControllerTests::openSelectedWalletLocationReportsOpenFailure()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     QTemporaryDir wallet_dir;
     QVERIFY(wallet_dir.isValid());
@@ -1333,7 +1278,7 @@ void WalletQmlControllerTests::openSelectedWalletLocationReportsOpenFailure()
         wallets.emplace_back(std::make_unique<FakeWallet>("created_wallet", &wallet_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1351,9 +1296,8 @@ void WalletQmlControllerTests::openSelectedWalletLocationReportsOpenFailure()
 
 void WalletQmlControllerTests::openSelectedWalletLocationReportsMissingWalletPath()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     QTemporaryDir wallet_dir;
     QVERIFY(wallet_dir.isValid());
@@ -1364,7 +1308,7 @@ void WalletQmlControllerTests::openSelectedWalletLocationReportsMissingWalletPat
         wallets.emplace_back(std::make_unique<FakeWallet>("missing_wallet", &wallet_state));
         return wallets;
     };
-    ExpectControllerInitialization(node, loader);
+    ConfigureExpectedControllerInitialization(node, loader);
 
     WalletQmlController controller(node);
     controller.initialize();
@@ -1382,9 +1326,8 @@ void WalletQmlControllerTests::openSelectedWalletLocationReportsMissingWalletPat
 
 void WalletQmlControllerTests::openSelectedWalletLocationReportsMissingSelectedWallet()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     WalletQmlController controller(node);
 
     QVERIFY(!controller.openSelectedWalletLocation());

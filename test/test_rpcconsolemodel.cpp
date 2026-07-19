@@ -11,143 +11,29 @@
 // and executeRpc() is never reached.  A minimal RpcTestStubNode that compiles is
 // therefore sufficient.
 
-#include <QtTest/QtTest>
-#include <QMutex>
-#include <QSemaphore>
-#include <QSignalSpy>
-
-#include <atomic>
-
-#include <qml/models/rpcconsolemodel.h>
-
 #include <coins.h>
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
 #include <interfaces/wallet.h>
+#include <qml/models/rpcconsolemodel.h>
+#include <test/mocks/stubnode.h>
 #include <univalue.h>
 #include <util/result.h>
 #include <util/translation.h>
 
+#include <QMutex>
+#include <QSemaphore>
+#include <QSignalSpy>
+#include <QtTest/QtTest>
+
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Minimal mock for interfaces::WalletLoader (required by RpcTestStubNode::walletLoader)
-// ---------------------------------------------------------------------------
-class MockWalletLoader : public interfaces::WalletLoader
-{
-public:
-    // ChainClient
-    void registerRpcs() override {}
-    bool verify() override { return false; }
-    bool load() override { return false; }
-    void start(CScheduler&) override {}
-    void stop() override {}
-    void setMockTime(int64_t) override {}
-    void schedulerMockForward(std::chrono::seconds) override {}
-
-    // WalletLoader
-    util::Result<std::unique_ptr<interfaces::Wallet>> createWallet(
-        const std::string&, const SecureString&, uint64_t,
-        std::vector<bilingual_str>&) override
-    { return util::Error{}; }
-
-    util::Result<std::unique_ptr<interfaces::Wallet>> loadWallet(
-        const std::string&, std::vector<bilingual_str>&) override
-    { return util::Error{}; }
-
-    std::string getWalletDir() override { return {}; }
-
-    util::Result<std::unique_ptr<interfaces::Wallet>> restoreWallet(
-        const fs::path&, const std::string&, std::vector<bilingual_str>&, bool) override
-    { return util::Error{}; }
-
-    util::Result<interfaces::WalletMigrationResult> migrateWallet(
-        const std::string&, const SecureString&) override
-    { return util::Error{}; }
-
-    bool isEncrypted(const std::string&) override { return false; }
-
-    std::vector<std::pair<std::string, std::string>> listWalletDir() override { return {}; }
-
-    std::vector<std::unique_ptr<interfaces::Wallet>> getWallets() override { return {}; }
-
-    std::unique_ptr<interfaces::Handler> handleLoadWallet(LoadWalletFn) override { return {}; }
-};
-
-// ---------------------------------------------------------------------------
-// Minimal mock for interfaces::Node
-// ---------------------------------------------------------------------------
-class RpcTestStubNode : public interfaces::Node
-{
-public:
-    // Trivial stubs — none are called during history tests.
-    void initLogging() override {}
-    void initParameterInteraction() override {}
-    bilingual_str getWarnings() override { return {}; }
-    int getExitStatus() override { return 0; }
-    BCLog::CategoryMask getLogCategories() override { return {}; }
-    bool baseInitialize() override { return false; }
-    bool appInitMain(interfaces::BlockAndHeaderTipInfo*) override { return false; }
-    void appShutdown() override {}
-    void startShutdown() override {}
-    bool shutdownRequested() override { return false; }
-    bool isSettingIgnored(const std::string&) override { return false; }
-    common::SettingsValue getPersistentSetting(const std::string&) override { return {}; }
-    void updateRwSetting(const std::string&, const common::SettingsValue&) override {}
-    void forceSetting(const std::string&, const common::SettingsValue&) override {}
-    void resetSettings() override {}
-    void mapPort(bool) override {}
-    std::optional<Proxy> getProxy(Network) override { return std::nullopt; }
-    size_t getNodeCount(ConnectionDirection) override { return 0; }
-    bool getNodesStats(NodesStats&) override { return false; }
-    bool getBanned(banmap_t&) override { return false; }
-    bool ban(const CNetAddr&, int64_t) override { return false; }
-    bool unban(const CSubNet&) override { return false; }
-    bool disconnectByAddress(const CNetAddr&) override { return false; }
-    bool disconnectById(NodeId) override { return false; }
-    std::vector<std::unique_ptr<interfaces::ExternalSigner>> listExternalSigners() override { return {}; }
-    int64_t getTotalBytesRecv() override { return 0; }
-    int64_t getTotalBytesSent() override { return 0; }
-    size_t getMempoolSize() override { return 0; }
-    size_t getMempoolDynamicUsage() override { return 0; }
-    size_t getMempoolMaxUsage() override { return 0; }
-    bool getHeaderTip(int&, int64_t&) override { return false; }
-    int getNumBlocks() override { return 0; }
-    std::map<CNetAddr, LocalServiceInfo> getNetLocalAddresses() override { return {}; }
-    uint256 getBestBlockHash() override { return {}; }
-    int64_t getLastBlockTime() override { return 0; }
-    double getVerificationProgress() override { return 0.0; }
-    bool isInitialBlockDownload() override { return false; }
-    bool isLoadingBlocks() override { return false; }
-    void setNetworkActive(bool) override {}
-    bool getNetworkActive() override { return false; }
-    CFeeRate getDustRelayFee() override { return {}; }
-    UniValue executeRpc(const std::string&, const UniValue&, const std::string&) override { return {}; }
-    std::vector<std::string> listRpcCommands() override { return {}; }
-    std::optional<Coin> getUnspentOutput(const COutPoint&) override { return std::nullopt; }
-    node::TransactionError broadcastTransaction(CTransactionRef, CAmount, std::string&) override
-    { return {}; }
-    interfaces::WalletLoader& walletLoader() override { return m_wallet_loader; }
-
-    std::unique_ptr<interfaces::Handler> handleInitMessage(InitMessageFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleMessageBox(MessageBoxFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleQuestion(QuestionFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleShowProgress(ShowProgressFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleInitWallet(InitWalletFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleNotifyNumConnectionsChanged(NotifyNumConnectionsChangedFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleNotifyNetworkActiveChanged(NotifyNetworkActiveChangedFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleNotifyAlertChanged(NotifyAlertChangedFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleBannedListChanged(BannedListChangedFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleNotifyBlockTip(NotifyBlockTipFn) override { return {}; }
-    std::unique_ptr<interfaces::Handler> handleNotifyHeaderTip(NotifyHeaderTipFn) override { return {}; }
-
-private:
-    MockWalletLoader m_wallet_loader;
-};
+using RpcTestStubNode = StubNode;
 
 // ---------------------------------------------------------------------------
 // Tests

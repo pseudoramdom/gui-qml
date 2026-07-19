@@ -9,7 +9,6 @@
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
-#include <test/gmocktestfixture.h>
 #include <test/mocks/mocknode.h>
 #include <chainparams.h>
 #include <qml/core_settings.h>
@@ -31,7 +30,7 @@
 const TranslateFn G_TRANSLATION_FUN{nullptr};
 #endif
 
-class OptionsModelTests : public GmockTestFixture
+class OptionsModelTests : public QObject
 {
     Q_OBJECT
 
@@ -160,8 +159,7 @@ private Q_SLOTS:
     void onboardingApplyWritesTouchedParameterInteractionOverride();
 };
 
-// Convenience: set up a NiceMock whose getPersistentSetting returns null for
-// all keys by default, but returns a given address for the specified key.
+// Convenience helpers for persistent setting values used by the node double.
 static common::SettingsValue MakeAddress(const std::string& addr)
 {
     return common::SettingsValue{addr};
@@ -172,32 +170,39 @@ static common::SettingsValue MakeInt(int value)
     return common::SettingsValue{value};
 }
 
+static int SettingWriteCount(const MockNode& node, const std::string& name)
+{
+    return std::count_if(node.update_rw_setting_arguments.begin(), node.update_rw_setting_arguments.end(), [&](const auto& write) {
+        return write.first == name;
+    });
+}
+
+static const common::SettingsValue* FindSettingWrite(const MockNode& node, const std::string& name)
+{
+    const auto it{std::find_if(node.update_rw_setting_arguments.rbegin(), node.update_rw_setting_arguments.rend(), [&](const auto& write) {
+        return write.first == name;
+    })};
+    return it == node.update_rw_setting_arguments.rend() ? nullptr : &it->second;
+}
+
 static void InstallPersistentSettings(MockNode& node, ArgsManager& args)
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-
-    ON_CALL(node, getPersistentSetting(_))
-        .WillByDefault(Invoke([&args](const std::string& name) {
-            return args.GetPersistentSetting(name);
-        }));
+    node.get_persistent_setting_fn = [&args](const std::string& name) {
+        return args.GetPersistentSetting(name);
+    };
 }
 
 static void InstallRwSettingsWriter(MockNode& node, ArgsManager& args)
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-
-    ON_CALL(node, updateRwSetting(_, _))
-        .WillByDefault(Invoke([&args](const std::string& name, const common::SettingsValue& value) {
-            args.LockSettings([&](common::Settings& settings) {
-                if (value.isNull()) {
-                    settings.rw_settings.erase(name);
-                } else {
-                    settings.rw_settings[name] = value;
-                }
-            });
-        }));
+    node.update_rw_setting_fn = [&args](const std::string& name, const common::SettingsValue& value) {
+        args.LockSettings([&](common::Settings& settings) {
+            if (value.isNull()) {
+                settings.rw_settings.erase(name);
+            } else {
+                settings.rw_settings[name] = value;
+            }
+        });
+    };
 }
 
 static std::vector<std::string> TestArgv()
@@ -368,63 +373,44 @@ static void PrepareArgsForDataDir(ArgsManager& args, const QString& data_dir)
 
 void OptionsModelTests::proxyDisabledRemovesKey()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
     // Simulate a previously-saved proxy address so that m_proxy_enabled=true on construction.
-    ON_CALL(node, getPersistentSetting(std::string{"proxy"}))
-        .WillByDefault(Return(MakeAddress("127.0.0.1:9050")));
+    node.SetPersistentSetting("proxy", MakeAddress("127.0.0.1:9050"));
 
     OptionsQmlModel model(node);
     QVERIFY(model.proxyEnabled());
 
     // When proxy is disabled, updateRwSetting must be called with a null (not
     // empty-string) SettingsValue so that the key is erased from settings.json.
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"}, _));
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
-        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
-
     model.setProxyEnabled(false);
     QVERIFY(!model.proxyEnabled());
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    QCOMPARE(SettingWriteCount(node, "proxy-prev"), 1);
+    const auto* proxy_write{FindSettingWrite(node, "proxy")};
+    QVERIFY(proxy_write != nullptr);
+    QVERIFY(proxy_write->isNull());
 }
 
 void OptionsModelTests::torDisabledRemovesKey()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"onion"}))
-        .WillByDefault(Return(MakeAddress("127.0.0.1:9150")));
+    MockNode node;
+    node.SetPersistentSetting("onion", MakeAddress("127.0.0.1:9150"));
 
     OptionsQmlModel model(node);
     QVERIFY(model.torEnabled());
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"onion-prev"}, _));
-    EXPECT_CALL(node, updateRwSetting(std::string{"onion"},
-        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
-
     model.setTorEnabled(false);
     QVERIFY(!model.torEnabled());
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    QCOMPARE(SettingWriteCount(node, "onion-prev"), 1);
+    const auto* onion_write{FindSettingWrite(node, "onion")};
+    QVERIFY(onion_write != nullptr);
+    QVERIFY(onion_write->isNull());
 }
 
 void OptionsModelTests::proxyEnabledWritesAddress()
 {
-    using ::testing::_;
-    using ::testing::Eq;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     // Construct with no saved proxy — m_proxy_enabled=false, m_proxy_address="".
     OptionsQmlModel model(node);
@@ -432,27 +418,24 @@ void OptionsModelTests::proxyEnabledWritesAddress()
 
     // Pre-load an address into the model (as QML does before toggling the switch).
     model.setProxyAddress("10.0.0.1:9050");
+    node.update_rw_setting_arguments.clear();
 
     // Enabling proxy must write the address string to settings.
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "10.0.0.1:9050";
-        })));
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"},
-        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
-
     model.setProxyEnabled(true);
     QVERIFY(model.proxyEnabled());
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    const auto* proxy_write{FindSettingWrite(node, "proxy")};
+    QVERIFY(proxy_write != nullptr);
+    QVERIFY(proxy_write->isStr());
+    QCOMPARE(proxy_write->get_str(), std::string{"10.0.0.1:9050"});
+    const auto* previous_write{FindSettingWrite(node, "proxy-prev")};
+    QVERIFY(previous_write != nullptr);
+    QVERIFY(previous_write->isNull());
 }
 
 void OptionsModelTests::proxyDirtySetAtRuntime()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.proxySettingsDirty());
@@ -463,12 +446,7 @@ void OptionsModelTests::proxyDirtySetAtRuntime()
 
 void OptionsModelTests::proxyDirtyResetWhenReverted()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     // Start onboarded with proxy disabled (no saved proxy).
     OptionsQmlModel model(node);
@@ -492,14 +470,8 @@ void OptionsModelTests::proxyDirtyResetWhenReverted()
 
 void OptionsModelTests::mempoolSizeLoadedFromSettings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"maxmempool"}))
-        .WillByDefault(Return(MakeInt(456)));
+    MockNode node;
+    node.SetPersistentSetting("maxmempool", MakeInt(456));
 
     OptionsQmlModel model(node);
     QCOMPARE(model.maxMempoolSizeMB(), 456);
@@ -507,120 +479,81 @@ void OptionsModelTests::mempoolSizeLoadedFromSettings()
 
 void OptionsModelTests::mempoolSizeWritesSetting()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isNum() && v.getInt<int64_t>() == 456;
-        })));
-
     model.setMaxMempoolSizeMB(456);
     QCOMPARE(model.maxMempoolSizeMB(), 456);
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
+    const auto* mempool_write{FindSettingWrite(node, "maxmempool")};
+    QVERIFY(mempool_write != nullptr);
+    QVERIFY(mempool_write->isNum());
+    QCOMPARE(mempool_write->getInt<int64_t>(), int64_t{456});
 }
 
 void OptionsModelTests::mempoolSizeDoesNotRewriteUnchangedSetting()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"maxmempool"}))
-        .WillByDefault(Return(MakeInt(456)));
+    MockNode node;
+    node.SetPersistentSetting("maxmempool", MakeInt(456));
 
     OptionsQmlModel model(node);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"}, _)).Times(0);
-
     model.setMaxMempoolSizeMB(456);
     QCOMPARE(model.maxMempoolSizeMB(), 456);
+    QCOMPARE(SettingWriteCount(node, "maxmempool"), 0);
 }
 
 void OptionsModelTests::legacyNumericSettingsWriteStrings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"dbcache"},
-        Truly([](const common::SettingsValue& value) {
-            return value.isStr() && value.get_str() == "600";
-        })));
-    EXPECT_CALL(node, updateRwSetting(std::string{"par"},
-        Truly([](const common::SettingsValue& value) {
-            return value.isStr() && value.get_str() == "12";
-        })));
-
     model.setDbcacheSizeMiB(600);
     model.setScriptThreads(12);
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    const auto* dbcache_write{FindSettingWrite(node, "dbcache")};
+    const auto* par_write{FindSettingWrite(node, "par")};
+    QVERIFY(dbcache_write != nullptr && dbcache_write->isStr());
+    QVERIFY(par_write != nullptr && par_write->isStr());
+    QCOMPARE(dbcache_write->get_str(), std::string{"600"});
+    QCOMPARE(par_write->get_str(), std::string{"12"});
 }
 
 void OptionsModelTests::externalSignerPathWritesSigner()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "/usr/local/bin/hwi";
-        })));
-
     model.setExternalSignerPath("/usr/local/bin/hwi");
     QCOMPARE(model.externalSignerPath(), QString("/usr/local/bin/hwi"));
+    const auto* signer_write{FindSettingWrite(node, "signer")};
+    QVERIFY(signer_write != nullptr && signer_write->isStr());
+    QCOMPARE(signer_write->get_str(), std::string{"/usr/local/bin/hwi"});
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
 }
 
 void OptionsModelTests::externalSignerPathClearedRemovesKey()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"signer"}))
-        .WillByDefault(Return(MakeAddress("/usr/local/bin/hwi")));
+    MockNode node;
+    node.SetPersistentSetting("signer", MakeAddress("/usr/local/bin/hwi"));
 
     OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPath(), QString("/usr/local/bin/hwi"));
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
-        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
-
     model.setExternalSignerPath("");
     QVERIFY(model.externalSignerPath().isEmpty());
+    const auto* signer_write{FindSettingWrite(node, "signer")};
+    QVERIFY(signer_write != nullptr);
+    QVERIFY(signer_write->isNull());
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
 }
 
 void OptionsModelTests::walletSettingsDirtyTracksExternalSignerPath()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
@@ -634,14 +567,8 @@ void OptionsModelTests::walletSettingsDirtyTracksExternalSignerPath()
 
 void OptionsModelTests::signerPathLoadedFromSettings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"signer"}))
-        .WillByDefault(Return(MakeAddress("/opt/hwi/ledger.py")));
+    MockNode node;
+    node.SetPersistentSetting("signer", MakeAddress("/opt/hwi/ledger.py"));
 
     OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPath(), QString("/opt/hwi/ledger.py"));
@@ -649,34 +576,22 @@ void OptionsModelTests::signerPathLoadedFromSettings()
 
 void OptionsModelTests::signerPathWritesSetting()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(model.externalSignerPath().isEmpty());
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"signer"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "/opt/hwi/ledger.py";
-        })));
-
     model.setExternalSignerPath("/opt/hwi/ledger.py");
     QCOMPARE(model.externalSignerPath(), QString("/opt/hwi/ledger.py"));
+    const auto* signer_write{FindSettingWrite(node, "signer")};
+    QVERIFY(signer_write != nullptr && signer_write->isStr());
+    QCOMPARE(signer_write->get_str(), std::string{"/opt/hwi/ledger.py"});
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
 }
 
 void OptionsModelTests::signerDirtySetAtRuntime()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
@@ -687,12 +602,7 @@ void OptionsModelTests::signerDirtySetAtRuntime()
 
 void OptionsModelTests::signerDirtyResetWhenReverted()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.walletSettingsDirty());
@@ -706,12 +616,7 @@ void OptionsModelTests::signerDirtyResetWhenReverted()
 
 void OptionsModelTests::externalSignerPathValidationRejectsMissingPath()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QCOMPARE(model.externalSignerPathValidationError("/definitely/not/a/real/signer"),
@@ -720,12 +625,7 @@ void OptionsModelTests::externalSignerPathValidationRejectsMissingPath()
 
 void OptionsModelTests::externalSignerPathValidationAcceptsExecutablePath()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     QTemporaryDir temp_dir;
     QVERIFY(temp_dir.isValid());
@@ -743,13 +643,8 @@ void OptionsModelTests::externalSignerPathValidationAcceptsExecutablePath()
 
 void OptionsModelTests::connectionDirtyTracksRestartSettings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"listen"})).WillByDefault(Return(common::SettingsValue{true}));
+    MockNode node;
+    node.SetPersistentSetting("listen", common::SettingsValue{true});
 
     OptionsQmlModel model(node);
     QVERIFY(!model.connectionSettingsDirty());
@@ -766,30 +661,21 @@ void OptionsModelTests::connectionDirtyTracksRestartSettings()
 
 void OptionsModelTests::natpmpAppliesLiveWithoutRestartDirty()
 {
-    using ::testing::_;
-    using ::testing::InSequence;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(model.natpmp());
-    InSequence sequence;
-    EXPECT_CALL(node, updateRwSetting(std::string{"natpmp"},
-        Truly([](const common::SettingsValue& value) {
-            const std::optional<bool> parsed = SettingToBool(value);
-            return parsed.has_value() && !*parsed;
-        })));
-    EXPECT_CALL(node, mapPort(false));
-    EXPECT_CALL(node, updateRwSetting(std::string{"natpmp"},
-        Truly([](const common::SettingsValue& value) {
-            const std::optional<bool> parsed = SettingToBool(value);
-            return value.isNull() || (parsed.has_value() && *parsed);
-        })));
-    EXPECT_CALL(node, mapPort(true));
+    std::vector<QString> events;
+    node.update_rw_setting_fn = [&](const std::string& name, const common::SettingsValue& value) {
+        if (name == "natpmp") {
+            const auto parsed{SettingToBool(value)};
+            events.push_back(value.isNull() ? QStringLiteral("write:null") : parsed && *parsed ? QStringLiteral("write:true") :
+                                                                                                 QStringLiteral("write:false"));
+        }
+    };
+    node.map_port_fn = [&](bool enabled) {
+        events.push_back(enabled ? QStringLiteral("map:true") : QStringLiteral("map:false"));
+    };
 
     model.setNatpmp(false);
     QVERIFY(!model.natpmp());
@@ -802,16 +688,16 @@ void OptionsModelTests::natpmpAppliesLiveWithoutRestartDirty()
     QVERIFY(!model.connectionSettingsDirty());
     QVERIFY(!model.restartRequired());
     QTest::qWait(300);
+    QCOMPARE(events.size(), 4U);
+    QCOMPARE(events.at(0), QStringLiteral("write:false"));
+    QCOMPARE(events.at(1), QStringLiteral("map:false"));
+    QVERIFY(events.at(2) == QStringLiteral("write:null") || events.at(2) == QStringLiteral("write:true"));
+    QCOMPARE(events.at(3), QStringLiteral("map:true"));
 }
 
 void OptionsModelTests::storageDirtyIgnoresDisabledPruneSize()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.prune());
@@ -825,40 +711,28 @@ void OptionsModelTests::storageDirtyIgnoresDisabledPruneSize()
 
 void OptionsModelTests::pruneDisabledPreservesPreviousValue()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"prune"}))
-        .WillByDefault(Return(MakeInt(QmlCoreSettings::PruneGBToMiB(10))));
+    MockNode node;
+    node.SetPersistentSetting("prune", MakeInt(QmlCoreSettings::PruneGBToMiB(10)));
 
     OptionsQmlModel model(node);
     QVERIFY(model.prune());
     QCOMPARE(model.pruneSizeGB(), 10);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"prune-prev"},
-        Truly([](const common::SettingsValue& value) {
-            return value.isStr() && value.get_str() == std::to_string(QmlCoreSettings::PruneGBToMiB(10));
-        })));
-    EXPECT_CALL(node, updateRwSetting(std::string{"prune"},
-        Truly([](const common::SettingsValue& value) { return value.isNull(); })));
-
     model.setPrune(false);
     QVERIFY(!model.prune());
     QCOMPARE(model.pruneSizeGB(), 10);
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    const auto* previous_write{FindSettingWrite(node, "prune-prev")};
+    QVERIFY(previous_write != nullptr && previous_write->isStr());
+    QCOMPARE(previous_write->get_str(), std::to_string(QmlCoreSettings::PruneGBToMiB(10)));
+    const auto* prune_write{FindSettingWrite(node, "prune")};
+    QVERIFY(prune_write != nullptr);
+    QVERIFY(prune_write->isNull());
 }
 
 void OptionsModelTests::developerDirtyTracksRestartSettings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.developerSettingsDirty());
@@ -874,12 +748,7 @@ void OptionsModelTests::developerDirtyTracksRestartSettings()
 
 void OptionsModelTests::mempoolDirtyTracksRestartSettings()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.developerSettingsDirty());
@@ -899,12 +768,7 @@ void OptionsModelTests::mempoolDirtyTracksRestartSettings()
 
 void OptionsModelTests::proxyValidationAndCommit()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(model.validateProxyLocation("127.0.0.1:9050").isEmpty());
@@ -933,33 +797,23 @@ void OptionsModelTests::proxyValidationAndCommit()
 
 void OptionsModelTests::proxyDisabledPreservesPreviousValue()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::Truly;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"proxy"}))
-        .WillByDefault(Return(MakeAddress("127.0.0.1:9050")));
+    MockNode node;
+    node.SetPersistentSetting("proxy", MakeAddress("127.0.0.1:9050"));
 
     OptionsQmlModel model(node);
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy-prev"},
-        Truly([](const common::SettingsValue& v) {
-            return v.isStr() && v.get_str() == "127.0.0.1:9050";
-        })));
-    EXPECT_CALL(node, updateRwSetting(std::string{"proxy"},
-        Truly([](const common::SettingsValue& v) { return v.isNull(); })));
-
     model.setProxyEnabled(false);
     QVERIFY(!model.proxyEnabled());
+    QCOMPARE(node.update_rw_setting_arguments.size(), 2U);
+    const auto* previous_write{FindSettingWrite(node, "proxy-prev")};
+    QVERIFY(previous_write != nullptr && previous_write->isStr());
+    QCOMPARE(previous_write->get_str(), std::string{"127.0.0.1:9050"});
+    const auto* proxy_write{FindSettingWrite(node, "proxy")};
+    QVERIFY(proxy_write != nullptr);
+    QVERIFY(proxy_write->isNull());
 }
 
 void OptionsModelTests::customDataDirValidationRejectsFile()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     QTemporaryDir temp_dir;
     QVERIFY(temp_dir.isValid());
@@ -968,8 +822,7 @@ void OptionsModelTests::customDataDirValidationRejectsFile()
     QVERIFY(file.open(QIODevice::WriteOnly));
     file.close();
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(!model.validateCustomDataDir(file_path).isEmpty());
@@ -978,9 +831,6 @@ void OptionsModelTests::customDataDirValidationRejectsFile()
 
 void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     SavedGuiDataDirSettings saved_settings;
     QSettings settings;
@@ -992,8 +842,7 @@ void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
     const QString data_dir = QDir(temp_dir.path()).filePath("selected-data-dir");
     QVERIFY(!QFileInfo::exists(data_dir));
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(model.validateCustomDataDir(data_dir).isEmpty());
@@ -1008,9 +857,6 @@ void OptionsModelTests::customDataDirSelectionCreatesDirectoryAndPersists()
 
 void OptionsModelTests::customDataDirSelectionPreservesExistingWalletDiscovery()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     SavedGuiDataDirSettings saved_settings;
     QSettings settings;
@@ -1024,8 +870,7 @@ void OptionsModelTests::customDataDirSelectionPreservesExistingWalletDiscovery()
     const QString wallets_dir = QDir(data_dir).filePath("wallets");
     QVERIFY(!QFileInfo::exists(wallets_dir));
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QVERIFY(model.validateCustomDataDir(data_dir).isEmpty());
@@ -1134,7 +979,6 @@ void OptionsModelTests::guiDataDirSettingSkipsExplicitDatadir()
 
 void OptionsModelTests::runtimeDataDirUsesExplicitDatadirOverSavedGuiSetting()
 {
-    using ::testing::NiceMock;
 
     SavedGuiDataDirSettings saved_settings;
     QSettings settings;
@@ -1147,7 +991,7 @@ void OptionsModelTests::runtimeDataDirUsesExplicitDatadirOverSavedGuiSetting()
     ArgsManager args;
     PrepareArgsForDataDir(args, explicit_data_dir.path());
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -2222,16 +2066,12 @@ void OptionsModelTests::storageSpaceCheckRejectsExistingFile()
 
 void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     QSettings settings;
     const bool had_urls_setting = settings.contains(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS);
     const QVariant previous_urls_setting = settings.value(SettingsKeys::THIRD_PARTY_TRANSACTION_URLS);
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     model.setThirdPartyTransactionUrls(
@@ -2262,17 +2102,13 @@ void OptionsModelTests::thirdPartyTransactionLinksParseValidUrls()
 
 void OptionsModelTests::moneyFontChoicePersists()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     QSettings settings;
     const bool had_font_setting = settings.contains(SettingsKeys::MONEY_FONT_CHOICE);
     const QVariant previous_font_setting = settings.value(SettingsKeys::MONEY_FONT_CHOICE);
     settings.remove(SettingsKeys::MONEY_FONT_CHOICE);
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QCOMPARE(model.moneyFontChoice(), QString("embedded"));
@@ -2289,17 +2125,13 @@ void OptionsModelTests::moneyFontChoicePersists()
 
 void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
 
     QSettings settings;
     const bool had_display_unit_setting = settings.contains(SettingsKeys::DISPLAY_UNIT);
     const QVariant previous_display_unit_setting = settings.value(SettingsKeys::DISPLAY_UNIT);
     settings.setValue(SettingsKeys::DISPLAY_UNIT, QVariant::fromValue(LegacyDisplayUnit::SAT));
 
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
+    MockNode node;
 
     OptionsQmlModel model(node);
     QCOMPARE(QString::fromUtf8(SettingsKeys::DISPLAY_UNIT), QStringLiteral("DisplayBitcoinUnit"));
@@ -2332,7 +2164,6 @@ void OptionsModelTests::displayUnitUsesQtCompatibleSettingsKey()
 
 void OptionsModelTests::displayUnitUsesLegacyQtFallback()
 {
-    using ::testing::NiceMock;
 
     SavedSettingsFormat settings_format{QSettings::IniFormat};
     SavedGuiDataDirSettings saved_settings;
@@ -2354,7 +2185,7 @@ DisplayBitcoinUnit=@Variant(\0\0\0\x7f\0\0\0\fBitcoinUnit\0\x3)
     QVERIFY2(PrepareTestArgs(args, TestArgv(), parse_error), parse_error.c_str());
     args.SelectConfigNetwork(args.GetChainTypeString());
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -2365,7 +2196,6 @@ DisplayBitcoinUnit=@Variant(\0\0\0\x7f\0\0\0\fBitcoinUnit\0\x3)
 
 void OptionsModelTests::displayUnitPrefersQmlSettingOverLegacyQtFallback()
 {
-    using ::testing::NiceMock;
 
     SavedGuiDataDirSettings saved_settings;
     SavedNamedSettings legacy_settings{QStringLiteral("Bitcoin"), QStringLiteral("Bitcoin-Qt-regtest")};
@@ -2379,7 +2209,7 @@ void OptionsModelTests::displayUnitPrefersQmlSettingOverLegacyQtFallback()
     QVERIFY2(PrepareTestArgs(args, TestArgv(), parse_error), parse_error.c_str());
     args.SelectConfigNetwork(args.GetChainTypeString());
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -2496,13 +2326,12 @@ void OptionsModelTests::coreSettingsLegacyNumericOverridesWriteStrings()
 
 void OptionsModelTests::coreSettingsModelEntryMutatesRuntimeModel()
 {
-    using ::testing::NiceMock;
 
     ArgsManager args;
     std::string error;
     QVERIFY(PrepareTestArgs(args, TestArgv(), error));
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
     InstallRwSettingsWriter(node, args);
 
@@ -2684,14 +2513,8 @@ void OptionsModelTests::coreSettingsSessionProxyDisabledPreservesPreviousValue()
 
 void OptionsModelTests::coreSettingsLoadPersistentPrunePreviousValue()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-
-    NiceMock<MockNode> node;
-    ON_CALL(node, getPersistentSetting(_)).WillByDefault(Return(common::SettingsValue{}));
-    ON_CALL(node, getPersistentSetting(std::string{"prune-prev"}))
-        .WillByDefault(Return(MakeInt(QmlCoreSettings::PruneGBToMiB(10))));
+    MockNode node;
+    node.SetPersistentSetting("prune-prev", MakeInt(QmlCoreSettings::PruneGBToMiB(10)));
 
     const QmlCoreSettings::Values values = QmlCoreSettings::LoadPersistentValues(node);
     QVERIFY(!values.prune);
@@ -2749,7 +2572,6 @@ void OptionsModelTests::coreSettingsSessionProxyCommitAcceptsUnchangedAddressWit
 
 void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
 {
-    using ::testing::NiceMock;
 
     {
         ArgsManager args;
@@ -2758,7 +2580,7 @@ void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
             settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
         });
 
-        NiceMock<MockNode> node;
+        MockNode node;
         InstallPersistentSettings(node, args);
 
         OptionsQmlModel model(node, args);
@@ -2777,7 +2599,7 @@ void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
             settings.rw_settings["listen"] = common::SettingsValue{false};
         });
 
-        NiceMock<MockNode> node;
+        MockNode node;
         InstallPersistentSettings(node, args);
 
         OptionsQmlModel model(node, args);
@@ -2795,7 +2617,7 @@ void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
             settings.command_line_options["listen"].push_back(common::SettingsValue{true});
         });
 
-        NiceMock<MockNode> node;
+        MockNode node;
         InstallPersistentSettings(node, args);
 
         OptionsQmlModel model(node, args);
@@ -2809,12 +2631,11 @@ void OptionsModelTests::coreSettingStatusTracksSourcePrecedence()
 
 void OptionsModelTests::runtimeCoreSettingStatusesRefreshAfterWrite()
 {
-    using ::testing::NiceMock;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
     InstallRwSettingsWriter(node, args);
 
@@ -2831,8 +2652,6 @@ void OptionsModelTests::runtimeCoreSettingStatusesRefreshAfterWrite()
 
 void OptionsModelTests::commandLineOverriddenSettingDoesNotWrite()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
@@ -2841,7 +2660,7 @@ void OptionsModelTests::commandLineOverriddenSettingDoesNotWrite()
         settings.ro_config[""]["listen"].push_back(common::SettingsValue{true});
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -2849,16 +2668,15 @@ void OptionsModelTests::commandLineOverriddenSettingDoesNotWrite()
     QCOMPARE(model.coreSettingStatus(QStringLiteral("listen")).value("source").toString(), QString("command_line"));
     QCOMPARE(model.coreSettingStatus(QStringLiteral("listen")).value("canEdit").toBool(), false);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"listen"}, _)).Times(0);
+    node.update_rw_setting_arguments.clear();
     model.setListen(true);
 
     QVERIFY(!model.listen());
+    QCOMPARE(SettingWriteCount(node, "listen"), 0);
 }
 
 void OptionsModelTests::runtimeCommandLineOverridesDisplayEffectiveValues()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
@@ -2881,7 +2699,7 @@ void OptionsModelTests::runtimeCommandLineOverridesDisplayEffectiveValues()
         settings.command_line_options["signer"].push_back(common::SettingsValue{std::string{"cli-signer"}});
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -2906,9 +2724,6 @@ void OptionsModelTests::runtimeCommandLineOverridesDisplayEffectiveValues()
 
 void OptionsModelTests::runtimeParameterInteractionsDisplayEffectiveValues()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Truly;
 
     std::vector<std::string> proxy_argv = TestArgv();
     proxy_argv.emplace_back("-proxy=127.0.0.1:9050");
@@ -2920,7 +2735,7 @@ void OptionsModelTests::runtimeParameterInteractionsDisplayEffectiveValues()
     proxy_args.SelectConfigNetwork(proxy_args.GetChainTypeString());
     InitParameterInteraction(proxy_args);
 
-    NiceMock<MockNode> proxy_node;
+    MockNode proxy_node;
     InstallPersistentSettings(proxy_node, proxy_args);
     InstallRwSettingsWriter(proxy_node, proxy_args);
 
@@ -2942,23 +2757,25 @@ void OptionsModelTests::runtimeParameterInteractionsDisplayEffectiveValues()
     QCOMPARE(listen_entry->status().value("hasRwSetting").toBool(), false);
     QSignalSpy listen_entry_status_spy(listen_entry, &CoreSettingEntryModel::statusChanged);
 
-    EXPECT_CALL(proxy_node, updateRwSetting(std::string{"listen"},
-        Truly([](const common::SettingsValue& value) {
-            return value.isBool() && value.get_bool();
-        })));
+    proxy_node.update_rw_setting_arguments.clear();
     proxy_model.setListen(true);
     QVERIFY(proxy_model.listen());
     QCOMPARE(SettingToBool(proxy_args.GetPersistentSetting("listen")), true);
     QCOMPARE(proxy_model.coreSettingStatus(QStringLiteral("listen")).value("hasRwSetting").toBool(), true);
     QCOMPARE(listen_entry->status().value("hasRwSetting").toBool(), true);
     QVERIFY(listen_entry_status_spy.count() >= 1);
+    QCOMPARE(proxy_node.update_rw_setting_arguments.size(), 1U);
+    const auto* enabled_write{FindSettingWrite(proxy_node, "listen")};
+    QVERIFY(enabled_write != nullptr && enabled_write->isBool());
+    QVERIFY(enabled_write->get_bool());
 
-    EXPECT_CALL(proxy_node, updateRwSetting(std::string{"listen"},
-        Truly([](const common::SettingsValue& value) {
-            return value.isNull();
-        })));
+    proxy_node.update_rw_setting_arguments.clear();
     proxy_model.setListen(false);
     QVERIFY(!proxy_model.listen());
+    QCOMPARE(proxy_node.update_rw_setting_arguments.size(), 1U);
+    const auto* disabled_write{FindSettingWrite(proxy_node, "listen")};
+    QVERIFY(disabled_write != nullptr);
+    QVERIFY(disabled_write->isNull());
 
     bool has_listen_override{true};
     proxy_args.LockSettings([&](common::Settings& settings) {
@@ -2975,7 +2792,7 @@ void OptionsModelTests::runtimeParameterInteractionsDisplayEffectiveValues()
     blocksonly_args.SelectConfigNetwork(blocksonly_args.GetChainTypeString());
     InitParameterInteraction(blocksonly_args);
 
-    NiceMock<MockNode> blocksonly_node;
+    MockNode blocksonly_node;
     InstallPersistentSettings(blocksonly_node, blocksonly_args);
 
     OptionsQmlModel blocksonly_model(blocksonly_node, blocksonly_args);
@@ -2989,8 +2806,6 @@ void OptionsModelTests::runtimeParameterInteractionsDisplayEffectiveValues()
 
 void OptionsModelTests::commandLineOverriddenSettingsPreservePersistentValues()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
@@ -3011,12 +2826,12 @@ void OptionsModelTests::commandLineOverriddenSettingsPreservePersistentValues()
         settings.command_line_options["signer"].push_back(common::SettingsValue{std::string{"cli-signer"}});
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
-    EXPECT_CALL(node, updateRwSetting(_, _)).Times(0);
-    EXPECT_CALL(node, forceSetting(_, _)).Times(0);
+    node.update_rw_setting_arguments.clear();
+    node.force_setting_arguments.clear();
 
     model.setServer(false);
     model.setPrune(false);
@@ -3033,13 +2848,12 @@ void OptionsModelTests::commandLineOverriddenSettingsPreservePersistentValues()
     QCOMPARE(SettingTo<int64_t>(args.GetPersistentSetting("par"), -1), 1);
     QCOMPARE(SettingTo<int64_t>(args.GetPersistentSetting("maxmempool"), -1), 300);
     QCOMPARE(QString::fromStdString(SettingToString(args.GetPersistentSetting("signer"), "")), QString("saved-signer"));
+    QVERIFY(node.update_rw_setting_arguments.empty());
+    QVERIFY(node.force_setting_arguments.empty());
 }
 
 void OptionsModelTests::revertingToConfigValueDeletesRwOverride()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Truly;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
@@ -3048,24 +2862,23 @@ void OptionsModelTests::revertingToConfigValueDeletesRwOverride()
         settings.rw_settings["listen"] = common::SettingsValue{false};
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
     InstallRwSettingsWriter(node, args);
 
     OptionsQmlModel model(node, args);
     QVERIFY(!model.listen());
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"listen"},
-        Truly([](const common::SettingsValue& value) { return value.isNull(); })));
-
+    node.update_rw_setting_arguments.clear();
     model.setListen(true);
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
+    const auto* listen_write{FindSettingWrite(node, "listen")};
+    QVERIFY(listen_write != nullptr);
+    QVERIFY(listen_write->isNull());
 }
 
 void OptionsModelTests::revertingToDefaultValueDeletesRwOverride()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
-    using ::testing::Truly;
 
     ArgsManager args;
     args.SelectConfigNetwork("main");
@@ -3073,23 +2886,23 @@ void OptionsModelTests::revertingToDefaultValueDeletesRwOverride()
         settings.rw_settings["maxmempool"] = common::SettingsValue{456};
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
     InstallRwSettingsWriter(node, args);
 
     OptionsQmlModel model(node, args);
     QCOMPARE(model.maxMempoolSizeMB(), 456);
 
-    EXPECT_CALL(node, updateRwSetting(std::string{"maxmempool"},
-        Truly([](const common::SettingsValue& value) { return value.isNull(); })));
-
+    node.update_rw_setting_arguments.clear();
     model.setMaxMempoolSizeMB(DEFAULT_MAX_MEMPOOL_SIZE_MB);
+    QCOMPARE(node.update_rw_setting_arguments.size(), 1U);
+    const auto* mempool_write{FindSettingWrite(node, "maxmempool")};
+    QVERIFY(mempool_write != nullptr);
+    QVERIFY(mempool_write->isNull());
 }
 
 void OptionsModelTests::languageCommandLineOverrideDoesNotPersist()
 {
-    using ::testing::_;
-    using ::testing::NiceMock;
 
     QSettings settings;
     const bool had_language_setting = settings.contains(SettingsKeys::LANGUAGE);
@@ -3102,7 +2915,7 @@ void OptionsModelTests::languageCommandLineOverrideDoesNotPersist()
         settings.command_line_options["lang"].push_back(common::SettingsValue{std::string{"fr"}});
     });
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
 
     OptionsQmlModel model(node, args);
@@ -3122,7 +2935,6 @@ void OptionsModelTests::languageCommandLineOverrideDoesNotPersist()
 
 void OptionsModelTests::legacyQtSettingsMigrateToCoreSettings()
 {
-    using ::testing::NiceMock;
 
     SavedNamedSettings qml_core_settings{QStringLiteral("BitcoinCore"), QStringLiteral("BitcoinCore-App-regtest")};
     SavedNamedSettings legacy_settings{QStringLiteral("Bitcoin"), QStringLiteral("Bitcoin-Qt-regtest")};
@@ -3204,7 +3016,7 @@ void OptionsModelTests::legacyQtSettingsMigrateToCoreSettings()
     QVERIFY(!settings.contains(QStringLiteral("addrSeparateProxyTor")));
     QVERIFY(!settings.contains(QStringLiteral("language")));
 
-    NiceMock<MockNode> node;
+    MockNode node;
     InstallPersistentSettings(node, args);
     OptionsQmlModel model(node, args);
     QCOMPARE(model.language(), QStringLiteral("de"));

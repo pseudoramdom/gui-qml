@@ -12,8 +12,6 @@
 #include <util/translation.h>
 #include <wallet/types.h>
 
-#include <gmock/gmock.h>
-
 #include <QSettings>
 
 namespace {
@@ -58,13 +56,10 @@ public:
     }
 };
 
-void ExpectWalletLoader(MockNode& node, FakeWalletLoader& loader)
+void ConfigureExpectedWalletLoader(MockNode& node, FakeWalletLoader& loader)
 {
-    using ::testing::AtLeast;
-    using ::testing::ReturnRef;
-
-    ON_CALL(node, walletLoader()).WillByDefault(ReturnRef(loader));
-    EXPECT_CALL(node, walletLoader()).Times(AtLeast(1)).WillRepeatedly(ReturnRef(loader));
+    node.wallet_loader_fn = [&loader]() -> interfaces::WalletLoader& { return loader; };
+    node.ExpectAtLeast(node.calls.walletLoader, 1);
 }
 } // namespace
 
@@ -99,15 +94,14 @@ void WalletListModelTests::init()
 
 void WalletListModelTests::listWalletDirMapsNameAndLoadStateRoles()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -126,15 +120,14 @@ void WalletListModelTests::listWalletDirMapsNameAndLoadStateRoles()
 
 void WalletListModelTests::listWalletDirRemovesMissingEntries()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -151,9 +144,8 @@ void WalletListModelTests::listWalletDirRemovesMissingEntries()
 
 void WalletListModelTests::listWalletDirSortsCaseInsensitivelyAndPreservesDuplicateRows()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"zulu_wallet", "sqlite"},
@@ -162,7 +154,7 @@ void WalletListModelTests::listWalletDirSortsCaseInsensitivelyAndPreservesDuplic
         {"alpha_wallet", "bdb"},
         {"bravo_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -180,14 +172,13 @@ void WalletListModelTests::listWalletDirSortsCaseInsensitivelyAndPreservesDuplic
 
 void WalletListModelTests::displayNameRoleUsesStoredAlias()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     QSettings settings;
     settings.setValue("walletDisplayNames/alpha_wallet", "Personal");
@@ -201,15 +192,14 @@ void WalletListModelTests::displayNameRoleUsesStoredAlias()
 
 void WalletListModelTests::setWalletLoadStateUpdatesLoadStateRole()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -232,9 +222,8 @@ void WalletListModelTests::setWalletLoadStateUpdatesLoadStateRole()
 
 void WalletListModelTests::setWalletLoadStateSortsLoadedRowsFirst()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"zulu_wallet", "sqlite"},
@@ -242,7 +231,7 @@ void WalletListModelTests::setWalletLoadStateSortsLoadedRowsFirst()
         {"bravo_wallet", "sqlite"},
         {"charlie_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -270,15 +259,14 @@ void WalletListModelTests::setWalletLoadStateSortsLoadedRowsFirst()
 
 void WalletListModelTests::setWalletLoadStateBeforeListWalletDirSeedsInitialRows()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.setWalletLoadState("beta_wallet", WalletListModel::LoadState::Open);
@@ -295,14 +283,13 @@ void WalletListModelTests::setWalletLoadStateBeforeListWalletDirSeedsInitialRows
 
 void WalletListModelTests::setWalletLoadStateAddsNewLoadedWalletAfterInitialList()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -321,11 +308,10 @@ void WalletListModelTests::setWalletLoadStateAddsNewLoadedWalletAfterInitialList
 
 void WalletListModelTests::setWalletLoadStateRemovesOpenOnlyWalletOnUnload()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -352,15 +338,14 @@ void WalletListModelTests::setWalletLoadStateRemovesOpenOnlyWalletOnUnload()
 
 void WalletListModelTests::setWalletLoadStateLoadingExposesLoadingRoleAndClearsOnOpen()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -381,14 +366,13 @@ void WalletListModelTests::setWalletLoadStateLoadingExposesLoadingRoleAndClearsO
 
 void WalletListModelTests::setWalletLoadStateLoadErrorExposesErrorMessageRoleAndClearsOnClosed()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -411,15 +395,14 @@ void WalletListModelTests::setWalletLoadStateLoadErrorExposesErrorMessageRoleAnd
 
 void WalletListModelTests::setWalletInfoUpdatesBalanceAndKeySchemeRolesForRowOnly()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
         {"beta_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -449,14 +432,13 @@ void WalletListModelTests::setWalletInfoUpdatesBalanceAndKeySchemeRolesForRowOnl
 
 void WalletListModelTests::listWalletDirPreservesBalanceAndKeySchemeAcrossRebuilds()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
     loader.wallet_dir_entries = {
         {"alpha_wallet", "sqlite"},
     };
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     model.listWalletDir();
@@ -480,11 +462,10 @@ void WalletListModelTests::listWalletDirPreservesBalanceAndKeySchemeAcrossRebuil
 
 void WalletListModelTests::walletDirLoadedFlipsAfterFirstList()
 {
-    using ::testing::StrictMock;
-
-    StrictMock<MockNode> node;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
     FakeWalletLoader loader;
-    ExpectWalletLoader(node, loader);
+    ConfigureExpectedWalletLoader(node, loader);
 
     WalletListModel model{node, nullptr};
     QSignalSpy wallet_dir_loaded_spy(&model, &WalletListModel::walletDirLoadedChanged);
