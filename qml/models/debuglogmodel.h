@@ -8,6 +8,7 @@
 #include <util/fs.h>
 
 #include <QAbstractListModel>
+#include <QByteArray>
 #include <QFileSystemWatcher>
 #include <QList>
 #include <QString>
@@ -69,6 +70,10 @@ public:
     //! Hard ceiling on loadLimit to protect against unbounded memory growth.
     static constexpr int kMaxLoadLimit = 50'000;
 
+    //! Individual physical log lines larger than this are omitted from the
+    //! in-app viewer. The debug.log file itself is never modified.
+    static constexpr qsizetype kMaxLogLineBytes = 1024 * 1024;
+
     explicit DebugLogModel(const fs::path& log_path, QObject* parent = nullptr);
     ~DebugLogModel() override;
 
@@ -107,25 +112,23 @@ Q_SIGNALS:
 
 private:
     struct LogLine {
-        QString lineNumber;
         QString content;      // HTML-escaped full message text
         QString command;      // parsed message prefix, plain text
         QString message;      // parsed message body, plain text
-        QString identity;     // stable identity for incremental refresh matching
+        qint64  source_offset{-1}; // byte offset in debug.log (stable across appends)
         qint64  timestamp_ms; // epoch ms, -1 if not parseable
         QString relativeTime; // cached human-readable age
         Severity severity{InfoSeverity};
 
-        // Identity for change detection in buildDisplayLines(). relativeTime is
-        // derived (refreshed separately by the relative-time timer) and so is
-        // deliberately excluded.
+        // Identity for incremental display diffs. relativeTime is derived
+        // (refreshed separately by the relative-time timer) and deliberately
+        // excluded.
         bool operator==(const LogLine& o) const
         {
-            return lineNumber == o.lineNumber
+            return source_offset == o.source_offset
                 && content == o.content
                 && command == o.command
                 && message == o.message
-                && identity == o.identity
                 && severity == o.severity
                 && timestamp_ms == o.timestamp_ms;
         }
@@ -137,7 +140,19 @@ private:
     struct ReadResult {
         bool file_opened{false};
         QString error_message;
-        QList<LogLine> filtered; // oldest-first, already filtered of blank lines
+        //! A full snapshot is newest-first and contains at most loadLimit
+        //! entries. A delta contains only newly completed lines, newest-first.
+        QList<LogLine> lines;
+        bool full_snapshot{true};
+        bool continuity_lost{false};
+        bool has_more_lines{false};
+        int snapshot_limit{0};
+        qint64 file_size{-1};
+        QByteArray trailing_partial;
+        //! True after an unfinished line exceeds kMaxLogLineBytes. Subsequent
+        //! bytes are ignored until its terminating newline restores framing.
+        bool discarding_oversized_line{false};
+        QByteArray file_anchor;
     };
 
     //! File-reading worker. Pure function — no QObject / signal access —
@@ -145,21 +160,35 @@ private:
     static ReadResult ReadAndFilter(const fs::path& log_path,
                                     int load_limit,
                                     bool full_load,
+                                    qint64 previous_file_size,
+                                    const QByteArray& previous_partial,
+                                    bool previous_discarding_oversized_line,
+                                    const QByteArray& previous_anchor,
                                     const std::atomic_bool& cancelled);
 
-    //! Raw file read (one pass). Called from ReadAndFilter.
-    static QList<LogLine> ReadRawLines(const fs::path& log_path,
-                                       int max_lines,
-                                       const std::atomic_bool& cancelled);
+    //! Read a bounded tail snapshot by scanning backward in fixed-size blocks.
+    static ReadResult ReadTail(const fs::path& log_path,
+                               int load_limit,
+                               const std::atomic_bool& cancelled);
+
+    //! Parse complete newline-terminated records, returning newest first.
+    static QList<LogLine> ParseCompleteLines(const QByteArray& bytes,
+                                             qint64 base_offset,
+                                             int max_filtered_lines,
+                                             const std::atomic_bool& cancelled);
 
     //! Completion handler invoked on the GUI thread after ReadAndFilter
     //! returns. Applies the result to m_all_lines and rebuilds the display.
     void onReadCompleted(const ReadResult& result,
-                         const QString& prev_top_identity,
                          bool full_load);
 
     void connectFileWatcher();
-    void buildDisplayLines();
+    void watchLogPath();
+    void buildDisplayLines(bool force_reset = false);
+    void applyLines(QList<LogLine> lines, bool force_reset);
+    bool applyDelta(QList<LogLine> lines);
+    void applyDisplayLines(QList<LogLine> lines, bool force_reset);
+    QList<LogLine> filteredLines(const QList<LogLine>& lines) const;
     QString relativeTimeLabel(qint64 timestamp_ms, qint64 now_ms) const;
 
     static void PopulateParsedFields(LogLine& entry, const QString& raw_message);
@@ -176,7 +205,19 @@ private:
     QString m_filter;
     int  m_load_limit{1000};
     bool m_has_more_lines{false};
+    //! Tail capacity represented by m_all_lines. Kept separate from rowCount
+    //! so empty/short logs and interrupted loadMore requests are unambiguous.
+    int m_loaded_limit{0};
     QString m_open_error;
+
+    //! End-of-file state from the last successful worker read. Normal
+    //! refreshes validate the anchor, seek to file_size, and parse only bytes
+    //! appended since then. A bounded partial final line is carried across
+    //! reads; an oversized one is discarded through its terminating newline.
+    qint64 m_file_size{-1};
+    QByteArray m_trailing_partial;
+    bool m_discarding_oversized_line{false};
+    QByteArray m_file_anchor;
 
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
