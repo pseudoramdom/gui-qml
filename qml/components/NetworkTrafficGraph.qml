@@ -14,7 +14,7 @@ Item {
     id: root
     property alias backgroundColor: trafficGraph.backgroundColor
     property alias borderColor: trafficGraph.borderColor
-    property alias fillColor: trafficGraph.fillColor
+    property alias fillColor: trafficGraph.gradientColor
     property alias lineColor: trafficGraph.lineColor
     property alias markerLineColor: trafficGraph.markerLineColor
     property alias maxSamples: trafficGraph.maxSamples
@@ -31,7 +31,7 @@ Item {
         width: root.width
         backgroundColor: root.backgroundColor
         borderColor: root.borderColor
-        fillColor: root.fillColor
+        gradientColor: root.fillColor
         lineColor: root.lineColor
         markerLineColor: root.markerLineColor
         maxSamples: root.maxSamples
@@ -46,7 +46,7 @@ Item {
             ColorAnimation { duration: 150 }
         }
 
-        Behavior on fillColor {
+        Behavior on gradientColor {
             ColorAnimation { duration: 150 }
         }
 
