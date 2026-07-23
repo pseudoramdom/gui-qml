@@ -72,7 +72,7 @@ target_link_libraries(bitcoinqml_unit_tests
     Qt6::Widgets
 )
 
-add_test(NAME bitcoinqml_unit_tests COMMAND bitcoinqml_unit_tests -platform offscreen)
+add_test(NAME bitcoinqml_unit_tests COMMAND bitcoinqml_unit_tests -platform minimal)
 
 qt6_add_resources(QMLTESTS_QRC_CPP ${QML_QRC} qml/bitcoin_qmltests.qrc)
 
@@ -103,4 +103,20 @@ target_include_directories(bitcoinqml_qmltests
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-add_test(NAME bitcoinqml_qmltests COMMAND bitcoinqml_qmltests -platform offscreen)
+add_test(NAME bitcoinqml_qmltests COMMAND bitcoinqml_qmltests -platform minimal)
+
+get_target_property(qt_lib_type Qt6::Core TYPE)
+if(qt_lib_type STREQUAL "STATIC_LIBRARY")
+  qt6_import_plugins(bitcoinqml_unit_tests INCLUDE Qt6::QMinimalIntegrationPlugin)
+  qt6_import_qml_plugins(bitcoinqml_unit_tests)
+  qt6_import_plugins(bitcoinqml_qmltests INCLUDE Qt6::QMinimalIntegrationPlugin)
+  qt6_import_qml_plugins(bitcoinqml_qmltests)
+  target_link_libraries(bitcoinqml_qmltests PRIVATE
+    Qt6::qtquickdialogsplugin
+  )
+  if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
+    target_link_libraries(bitcoinqml_qmltests PRIVATE Qt6::qtqmlcoreplugin)
+  else()
+    target_link_libraries(bitcoinqml_qmltests PRIVATE Qt6::qmlsettingsplugin)
+  endif()
+endif()
