@@ -346,6 +346,7 @@ Page {
         }
         CommandConsole {
             showHeader: false
+            tabActive: consoleTabButton.checked
             walletName: walletController.isWalletLoaded && walletController.selectedWallet
                 ? walletController.selectedWallet.name
                 : ""

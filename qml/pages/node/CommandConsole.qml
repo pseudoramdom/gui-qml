@@ -30,6 +30,14 @@ Page {
     property string commandDraft: ""
     property string searchDraft: ""
 
+    // True while this view's tab is the selected one. As a persistent StackLayout
+    // child, the console is never destroyed on tab changes, and its autocomplete
+    // Popup renders in the window overlay layer, so it is not hidden along with
+    // the view. The embedder binds this to its tab's checked state; when the tab
+    // is left, dismiss the popup so it cannot linger over the newly selected tab.
+    property bool tabActive: true
+    onTabActiveChanged: if (!tabActive) autocompletePopup.close()
+
     function _pushPalette() {
         rpcConsoleModel.requestColor = consoleRequestColor
         rpcConsoleModel.replyColor   = consoleReplyColor
