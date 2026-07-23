@@ -9,17 +9,11 @@ import org.bitcoincore.qt 1.0
 import "../../qml/pages/wallet"
 
 TestCase {
+    id: testCase
     name: "Send"
     when: windowShown
     width: 900
     height: 700
-
-    Window {
-        id: testWindow
-        width: 900
-        height: 700
-        visible: true
-    }
 
     Component {
         id: sendComponent
@@ -54,10 +48,10 @@ TestCase {
     }
 
     function test_review_only_psbt_closes_and_discards_on_wallet_change() {
-        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
         verify(page !== null)
-        page.width = testWindow.width
-        page.height = testWindow.height
+        page.width = testCase.width
+        page.height = testCase.height
         page.visible = true
 
         const popup = findChild(page, "reviewOnlyPsbtPopup")
@@ -78,10 +72,10 @@ TestCase {
     }
 
     function test_successful_psbt_broadcast_shows_confirmation() {
-        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
         verify(page !== null)
-        page.width = testWindow.width
-        page.height = testWindow.height
+        page.width = testCase.width
+        page.height = testCase.height
         page.visible = true
 
         const reviewPopup = findChild(page, "reviewOnlyPsbtPopup")
@@ -133,10 +127,10 @@ TestCase {
     }
 
     function test_send_multiple_recipient_layout_and_total_follow_state() {
-        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
         verify(page !== null)
-        page.width = testWindow.width
-        page.height = testWindow.height
+        page.width = testCase.width
+        page.height = testCase.height
         page.visible = true
 
         const optionsPopup = findChild(page, "sendOptionsPopup")
