@@ -2372,6 +2372,7 @@ private:
 class MockNetworkTrafficTower : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(quint64 totalBytesReceived MEMBER m_total_bytes_received NOTIFY totalBytesReceivedChanged)
     Q_PROPERTY(quint64 totalBytesSent MEMBER m_total_bytes_sent NOTIFY totalBytesSentChanged)
     Q_PROPERTY(double maxReceivedRateBps MEMBER m_max_received_rate_bps NOTIFY maxReceivedRateBpsChanged)
@@ -2381,6 +2382,15 @@ class MockNetworkTrafficTower : public QObject
     Q_PROPERTY(int lastFilterWindowSize MEMBER m_last_filter_window_size NOTIFY lastFilterWindowSizeChanged)
 
 public:
+    bool active() const { return m_active; }
+    void setActive(bool active)
+    {
+        if (m_active == active) return;
+        m_active = active;
+        Q_EMIT activeChanged();
+    }
+
+    bool m_active{false};
     quint64 m_total_bytes_received{1'000};
     quint64 m_total_bytes_sent{2'000};
     double m_max_received_rate_bps{100.0};
@@ -2396,6 +2406,7 @@ public:
     }
 
 Q_SIGNALS:
+    void activeChanged();
     void totalBytesReceivedChanged();
     void totalBytesSentChanged();
     void maxReceivedRateBpsChanged();
@@ -3138,6 +3149,7 @@ public Q_SLOTS:
         engine->rootContext()->setContextProperty(QStringLiteral("nodeModel"), &node_model);
         engine->rootContext()->setContextProperty(QStringLiteral("peerTableModel"), &peer_table_model);
         engine->rootContext()->setContextProperty(QStringLiteral("networkTrafficTower"), &network_traffic_tower);
+        engine->rootContext()->setContextProperty(QStringLiteral("testNetworkTrafficTower"), &network_traffic_tower);
         engine->rootContext()->setContextProperty(QStringLiteral("networkStatusModel"), &network_status_model);
         engine->rootContext()->setContextProperty(QStringLiteral("peerListModelProxy"), &peer_list_model_proxy);
         engine->rootContext()->setContextProperty(QStringLiteral("banListModel"), &ban_list_model);

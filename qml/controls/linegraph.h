@@ -16,7 +16,7 @@ class LineGraph : public QQuickPaintedItem
     Q_OBJECT
     Q_PROPERTY(QColor backgroundColor READ backgroundColor WRITE setBackgroundColor)
     Q_PROPERTY(QColor borderColor READ borderColor WRITE setBorderColor)
-    Q_PROPERTY(QColor fillColor READ fillColor WRITE setFillColor)
+    Q_PROPERTY(QColor gradientColor READ gradientColor WRITE setGradientColor)
     Q_PROPERTY(QColor lineColor READ lineColor WRITE setLineColor)
     Q_PROPERTY(QColor markerLineColor READ markerLineColor WRITE setMarkerLineColor)
     Q_PROPERTY(int maxSamples READ maxSamples WRITE setMaxSamples)
@@ -29,7 +29,7 @@ class LineGraph : public QQuickPaintedItem
 
         QColor backgroundColor() const { return m_background_color; };
         QColor borderColor() const { return m_border_color; };
-        QColor fillColor() const { return m_fill_color; };
+        QColor gradientColor() const { return m_gradient_color; };
         QColor lineColor() const { return m_line_color; };
         QColor markerLineColor() const { return m_marker_line_color; };
         int maxSamples() const { return m_max_samples; };
@@ -39,7 +39,7 @@ class LineGraph : public QQuickPaintedItem
     public Q_SLOTS:
         void setBackgroundColor(QColor color);
         void setBorderColor(QColor color);
-        void setFillColor(QColor color);
+        void setGradientColor(QColor color);
         void setLineColor(QColor color);
         void setMarkerLineColor(QColor color);
         void setMaxSamples(int max_samples);
@@ -55,7 +55,7 @@ class LineGraph : public QQuickPaintedItem
 
         QColor m_background_color{"#2D2D2D"};
         QColor m_border_color{"#000000"};
-        QColor m_fill_color{"#000000"};
+        QColor m_gradient_color{"#000000"};
         QLinearGradient m_fill_gradient{0, 0, 0, 0};
         QColor m_line_color{"#000000"};
         QColor m_marker_line_color{"#000000"};

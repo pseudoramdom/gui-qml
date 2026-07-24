@@ -17,13 +17,13 @@
 LineGraph::LineGraph(QQuickItem *parent)
     : QQuickPaintedItem(parent)
 {
-    setFillColor(m_background_color);
+    setGradientColor(m_background_color);
 }
 
 void LineGraph::setBackgroundColor(QColor color)
 {
     m_background_color = color;
-    setFillColor(color);
+    setGradientColor(color);
 }
 
 void LineGraph::setBorderColor(QColor color)
@@ -32,9 +32,9 @@ void LineGraph::setBorderColor(QColor color)
     update();
 }
 
-void LineGraph::setFillColor(QColor color)
+void LineGraph::setGradientColor(QColor color)
 {
-    m_fill_color = color;
+    m_gradient_color = color;
     update();
 }
 
@@ -135,7 +135,7 @@ void LineGraph::paintTraffic(QPainter * painter)
 void LineGraph::setupGradient(QPainterPath * painter_path)
 {
     QLinearGradient gradient(painter_path->boundingRect().topLeft(), painter_path->boundingRect().bottomLeft());
-    gradient.setColorAt(0, QColor(m_fill_color.red(), m_fill_color.green(), m_fill_color.blue(), 191));
+    gradient.setColorAt(0, QColor(m_gradient_color.red(), m_gradient_color.green(), m_gradient_color.blue(), 191));
     gradient.setColorAt(1, QColor("transparent"));
     m_fill_gradient = gradient;
 }
