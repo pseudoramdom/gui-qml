@@ -12,10 +12,10 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
+#include <QFileInfo>
 #include <QMetaObject>
 #include <QObject>
 #include <QRegularExpression>
-#include <QTextStream>
 #include <QThread>
 #include <QTimer>
 #include <QUrl>
@@ -24,6 +24,19 @@ static const QRegularExpression TIMESTAMP_RX(
     QStringLiteral(R"(^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s*(.*)$)"));
 static const QRegularExpression COMMAND_PREFIX_RX(
     QStringLiteral(R"(^([^:]{1,80}):\s+(.*)$)"));
+
+namespace {
+constexpr qint64 TAIL_READ_BLOCK_SIZE{64 * 1024};
+constexpr qint64 FILE_ANCHOR_SIZE{256};
+constexpr qint64 MAX_DELTA_BYTES{8 * 1024 * 1024};
+
+QByteArray ReadAnchor(QFile& file, qint64 file_size)
+{
+    const qint64 anchor_size = std::min(file_size, FILE_ANCHOR_SIZE);
+    if (anchor_size <= 0 || !file.seek(file_size - anchor_size)) return {};
+    return file.read(anchor_size);
+}
+} // namespace
 
 DebugLogModel::DebugLogModel(const fs::path& log_path, QObject* parent)
     : QAbstractListModel(parent)
@@ -66,7 +79,9 @@ QVariant DebugLogModel::data(const QModelIndex& index, int role) const
 
     const LogLine& line = m_display_lines.at(index.row());
     switch (role) {
-    case LineNumberRole:   return line.lineNumber;
+    // The number is derived from the model row. Prepending new records no
+    // longer requires copying and renumbering every stored LogLine.
+    case LineNumberRole:   return QString::number(index.row() + 1);
     case ContentRole:      return line.content;
     case RelativeTimeRole: return line.relativeTime;
     case CommandRole:      return line.command;
@@ -92,9 +107,57 @@ QHash<int, QByteArray> DebugLogModel::roleNames() const
 
 void DebugLogModel::setLoadLimit(int limit)
 {
+    limit = std::clamp(limit, 1, kMaxLoadLimit);
     if (m_load_limit == limit) return;
+    const int previous_limit = m_load_limit;
     m_load_limit = limit;
     Q_EMIT loadLimitChanged();
+
+    if (m_all_lines.size() > m_load_limit) {
+        QList<LogLine> retained = m_all_lines.first(m_load_limit);
+        applyLines(std::move(retained), /*force_reset=*/false);
+        m_loaded_limit = std::min(m_loaded_limit, m_load_limit);
+        const bool has_more = m_load_limit < kMaxLoadLimit;
+        if (m_has_more_lines != has_more) {
+            m_has_more_lines = has_more;
+            Q_EMIT hasMoreLinesChanged();
+        }
+    }
+
+    if (m_load_limit > previous_limit) {
+        if (m_active) {
+            refresh(/*full_load=*/true);
+        }
+    }
+}
+
+void DebugLogModel::setActive(bool active)
+{
+    if (m_active == active || m_stopping) return;
+
+    m_active = active;
+    ++m_activation_generation;
+    Q_EMIT activeChanged();
+
+    if (m_active) {
+        watchLogPath();
+        // Retained rows can paint immediately on reactivation. Catch up from
+        // the saved file offset unless the retained tail is too narrow.
+        refresh(/*full_load=*/m_loaded_limit < m_load_limit);
+        return;
+    }
+
+    m_debounce.stop();
+    const auto watched_files = m_watcher.files();
+    if (!watched_files.isEmpty()) {
+        m_watcher.removePaths(watched_files);
+    }
+    const auto watched_directories = m_watcher.directories();
+    if (!watched_directories.isEmpty()) {
+        m_watcher.removePaths(watched_directories);
+    }
+    m_refresh_pending = false;
+    m_pending_full_load = false;
 }
 
 void DebugLogModel::setFilter(const QString& filter)
@@ -102,12 +165,14 @@ void DebugLogModel::setFilter(const QString& filter)
     if (m_filter == filter) return;
     m_filter = filter;
     Q_EMIT filterChanged();
-    buildDisplayLines();
+    // Cached rows remain observable while inactive, so keep the display
+    // projection in sync even when the page is currently unloaded.
+    buildDisplayLines(/*force_reset=*/true);
 }
 
 void DebugLogModel::refresh(bool full_load)
 {
-    if (m_stopping) return;
+    if (!m_active || m_stopping) return;
 
     // Single-read-in-flight guard. If a read is already running, fold this
     // request into a trailing re-run rather than piling another job onto the
@@ -123,12 +188,13 @@ void DebugLogModel::refresh(bool full_load)
     }
     m_read_in_flight = true;
 
-    const QString prev_top_identity = m_all_lines.isEmpty()
-        ? QString{}
-        : m_all_lines.first().identity;
-
     const fs::path path = m_log_path;
     const int load_limit = m_load_limit;
+    const qint64 previous_file_size = m_file_size;
+    const QByteArray previous_partial = m_trailing_partial;
+    const bool previous_discarding_oversized_line = m_discarding_oversized_line;
+    const QByteArray previous_anchor = m_file_anchor;
+    const quint64 activation_generation = m_activation_generation;
 
     if (!m_reader || !m_reader_thread || !m_reader_thread->isRunning()) {
         m_read_in_flight = false;
@@ -136,19 +202,44 @@ void DebugLogModel::refresh(bool full_load)
     }
 
     const bool queued = QMetaObject::invokeMethod(m_reader,
-        [this, path, load_limit, full_load, prev_top_identity]() mutable {
+        [this,
+         path,
+         load_limit,
+         full_load,
+         previous_file_size,
+         previous_partial,
+         previous_discarding_oversized_line,
+         previous_anchor,
+         activation_generation]() mutable {
             if (m_read_cancelled.load(std::memory_order_relaxed)) return;
 
-            ReadResult result = ReadAndFilter(path, load_limit, full_load, m_read_cancelled);
+            ReadResult result = ReadAndFilter(path,
+                                              load_limit,
+                                              full_load,
+                                              previous_file_size,
+                                              previous_partial,
+                                              previous_discarding_oversized_line,
+                                              previous_anchor,
+                                              m_read_cancelled);
             if (m_read_cancelled.load(std::memory_order_relaxed)) return;
 
             QMetaObject::invokeMethod(this,
                 [this,
                  result = std::move(result),
-                 prev_top_identity,
-                 full_load]() mutable {
+                 full_load,
+                 activation_generation]() mutable {
                     if (m_stopping || m_read_cancelled.load(std::memory_order_relaxed)) return;
-                    onReadCompleted(result, prev_top_identity, full_load);
+                    if (!m_active || activation_generation != m_activation_generation) {
+                        m_read_in_flight = false;
+                        if (m_active && m_refresh_pending) {
+                            m_refresh_pending = false;
+                            const bool do_full = m_pending_full_load;
+                            m_pending_full_load = false;
+                            refresh(do_full);
+                        }
+                        return;
+                    }
+                    onReadCompleted(result, full_load);
                 },
                 Qt::QueuedConnection);
         },
@@ -196,7 +287,7 @@ bool DebugLogModel::openLogFile()
 
 void DebugLogModel::updateRelativeTimes()
 {
-    if (m_all_lines.isEmpty() && m_display_lines.isEmpty()) return;
+    if (!m_active || (m_all_lines.isEmpty() && m_display_lines.isEmpty())) return;
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
 
     for (LogLine& line : m_all_lines) {
@@ -234,6 +325,10 @@ void DebugLogModel::stop()
     if (!watched_files.isEmpty()) {
         m_watcher.removePaths(watched_files);
     }
+    const auto watched_directories = m_watcher.directories();
+    if (!watched_directories.isEmpty()) {
+        m_watcher.removePaths(watched_directories);
+    }
 
     m_refresh_pending = false;
     m_pending_full_load = false;
@@ -252,106 +347,294 @@ void DebugLogModel::stop()
 DebugLogModel::ReadResult DebugLogModel::ReadAndFilter(const fs::path& log_path,
                                                       int load_limit,
                                                       bool full_load,
+                                                      qint64 previous_file_size,
+                                                      const QByteArray& previous_partial,
+                                                      bool previous_discarding_oversized_line,
+                                                      const QByteArray& previous_anchor,
                                                       const std::atomic_bool& cancelled)
 {
-    ReadResult result;
-    if (cancelled.load(std::memory_order_relaxed)) return result;
+    if (cancelled.load(std::memory_order_relaxed)) return {};
+    if (full_load || previous_file_size < 0) {
+        return ReadTail(log_path, load_limit, cancelled);
+    }
 
     const QString path_str = QString::fromStdString(log_path.utf8string());
-    QFile probe(path_str);
-    if (!probe.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    QFile file(path_str);
+    ReadResult result;
+    if (!file.open(QIODevice::ReadOnly)) {
         result.error_message = fs::exists(log_path)
             ? QObject::tr("Could not open debug log file: %1").arg(path_str)
             : QObject::tr("Debug log file not found: %1").arg(path_str);
         return result;
     }
-    probe.close();
     result.file_opened = true;
 
-    // Doubling loop for a full load: ensure load_limit non-blank lines even
-    // when the tail of the file is dominated by header/banner blanks. For an
-    // incremental refresh we just take the last load_limit raw lines.
-    QList<LogLine> filtered;
-    int fetch_size = load_limit;
-    while (true) {
-        if (cancelled.load(std::memory_order_relaxed)) return {};
-
-        const QList<LogLine> raw = ReadRawLines(log_path, fetch_size, cancelled);
-        if (cancelled.load(std::memory_order_relaxed)) return {};
-
-        filtered.clear();
-        for (const LogLine& l : raw) {
-            if (cancelled.load(std::memory_order_relaxed)) return {};
-            if (!l.content.trimmed().isEmpty() || l.timestamp_ms >= 0)
-                filtered.append(l);
-        }
-        if (!full_load) break;
-        if (filtered.size() >= load_limit || raw.size() < fetch_size) break;
-        fetch_size *= 2;
+    // Validate bytes at the old end-of-file before trusting the saved offset.
+    // This detects truncation and the common rotate-and-recreate case without
+    // relying on platform-specific inode APIs. On failure, rebuild from a
+    // bounded tail snapshot.
+    const qint64 snapshot_size = file.size();
+    bool continuity_valid = snapshot_size >= previous_file_size
+        && previous_partial.size() <= previous_file_size;
+    if (continuity_valid && previous_file_size > 0) {
+        continuity_valid = !previous_anchor.isEmpty()
+            && file.seek(previous_file_size - previous_anchor.size())
+            && file.read(previous_anchor.size()) == previous_anchor;
     }
-    result.filtered = std::move(filtered);
+    if (!continuity_valid) {
+        file.close();
+        result = ReadTail(log_path, load_limit, cancelled);
+        result.continuity_lost = result.file_opened;
+        return result;
+    }
+
+    const qint64 appended_size = snapshot_size - previous_file_size;
+    if (appended_size > MAX_DELTA_BYTES
+        || previous_partial.size() > MAX_DELTA_BYTES - appended_size) {
+        file.close();
+        return ReadTail(log_path, load_limit, cancelled);
+    }
+
+    if (cancelled.load(std::memory_order_relaxed)
+        || !file.seek(previous_file_size)) {
+        return {};
+    }
+    const QByteArray appended = file.read(appended_size);
+    if (appended.size() != appended_size) {
+        file.close();
+        result = ReadTail(log_path, load_limit, cancelled);
+        result.continuity_lost = result.file_opened;
+        return result;
+    }
+
+    QByteArray combined;
+    qint64 combined_offset{previous_file_size - previous_partial.size()};
+    if (previous_discarding_oversized_line) {
+        const qsizetype newline = appended.indexOf('\n');
+        if (newline < 0) {
+            result.full_snapshot = false;
+            result.file_size = snapshot_size;
+            result.file_anchor = ReadAnchor(file, snapshot_size);
+            result.discarding_oversized_line = true;
+            return result;
+        }
+        combined = appended.mid(newline + 1);
+        combined_offset = previous_file_size + newline + 1;
+    } else {
+        combined = previous_partial + appended;
+    }
+
+    const qsizetype last_newline = combined.lastIndexOf('\n');
+    result.full_snapshot = false;
+    result.file_size = snapshot_size;
+    result.file_anchor = ReadAnchor(file, snapshot_size);
+    if (last_newline < 0) {
+        if (combined.size() <= kMaxLogLineBytes) {
+            result.trailing_partial = combined;
+        } else {
+            result.discarding_oversized_line = true;
+        }
+        return result;
+    }
+
+    const qsizetype complete_size = last_newline + 1;
+    result.trailing_partial = combined.mid(complete_size);
+    if (result.trailing_partial.size() > kMaxLogLineBytes) {
+        result.trailing_partial.clear();
+        result.discarding_oversized_line = true;
+    }
+    result.lines = ParseCompleteLines(
+        combined.first(complete_size),
+        combined_offset,
+        std::min(load_limit, kMaxLoadLimit) + 1,
+        cancelled);
+    result.has_more_lines = result.lines.size() > load_limit;
     return result;
 }
 
-QList<DebugLogModel::LogLine> DebugLogModel::ReadRawLines(const fs::path& log_path,
-                                                         int max_lines,
-                                                         const std::atomic_bool& cancelled)
+DebugLogModel::ReadResult DebugLogModel::ReadTail(const fs::path& log_path,
+                                                 int load_limit,
+                                                 const std::atomic_bool& cancelled)
 {
-    if (cancelled.load(std::memory_order_relaxed)) return {};
+    ReadResult result;
+    if (cancelled.load(std::memory_order_relaxed)) return result;
 
     const QString path_str = QString::fromStdString(log_path.utf8string());
     QFile file(path_str);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-
-    // Seek near the end to avoid reading the entire file. debug.log on an
-    // active mainnet node can exceed 100 MB; estimate 500 bytes per line.
-    const qint64 seek_pos = std::max(qint64{0},
-        file.size() - static_cast<qint64>(max_lines) * 500);
-    if (seek_pos > 0) file.seek(seek_pos);
-
-    QTextStream in(&file);
-    if (seek_pos > 0) in.readLine(); // discard potentially partial first line
-
-    QStringList raw;
-    raw.reserve(max_lines);
-    while (!in.atEnd()) {
-        if (cancelled.load(std::memory_order_relaxed)) return {};
-        raw.append(in.readLine());
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.error_message = fs::exists(log_path)
+            ? QObject::tr("Could not open debug log file: %1").arg(path_str)
+            : QObject::tr("Debug log file not found: %1").arg(path_str);
+        return result;
     }
-    if (raw.size() > max_lines)
-        raw = raw.mid(raw.size() - max_lines);
 
-    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    QList<LogLine> result;
-    result.reserve(raw.size());
-    for (const QString& line : raw) {
+    result.file_opened = true;
+    result.full_snapshot = true;
+    result.snapshot_limit = std::min(load_limit, kMaxLoadLimit);
+    result.file_size = file.size();
+    result.file_anchor = ReadAnchor(file, result.file_size);
+
+    // Find the final newline without accumulating the unfinished suffix on
+    // every backward step. Bitcoin Core normally writes newline-terminated
+    // entries, but the viewer can observe an in-progress or interrupted write.
+    qint64 complete_end{-1};
+    qint64 cursor = result.file_size;
+    while (cursor > 0) {
         if (cancelled.load(std::memory_order_relaxed)) return {};
-
-        LogLine entry;
-        QString raw_message;
-        const QRegularExpressionMatch m = TIMESTAMP_RX.match(line);
-        if (m.hasMatch()) {
-            const QDateTime dt = QDateTime::fromString(m.captured(1), Qt::ISODateWithMs);
-            entry.timestamp_ms = dt.isValid() ? dt.toMSecsSinceEpoch() : -1;
-            raw_message = m.captured(2);
-        } else {
-            entry.timestamp_ms = -1;
-            raw_message = line;
+        const qint64 start = std::max(qint64{0}, cursor - TAIL_READ_BLOCK_SIZE);
+        if (!file.seek(start)) return {};
+        const QByteArray chunk = file.read(cursor - start);
+        if (chunk.size() != cursor - start) return {};
+        const qsizetype last_newline = chunk.lastIndexOf('\n');
+        if (last_newline >= 0) {
+            complete_end = start + last_newline + 1;
+            break;
         }
-        PopulateParsedFields(entry, raw_message);
-        entry.relativeTime = entry.timestamp_ms >= 0
-            ? RelativeTimeLabelStatic(entry.timestamp_ms, now_ms)
-            : QString{};
-        result.append(entry);
+        cursor = start;
+    }
+
+    const qint64 partial_start = std::max(qint64{0}, complete_end);
+    const qint64 partial_size = result.file_size - partial_start;
+    if (partial_size > kMaxLogLineBytes) {
+        result.discarding_oversized_line = true;
+    } else if (partial_size > 0) {
+        if (!file.seek(partial_start)) return {};
+        result.trailing_partial = file.read(partial_size);
+        if (result.trailing_partial.size() != partial_size) return {};
+    }
+    if (complete_end < 0) {
+        return result;
+    }
+
+    const int target = std::min(load_limit, kMaxLoadLimit) + 1;
+    QList<LogLine> newest_first;
+    newest_first.reserve(target);
+    QByteArray carry;
+    bool discarding_oversized_line{false};
+    cursor = complete_end;
+
+    // Process complete lines from newest to oldest. At most one boundary-
+    // spanning line is carried. If it exceeds the viewer limit, discard its
+    // remaining prefix until the preceding newline restores framing.
+    while (cursor > 0 && newest_first.size() < target) {
+        if (cancelled.load(std::memory_order_relaxed)) return {};
+        const qint64 start = std::max(qint64{0}, cursor - TAIL_READ_BLOCK_SIZE);
+        if (!file.seek(start)) return {};
+        const QByteArray chunk = file.read(cursor - start);
+        if (chunk.size() != cursor - start) return {};
+
+        QByteArray data;
+        if (discarding_oversized_line) {
+            const qsizetype preceding_newline = chunk.lastIndexOf('\n');
+            if (preceding_newline < 0) {
+                cursor = start;
+                continue;
+            }
+            data = chunk.first(preceding_newline + 1);
+            discarding_oversized_line = false;
+        } else {
+            data = chunk + carry;
+        }
+
+        QByteArray complete_segment;
+        qint64 segment_offset{start};
+        if (start == 0) {
+            complete_segment = data;
+            carry.clear();
+        } else {
+            const qsizetype first_newline = data.indexOf('\n');
+            if (first_newline < 0) {
+                if (data.size() > kMaxLogLineBytes) {
+                    carry.clear();
+                    discarding_oversized_line = true;
+                } else {
+                    carry = data;
+                }
+                cursor = start;
+                continue;
+            }
+            complete_segment = data.mid(first_newline + 1);
+            segment_offset = start + first_newline + 1;
+            carry = data.first(first_newline + 1);
+            if (carry.size() > kMaxLogLineBytes) {
+                carry.clear();
+                discarding_oversized_line = true;
+            }
+        }
+
+        QList<LogLine> parsed = ParseCompleteLines(
+            complete_segment,
+            segment_offset,
+            target - newest_first.size(),
+            cancelled);
+        newest_first.append(std::move(parsed));
+        cursor = start;
+    }
+
+    result.has_more_lines = newest_first.size() > load_limit;
+    if (newest_first.size() > load_limit) newest_first.removeLast();
+    result.lines = std::move(newest_first);
+    return result;
+}
+
+QList<DebugLogModel::LogLine> DebugLogModel::ParseCompleteLines(
+    const QByteArray& bytes,
+    qint64 base_offset,
+    int max_filtered_lines,
+    const std::atomic_bool& cancelled)
+{
+    QList<LogLine> result;
+    result.reserve(std::min<int>(max_filtered_lines, 1024));
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+
+    qsizetype scan_end = bytes.size();
+    while (scan_end > 0 && result.size() < max_filtered_lines) {
+        if (cancelled.load(std::memory_order_relaxed)) return {};
+        const qsizetype terminator = bytes.at(scan_end - 1) == '\n'
+            ? scan_end - 1
+            : scan_end;
+        const qsizetype previous_newline = terminator > 0
+            ? bytes.lastIndexOf('\n', terminator - 1)
+            : -1;
+        const qsizetype start = previous_newline + 1;
+        const qsizetype line_size = terminator - start;
+        if (line_size <= kMaxLogLineBytes) {
+            QByteArray raw = bytes.mid(start, line_size);
+            if (raw.endsWith('\r')) raw.chop(1);
+
+            LogLine entry;
+            entry.source_offset = base_offset + start;
+            QString raw_message;
+            const QString line = QString::fromUtf8(raw);
+            const QRegularExpressionMatch match = TIMESTAMP_RX.match(line);
+            if (match.hasMatch()) {
+                const QDateTime dt = QDateTime::fromString(match.captured(1), Qt::ISODateWithMs);
+                entry.timestamp_ms = dt.isValid() ? dt.toMSecsSinceEpoch() : -1;
+                raw_message = match.captured(2);
+            } else {
+                entry.timestamp_ms = -1;
+                raw_message = line;
+            }
+            PopulateParsedFields(entry, raw_message);
+            entry.relativeTime = entry.timestamp_ms >= 0
+                ? RelativeTimeLabelStatic(entry.timestamp_ms, now_ms)
+                : QString{};
+            if (!entry.content.trimmed().isEmpty() || entry.timestamp_ms >= 0) {
+                result.append(std::move(entry));
+            }
+        }
+
+        if (previous_newline < 0) break;
+        scan_end = previous_newline + 1;
     }
     return result;
 }
 
 void DebugLogModel::onReadCompleted(const ReadResult& result,
-                                   const QString& prev_top_identity,
                                    bool full_load)
 {
-    if (m_stopping) return;
+    Q_UNUSED(full_load);
+    if (!m_active || m_stopping) return;
 
     // Propagate open-error state from the background read.
     if (!result.file_opened) {
@@ -359,6 +642,7 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
             m_open_error = result.error_message;
             Q_EMIT openErrorChanged();
         }
+        watchLogPath();
         m_read_in_flight = false;
         // Trailing refresh re-arm still honoured so a recovered file reloads.
         if (m_refresh_pending) {
@@ -376,132 +660,281 @@ void DebugLogModel::onReadCompleted(const ReadResult& result,
     // The watcher may have failed to register the path at construction time
     // if the log file did not exist yet. Re-add after a successful read so
     // auto-refresh works from here on.
-    const QString path_str = QString::fromStdString(m_log_path.utf8string());
-    if (!m_watcher.files().contains(path_str)) {
-        m_watcher.addPath(path_str);
-    }
+    watchLogPath();
 
-    const QList<LogLine>& filtered = result.filtered;
+    m_file_size = result.file_size;
+    m_trailing_partial = result.trailing_partial;
+    m_discarding_oversized_line = result.discarding_oversized_line;
+    m_file_anchor = result.file_anchor;
 
-    if (full_load || m_all_lines.isEmpty()) {
-        const bool new_has_more = filtered.size() > m_load_limit
-                                  || m_load_limit >= kMaxLoadLimit;
-        const int start = filtered.size() > m_load_limit
-            ? filtered.size() - m_load_limit : 0;
+    int newly_completed{0};
+    bool next_has_more{m_has_more_lines};
+    bool force_reset{result.continuity_lost};
 
-        QList<LogLine> new_lines;
-        new_lines.reserve(std::min<int>(m_load_limit, filtered.size()));
-        for (int i = filtered.size() - 1; i >= start; i--)
-            new_lines.append(filtered[i]);
-
-        m_all_lines = std::move(new_lines);
-
-        // At the hard ceiling, stop advertising "has more".
-        const bool announced_has_more = new_has_more && m_load_limit < kMaxLoadLimit;
-        if (m_has_more_lines != announced_has_more) {
-            m_has_more_lines = announced_has_more;
-            Q_EMIT hasMoreLinesChanged();
-        }
+    if (result.full_snapshot) {
+        QList<LogLine> next_lines = result.lines;
+        if (next_lines.size() > m_load_limit) next_lines.resize(m_load_limit);
+        next_has_more = (result.has_more_lines || result.lines.size() > m_load_limit)
+            && m_load_limit < kMaxLoadLimit;
+        force_reset = force_reset || m_all_lines.isEmpty();
+        applyLines(std::move(next_lines), force_reset);
+        // A result captured before a rapid limit change only satisfies the
+        // smaller of its request and the current retained capacity.
+        m_loaded_limit = std::min(result.snapshot_limit, m_load_limit);
     } else {
-        // Incremental refresh: prepend lines newer than the previous top entry.
-        if (!prev_top_identity.isEmpty()) {
-            QList<LogLine> new_entries;
-            bool found_prev = false;
-            for (int j = filtered.size() - 1; j >= 0; j--) {
-                if (filtered[j].identity == prev_top_identity) {
-                    found_prev = true;
-                    break;
-                }
-                new_entries.append(filtered[j]);
-            }
-            if (found_prev && !new_entries.isEmpty()) {
-                m_all_lines = new_entries + m_all_lines;
-            } else if (!found_prev) {
-                // Log rotated or missed window — full reset from the fresh read.
-                const bool new_has_more = filtered.size() > m_load_limit;
-                const int start = new_has_more ? filtered.size() - m_load_limit : 0;
-                m_all_lines.clear();
-                m_all_lines.reserve(m_load_limit);
-                for (int i = filtered.size() - 1; i >= start; i--)
-                    m_all_lines.append(filtered[i]);
-                const bool announced_has_more = new_has_more && m_load_limit < kMaxLoadLimit;
-                if (m_has_more_lines != announced_has_more) {
-                    m_has_more_lines = announced_has_more;
-                    Q_EMIT hasMoreLinesChanged();
-                }
-            }
-        }
+        newly_completed = result.lines.size();
+        const bool pruned = applyDelta(result.lines);
+        next_has_more = (m_has_more_lines || result.has_more_lines || pruned)
+            && m_load_limit < kMaxLoadLimit;
     }
 
-    // Emit newLinesAdded for the "new entries" pill.
-    if (!prev_top_identity.isEmpty()) {
-        for (int k = 0; k < m_all_lines.size(); k++) {
-            if (m_all_lines[k].identity == prev_top_identity) {
-                if (k > 0) Q_EMIT newLinesAdded(k);
-                break;
-            }
-        }
+    if (m_has_more_lines != next_has_more) {
+        m_has_more_lines = next_has_more;
+        Q_EMIT hasMoreLinesChanged();
+    }
+    if (newly_completed > 0) {
+        Q_EMIT newLinesAdded(std::min(newly_completed, m_load_limit));
     }
 
-    buildDisplayLines();
-
+    const bool needs_wider_tail = m_loaded_limit < m_load_limit;
+    const bool run_trailing_refresh = m_refresh_pending || needs_wider_tail;
+    const bool do_full = m_pending_full_load || needs_wider_tail;
+    m_refresh_pending = false;
+    m_pending_full_load = false;
     m_read_in_flight = false;
-    // If changes arrived while we were reading, run one trailing refresh.
-    if (!m_stopping && m_refresh_pending) {
-        m_refresh_pending = false;
-        const bool do_full = m_pending_full_load;
-        m_pending_full_load = false;
-        refresh(do_full);
-    }
+    if (!m_stopping && run_trailing_refresh) refresh(do_full);
 }
 
 void DebugLogModel::connectFileWatcher()
 {
-    const QString path_str = QString::fromStdString(m_log_path.utf8string());
-    if (path_str.isEmpty()) return;
-    m_watcher.addPath(path_str);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
-            this, [this](const QString& path) {
-                if (m_stopping) return;
-                m_watcher.addPath(path); // re-add in case of log rotation
+            this, [this](const QString&) {
+                if (!m_active || m_stopping) return;
+                watchLogPath();
+                m_debounce.start();
+            });
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
+            this, [this](const QString&) {
+                if (!m_active || m_stopping) return;
+                watchLogPath();
                 m_debounce.start();
             });
 }
 
-void DebugLogModel::buildDisplayLines()
+void DebugLogModel::watchLogPath()
 {
-    // Apply search filter.
+    if (!m_active || m_stopping) return;
+
+    const QString path = QString::fromStdString(m_log_path.utf8string());
+    if (path.isEmpty()) return;
+
+    const QFileInfo info(path);
+    if (info.exists()) {
+        if (!m_watcher.files().contains(path)) m_watcher.addPath(path);
+        if (m_watcher.files().contains(path)) {
+            const auto watched_directories = m_watcher.directories();
+            if (!watched_directories.isEmpty()) {
+                m_watcher.removePaths(watched_directories);
+            }
+            return;
+        }
+    }
+
+    const auto watched_files = m_watcher.files();
+    if (!watched_files.isEmpty()) m_watcher.removePaths(watched_files);
+    const QString parent_path = info.absolutePath();
+    if (!parent_path.isEmpty() && !m_watcher.directories().contains(parent_path)) {
+        m_watcher.addPath(parent_path);
+    }
+}
+
+QList<DebugLogModel::LogLine> DebugLogModel::filteredLines(
+    const QList<LogLine>& lines) const
+{
     QList<LogLine> filtered;
     if (m_filter.isEmpty()) {
-        filtered = m_all_lines;
+        filtered = lines;
     } else {
         const QString f = m_filter.toLower();
-        for (const LogLine& line : m_all_lines) {
+        for (const LogLine& line : lines) {
             if (line.content.toLower().contains(f))
                 filtered.append(line);
         }
     }
+    return filtered;
+}
 
-    // Assign display line numbers (1-based, in display order = newest-first).
-    for (int i = 0; i < filtered.size(); i++)
-        filtered[i].lineNumber = QString::number(i + 1);
+void DebugLogModel::applyLines(QList<LogLine> lines, bool force_reset)
+{
+    QList<LogLine> display = filteredLines(lines);
+    if (force_reset) {
+        beginResetModel();
+        m_all_lines = std::move(lines);
+        m_display_lines = std::move(display);
+        endResetModel();
+        return;
+    }
 
-    // Skip the reset when nothing displayed actually changed. A model reset
-    // forces the (non-virtualised) Repeater viewer to destroy and rebuild every
-    // row delegate on the GUI thread, which freezes the UI; a manual refresh on
-    // an idle log would otherwise pay that cost for no change.
-    if (filtered == m_display_lines) return;
+    m_all_lines = std::move(lines);
+    applyDisplayLines(std::move(display), /*force_reset=*/false);
+}
 
-    beginResetModel();
-    m_display_lines = filtered;
-    endResetModel();
+bool DebugLogModel::applyDelta(QList<LogLine> lines)
+{
+    if (lines.isEmpty()) return false;
+
+    const bool omitted_new_lines = lines.size() > m_load_limit;
+    if (omitted_new_lines) lines.resize(m_load_limit);
+
+    const int old_size = static_cast<int>(m_all_lines.size());
+    const int new_size = static_cast<int>(lines.size());
+    const int old_keep_count = std::min(
+        old_size, std::max(0, m_load_limit - new_size));
+    const int old_remove_count = old_size - old_keep_count;
+
+    int display_remove_count{0};
+    if (m_filter.isEmpty()) {
+        display_remove_count = old_remove_count;
+    } else if (old_remove_count > 0) {
+        const QString filter = m_filter.toLower();
+        for (int i = old_keep_count; i < m_all_lines.size(); ++i) {
+            if (m_all_lines.at(i).content.toLower().contains(filter)) {
+                ++display_remove_count;
+            }
+        }
+    }
+
+    QList<LogLine> display_insert = filteredLines(lines);
+    const int display_insert_count = display_insert.size();
+    const int surviving_display_count = m_display_lines.size() - display_remove_count;
+
+    // Publish the prepend first so a ListView can anchor the previously visible
+    // row. Any cap-induced removal is confined to the oldest filtered suffix.
+    if (!display_insert.isEmpty()) {
+        beginInsertRows(QModelIndex{}, 0, display_insert.size() - 1);
+        display_insert.reserve(display_insert.size() + m_display_lines.size());
+        display_insert.append(m_display_lines);
+        m_display_lines = std::move(display_insert);
+        endInsertRows();
+    }
+    if (display_remove_count > 0) {
+        const int first = display_insert_count + surviving_display_count;
+        beginRemoveRows(QModelIndex{}, first, m_display_lines.size() - 1);
+        m_display_lines.erase(m_display_lines.begin() + first,
+                              m_display_lines.end());
+        endRemoveRows();
+    }
+
+    lines.reserve(lines.size() + old_keep_count);
+    lines.append(m_all_lines.cbegin(), m_all_lines.cbegin() + old_keep_count);
+    m_all_lines = std::move(lines);
+
+    if (display_insert_count > 0 && surviving_display_count > 0) {
+        Q_EMIT dataChanged(index(display_insert_count, 0),
+                           index(display_insert_count + surviving_display_count - 1, 0),
+                           {LineNumberRole});
+    }
+    return omitted_new_lines || old_remove_count > 0;
+}
+
+void DebugLogModel::applyDisplayLines(QList<LogLine> lines, bool force_reset)
+{
+    if (!force_reset && lines == m_display_lines) return;
+    if (force_reset) {
+        beginResetModel();
+        m_display_lines = std::move(lines);
+        endResetModel();
+        return;
+    }
+
+    if (m_display_lines.isEmpty()) {
+        if (lines.isEmpty()) return;
+        beginInsertRows(QModelIndex{}, 0, lines.size() - 1);
+        m_display_lines = std::move(lines);
+        endInsertRows();
+        return;
+    }
+    if (lines.isEmpty()) {
+        beginRemoveRows(QModelIndex{}, 0, m_display_lines.size() - 1);
+        m_display_lines.clear();
+        endRemoveRows();
+        return;
+    }
+
+    // Appends to debug.log can only add a prefix (newest rows) and pruning can
+    // only remove a suffix. loadMore does the inverse operation at the bottom.
+    // Locate the old first row in the new projection and preserve the largest
+    // contiguous run from there. Stable byte offsets distinguish identical
+    // timestamp/message duplicates.
+    int prefix_count{-1};
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i) == m_display_lines.first()) {
+            prefix_count = i;
+            break;
+        }
+    }
+    if (prefix_count < 0) {
+        beginRemoveRows(QModelIndex{}, 0, m_display_lines.size() - 1);
+        m_display_lines.clear();
+        endRemoveRows();
+        beginInsertRows(QModelIndex{}, 0, lines.size() - 1);
+        m_display_lines = std::move(lines);
+        endInsertRows();
+        return;
+    }
+
+    int common_count{0};
+    while (common_count < m_display_lines.size()
+           && prefix_count + common_count < lines.size()
+           && m_display_lines.at(common_count) == lines.at(prefix_count + common_count)) {
+        ++common_count;
+    }
+
+    const int old_suffix_count = m_display_lines.size() - common_count;
+    if (old_suffix_count > 0) {
+        beginRemoveRows(QModelIndex{}, common_count, m_display_lines.size() - 1);
+        m_display_lines.erase(m_display_lines.begin() + common_count,
+                              m_display_lines.end());
+        endRemoveRows();
+    }
+
+    const int new_suffix_start = prefix_count + common_count;
+    if (new_suffix_start < lines.size()) {
+        const int first = m_display_lines.size();
+        const int count = lines.size() - new_suffix_start;
+        beginInsertRows(QModelIndex{}, first, first + count - 1);
+        for (int i = new_suffix_start; i < lines.size(); ++i) {
+            m_display_lines.append(lines.at(i));
+        }
+        endInsertRows();
+    }
+
+    // Apply a racing loadMore suffix before a live-update prefix. The QML
+    // view restores both anchors asynchronously; making the prepend the final
+    // structural notification ensures its top-row anchor wins.
+    if (prefix_count > 0) {
+        beginInsertRows(QModelIndex{}, 0, prefix_count - 1);
+        for (int i = prefix_count - 1; i >= 0; --i) {
+            m_display_lines.prepend(lines.at(i));
+        }
+        endInsertRows();
+    }
+
+    if (prefix_count > 0 && common_count > 0) {
+        Q_EMIT dataChanged(index(prefix_count, 0),
+                           index(m_display_lines.size() - 1, 0),
+                           {LineNumberRole});
+    }
+}
+
+void DebugLogModel::buildDisplayLines(bool force_reset)
+{
+    applyDisplayLines(filteredLines(m_all_lines), force_reset);
 }
 
 void DebugLogModel::PopulateParsedFields(LogLine& entry, const QString& raw_message)
 {
     entry.content = raw_message.toHtmlEscaped();
-    entry.identity = QString::number(entry.timestamp_ms) + QStringLiteral("\n") + raw_message;
-
     const QString trimmed = raw_message.trimmed();
     entry.command.clear();
     entry.message = trimmed;

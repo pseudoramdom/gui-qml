@@ -3078,6 +3078,238 @@ private:
     bool m_minimize_on_close{false};
 };
 
+class MockDebugLogModel : public QAbstractListModel
+{
+    Q_OBJECT
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
+    Q_PROPERTY(bool hasMoreLines READ hasMoreLines NOTIFY hasMoreLinesChanged)
+    Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
+    Q_PROPERTY(QString openError READ openError NOTIFY openErrorChanged)
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(int loadMoreCalls READ loadMoreCalls NOTIFY loadMoreCallsChanged)
+
+public:
+    enum Role {
+        LineNumberRole = Qt::UserRole + 1,
+        ContentRole,
+        RelativeTimeRole,
+        CommandRole,
+        MessageRole,
+        DateLabelRole,
+        SeverityRole,
+    };
+    Q_ENUM(Role)
+
+    enum Severity {
+        InfoSeverity = 0,
+        WarningSeverity,
+        ErrorSeverity,
+    };
+    Q_ENUM(Severity)
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return parent.isValid() ? 0 : m_rows.size();
+    }
+
+    int count() const { return m_rows.size(); }
+
+    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override
+    {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()) return {};
+        const Row& row = m_rows.at(index.row());
+        switch (role) {
+        case LineNumberRole: return QString::number(index.row() + 1);
+        case ContentRole: return row.message;
+        case RelativeTimeRole: return row.date_label;
+        case CommandRole: return row.command;
+        case MessageRole: return row.message;
+        case DateLabelRole: return row.date_label;
+        case SeverityRole: return row.severity;
+        default: return {};
+        }
+    }
+
+    QHash<int, QByteArray> roleNames() const override
+    {
+        return {
+            {LineNumberRole, "lineNumber"},
+            {ContentRole, "content"},
+            {RelativeTimeRole, "relativeTime"},
+            {CommandRole, "command"},
+            {MessageRole, "message"},
+            {DateLabelRole, "dateLabel"},
+            {SeverityRole, "severity"},
+        };
+    }
+
+    bool active() const { return m_active; }
+    void setActive(bool active)
+    {
+        if (m_active == active) return;
+        m_active = active;
+        Q_EMIT activeChanged();
+    }
+
+    bool hasMoreLines() const { return m_has_more_lines; }
+    QString filter() const { return m_filter; }
+    void setFilter(const QString& filter)
+    {
+        if (m_filter == filter) return;
+        m_filter = filter;
+        Q_EMIT filterChanged();
+    }
+    QString openError() const { return {}; }
+    int loadMoreCalls() const { return m_load_more_calls; }
+
+    Q_INVOKABLE void refresh(bool = false) {}
+    Q_INVOKABLE void loadMore()
+    {
+        ++m_load_more_calls;
+        Q_EMIT loadMoreCallsChanged();
+        appendRowsForTest(20);
+        setHasMoreLinesForTest(false);
+    }
+    Q_INVOKABLE bool openLogFile() { return true; }
+    Q_INVOKABLE void updateRelativeTimes() {}
+
+    Q_INVOKABLE void resetForTest(int count, bool has_more_lines)
+    {
+        beginResetModel();
+        m_rows.clear();
+        m_rows.reserve(count);
+        for (int i = 0; i < count; ++i) {
+            m_rows.append(makeRow(QStringLiteral("entry-%1").arg(i)));
+        }
+        endResetModel();
+        m_next_new_row = 0;
+        m_next_old_row = count;
+        m_load_more_calls = 0;
+        Q_EMIT countChanged();
+        Q_EMIT loadMoreCallsChanged();
+        setHasMoreLinesForTest(has_more_lines);
+    }
+
+    Q_INVOKABLE void prependRowsForTest(int count)
+    {
+        if (count <= 0) return;
+
+        QList<Row> added;
+        added.reserve(count);
+        for (int i = 0; i < count; ++i) {
+            added.append(makeRow(QStringLiteral("new-%1").arg(m_next_new_row++)));
+        }
+
+        beginInsertRows(QModelIndex(), 0, count - 1);
+        for (int i = count - 1; i >= 0; --i) {
+            m_rows.prepend(std::move(added[i]));
+        }
+        endInsertRows();
+        Q_EMIT countChanged();
+        Q_EMIT newLinesAdded(count);
+    }
+
+    Q_INVOKABLE void appendRowsForTest(int count)
+    {
+        if (count <= 0) return;
+
+        const int first = m_rows.size();
+        beginInsertRows(QModelIndex(), first, first + count - 1);
+        for (int i = 0; i < count; ++i) {
+            m_rows.append(makeRow(QStringLiteral("old-%1").arg(m_next_old_row++)));
+        }
+        endInsertRows();
+        Q_EMIT countChanged();
+    }
+
+    Q_INVOKABLE void removeRowsFromEndForTest(int count)
+    {
+        count = std::min<int>(count, m_rows.size());
+        if (count <= 0) return;
+
+        const int first = m_rows.size() - count;
+        beginRemoveRows(QModelIndex(), first, m_rows.size() - 1);
+        m_rows.remove(first, count);
+        endRemoveRows();
+        Q_EMIT countChanged();
+    }
+
+    Q_INVOKABLE void prependAndPruneRowsForTest(int prepend_count, int prune_count)
+    {
+        prependRowsForTest(prepend_count);
+        removeRowsFromEndForTest(prune_count);
+    }
+
+    Q_INVOKABLE void prependAndAppendRowsForTest(int prepend_count,
+                                                 int append_count,
+                                                 bool prepend_first)
+    {
+        if (prepend_first) {
+            prependRowsForTest(prepend_count);
+            appendRowsForTest(append_count);
+        } else {
+            appendRowsForTest(append_count);
+            prependRowsForTest(prepend_count);
+        }
+    }
+
+    Q_INVOKABLE void setMessageForTest(int row, const QString& message)
+    {
+        if (row < 0 || row >= m_rows.size() || m_rows.at(row).message == message) return;
+        m_rows[row].message = message;
+        const QModelIndex changed_index = index(row, 0);
+        Q_EMIT dataChanged(changed_index, changed_index, {ContentRole, MessageRole});
+    }
+
+    Q_INVOKABLE QString messageAt(int row) const
+    {
+        if (row < 0 || row >= m_rows.size()) return {};
+        return m_rows.at(row).message;
+    }
+
+    Q_INVOKABLE void setHasMoreLinesForTest(bool has_more_lines)
+    {
+        if (m_has_more_lines == has_more_lines) return;
+        m_has_more_lines = has_more_lines;
+        Q_EMIT hasMoreLinesChanged();
+    }
+
+Q_SIGNALS:
+    void activeChanged();
+    void hasMoreLinesChanged();
+    void filterChanged();
+    void openErrorChanged();
+    void newLinesAdded(int count);
+    void countChanged();
+    void loadMoreCallsChanged();
+
+private:
+    struct Row {
+        QString command;
+        QString message;
+        QString date_label;
+        int severity{InfoSeverity};
+    };
+
+    static Row makeRow(const QString& message)
+    {
+        return Row{
+            QStringLiteral("test"),
+            message,
+            QStringLiteral("just now"),
+            InfoSeverity,
+        };
+    }
+
+    bool m_active{false};
+    bool m_has_more_lines{false};
+    QString m_filter;
+    QList<Row> m_rows;
+    int m_load_more_calls{0};
+    int m_next_new_row{0};
+    int m_next_old_row{0};
+};
+
 class QmlTestsSetup : public QObject
 {
     Q_OBJECT
@@ -3108,6 +3340,7 @@ public Q_SLOTS:
         static MockActivityListModel activity_list_model;
         static MockBumpTransactionModel bump_model;
         static MockDesktopWindowBehaviorModel desktop_window_behavior_model;
+        static MockDebugLogModel debug_log_model;
         recipients_model.setCurrent(&send_recipient);
         wallet_model.setActivityListModel(&activity_list_model);
         wallet_model.setBumpModel(&bump_model);
@@ -3142,6 +3375,13 @@ public Q_SLOTS:
             "WalletQmlModelTransaction",
             "Test stub type"
         );
+        qmlRegisterUncreatableType<MockDebugLogModel>(
+            "org.bitcoincore.qt",
+            1,
+            0,
+            "DebugLogModel",
+            "Test stub type"
+        );
         qmlRegisterType<BlockClockDial>("org.bitcoincore.qt", 1, 0, "BlockClockDial");
         qmlRegisterType<LineGraph>("org.bitcoincore.qt", 1, 0, "LineGraph");
         engine->rootContext()->setContextProperty(QStringLiteral("optionsModel"), &options_model);
@@ -3166,6 +3406,8 @@ public Q_SLOTS:
         engine->rootContext()->setContextProperty(QStringLiteral("testCoinsListModel"), &coins_list_model);
         engine->rootContext()->setContextProperty(QStringLiteral("testBumpModel"), &bump_model);
         engine->rootContext()->setContextProperty(QStringLiteral("desktopWindowBehaviorModel"), &desktop_window_behavior_model);
+        engine->rootContext()->setContextProperty(QStringLiteral("debugLogModel"), &debug_log_model);
+        engine->rootContext()->setContextProperty(QStringLiteral("testDebugLogModel"), &debug_log_model);
         engine->addImportPath(QStringLiteral(BITCOINQML_QML_SOURCE_DIR));
     }
 };

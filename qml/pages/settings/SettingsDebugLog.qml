@@ -132,6 +132,11 @@ Page {
                 color: Theme.color.neutral9
                 placeholderTextColor: Theme.color.neutral5
                 placeholderText: qsTr("Search...")
+                // The page is unloaded whenever another Settings section is
+                // selected, while the C++ model intentionally retains its
+                // filter. Mirror that retained value on re-entry so the field
+                // and the rows cannot disagree.
+                text: debugLogModel.filter
                 verticalAlignment: TextInput.AlignVCenter
                 selectByMouse: true
                 Accessible.name: qsTr("Search debug log")
@@ -201,11 +206,13 @@ Page {
             topPadding: 10
             accessibleName: qsTr("Debug log entries")
             autoScrollToBottom: false
-            // DebugLogModel renders newest-first at the top, so y > 0 means
-            // "scrolled away from the newest entries" — which is exactly when
-            // the "N new entries" pill should be offered.
-            onScrolled: function(y) {
-                root.userIsScrolled = (y > 0)
+            // DebugLogModel renders newest-first at the top, so leaving the
+            // beginning is exactly when the "N new entries" pill applies.
+            onScrolled: function() {
+                // A ListView's content origin is not guaranteed to be zero,
+                // particularly with variable-height rows and incremental model
+                // changes. Its boundary state is the authoritative answer.
+                root.userIsScrolled = !logView.atTop
                 if (logView.atTop && root.pendingNewLines > 0) {
                     root.pendingNewLines = 0
                 }
@@ -220,6 +227,7 @@ Page {
             Layout.preferredHeight: 36
 
             TextButton {
+                objectName: "debugLogLoadMoreButton"
                 anchors.centerIn: parent
                 text: qsTr("Load more")
                 textSize: 13
@@ -320,5 +328,6 @@ Page {
         }
     }
 
-    Component.onCompleted: debugLogModel.refresh(true)
+    Component.onCompleted: debugLogModel.active = true
+    Component.onDestruction: debugLogModel.active = false
 }

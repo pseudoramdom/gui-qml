@@ -280,7 +280,12 @@ Page {
                         sourceComponent: NetworkTraffic { showBackButton: false; showHeader: false }
                     }
                     MempoolInformationSettings { showBackButton: false }
-                    SettingsDebugLog { showBackButton: false }
+                    Loader {
+                        id: debugLogLoader
+                        objectName: "settingsDebugLogLoader"
+                        active: root.visible && root.currentSection === 8
+                        sourceComponent: SettingsDebugLog { showBackButton: false }
+                    }
                     PageStack {
                         id: aboutStack
                         initialItem: SettingsAbout {
