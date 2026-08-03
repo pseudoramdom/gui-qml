@@ -17,7 +17,9 @@ ContextMenu {
     property alias showNoteSelf: noteSelfToggle.checked
     property alias showAddressType: addressTypeToggle.checked
     property bool showRequestActions: false
+    property bool showEditAction: false
 
+    signal editRequest()
     signal useAsTemplate()
     signal deleteFromHistory()
     signal viewAddressHistory()
@@ -53,6 +55,13 @@ ContextMenu {
     }
 
     ContextMenuDivider {}
+
+    ContextMenuButton {
+        objectName: "receiveOptionsEditButton"
+        visible: root.showEditAction
+        text: qsTr("Edit payment request")
+        onTriggered: root.editRequest()
+    }
 
     ContextMenuButton {
         objectName: "receiveOptionsViewAddressHistoryButton"

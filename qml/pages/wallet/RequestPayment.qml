@@ -18,6 +18,7 @@ Page {
 
     property WalletQmlModel wallet: walletController.selectedWallet
     property PaymentRequest request: wallet ? wallet.currentPaymentRequest : null
+    property var clipboard: Clipboard
     property string requestError: ""
     property string selectedReceiveAddressType: ""
     property var availableAddressTypes: root.wallet ? root.wallet.availableReceiveAddressTypes() : []
@@ -210,7 +211,11 @@ Page {
                     x: receiveOptionsButton.x - width + receiveOptionsButton.width
                     y: receiveOptionsButton.y + receiveOptionsButton.height
                     showRequestActions: root.hasSavedRequest
+                    showEditAction: root.hasSavedRequest && !root.requestIsEditing()
                     onViewAddressHistory: root.addressHistoryRequested()
+                    onEditRequest: {
+                        if (root.request) root.request.edit()
+                    }
                     onUseAsTemplate: root.useCurrentRequestAsTemplate()
                     onDeleteFromHistory: root.deleteCurrentRequest()
                 }
@@ -224,6 +229,9 @@ Page {
                 amount: root.request ? root.request.amount : null
                 errorText: root.request ? root.request.amountError : ""
                 enabled: root.requestIsEditing()
+                placeholderText: root.requestIsEditing()
+                    ? (amountInput.amount ? amountInput.amountInputPlaceholder(amountInput.amount.unit) : "0.00000000")
+                    : "—"
                 onInputTextChanged: {
                     root.requestError = ""
                 }
@@ -262,7 +270,7 @@ Page {
                 Layout.fillWidth: true
                 visible: receiveOptionsPopup.showName
                 labelText: qsTr("Name")
-                placeholderText: qsTr("Enter name...")
+                placeholderText: root.requestIsEditing() ? qsTr("Enter name...") : "—"
                 enabled: root.requestIsEditing()
                 text: root.requestValue("label")
                 onTextEdited: {
@@ -284,7 +292,7 @@ Page {
                 Layout.fillWidth: true
                 visible: receiveOptionsPopup.showMessage
                 labelText: qsTr("Message")
-                placeholderText: qsTr("Enter message...")
+                placeholderText: root.requestIsEditing() ? qsTr("Enter message...") : "—"
                 enabled: root.requestIsEditing()
                 text: root.requestValue("message")
                 onTextEdited: {
@@ -306,7 +314,7 @@ Page {
                 Layout.fillWidth: true
                 visible: receiveOptionsPopup.showNoteSelf
                 labelText: qsTr("Note to self")
-                placeholderText: qsTr("Enter private note...")
+                placeholderText: root.requestIsEditing() ? qsTr("Enter private note...") : "—"
                 enabled: root.requestIsEditing()
                 text: root.requestValue("noteSelf")
                 onTextEdited: {
@@ -429,16 +437,22 @@ Page {
             }
 
             Item {
+                id: addressRow
+                objectName: "requestPaymentAddressRow"
+                readonly property real contentTop: (56 - Theme.text.body.lineHeight) / 2
                 Layout.fillWidth: true
                 visible: root.hasAddress
-                Layout.topMargin: root.hasAddressType ? 0 : 10
-                implicitHeight: addressLabel.height + copyLabel.height
-                height: addressLabel.height + copyLabel.height
+                implicitHeight: Math.max(
+                    56,
+                    contentTop - addressValue.topPadding + addressValue.implicitHeight
+                )
 
                 CoreText {
                     id: addressLabel
+                    objectName: "requestPaymentAddressFieldLabel"
                     anchors.left: parent.left
                     anchors.top: parent.top
+                    anchors.topMargin: addressRow.contentTop
                     horizontalAlignment: Text.AlignLeft
                     width: 128
                     text: qsTr("Address")
@@ -447,72 +461,32 @@ Page {
                     lineHeightMode: Text.FixedHeight
                 }
 
-                CoreText {
-                    id: copyLabel
-                    anchors.left: parent.left
-                    anchors.top: addressLabel.bottom
-                    horizontalAlignment: Text.AlignLeft
-                    width: 128
-                    text: qsTr("Copy")
-                    font: Theme.text.body.font
-                    lineHeight: Theme.text.body.lineHeight
-                    lineHeightMode: Text.FixedHeight
-                    color: Theme.color.orange
-                }
-
-                CoreText {
+                AddressLabel {
                     id: addressValue
                     objectName: "requestPaymentAddressText"
                     anchors.left: addressLabel.right
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    horizontalAlignment: Text.AlignLeft
-                    font: Theme.text.monoBody.font
-                    lineHeight: Theme.text.monoBody.lineHeight
-                    lineHeightMode: Text.FixedHeight
-                    wrapMode: Text.WordWrap
-                    text: root.request ? root.request.addressFormatted : ""
-                }
-
-                MouseArea {
-                    anchors.left: parent.left
-                    anchors.top: addressLabel.bottom
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.request) {
-                            Clipboard.setText(root.request.address)
-                            copiedToast.show(copyLabel, (copyLabel.paintedWidth - copyLabel.width) / 2)
-                        }
-                    }
+                    anchors.topMargin: addressRow.contentTop - topPadding
+                    address: root.requestValue("address")
+                    clipboard: root.clipboard
                 }
             }
 
             ContinueButton {
                 id: generateButton
                 objectName: "requestPaymentGenerateButton"
-                Layout.fillWidth: true
+                Layout.preferredWidth: 300
+                Layout.maximumWidth: 300
+                Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 36
-                text: {
-                    if (!root.request || root.requestIsEditing()) {
-                        return root.hasSavedRequest
-                            ? qsTr("Update payment request")
-                            : qsTr("Generate payment request")
-                    }
-                    return qsTr("New request")
-                }
+                visible: root.requestIsEditing()
+                text: root.hasSavedRequest
+                    ? qsTr("Update payment request")
+                    : qsTr("Generate payment request")
                 onClicked: {
                     if (!root.request) return
-                    if (root.requestIsEditing()) {
-                        root.commitCurrentRequest()
-                    } else {
-                        root.request.clear()
-                        root.requestError = ""
-                        root.resetSelectedReceiveAddressType()
-                    }
+                    root.commitCurrentRequest()
                 }
 
                 Item {
@@ -524,7 +498,9 @@ Page {
 
             OutlineButton {
                 objectName: "requestPaymentCancelButton"
-                Layout.fillWidth: true
+                Layout.preferredWidth: 300
+                Layout.maximumWidth: 300
+                Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 10
                 visible: root.request ? root.requestIsEditing() && root.hasSavedRequest : false
                 text: qsTr("Cancel")
@@ -535,135 +511,106 @@ Page {
                 }
             }
 
-            RowLayout {
-                id: generatedActions
-                objectName: "requestPaymentGeneratedActions"
+            Item {
+                id: generatedActionsContainer
                 Layout.fillWidth: true
-                Layout.topMargin: 10
+                Layout.topMargin: 36
+                Layout.preferredHeight: generatedActions.implicitHeight
                 visible: root.request ? !root.requestIsEditing() : false
-                spacing: 10
 
-                Button {
-                    id: editButton
-                    objectName: "requestPaymentEditButton"
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 0
-                    hoverEnabled: AppMode.isDesktop
-                    implicitHeight: 46
-                    Accessible.name: qsTr("Edit payment request")
+                ColumnLayout {
+                    id: generatedActions
+                    objectName: "requestPaymentGeneratedActions"
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Math.min(610, generatedActionsContainer.width)
+                    spacing: 10
 
-                    contentItem: RowLayout {
-                        spacing: 6
-                        Item { Layout.fillWidth: true }
-                        Icon {
-                            source: "qrc:/icons/edit"
-                            color: Theme.color.neutral9
-                            size: 24
+                    RowLayout {
+                        objectName: "requestPaymentRequestActions"
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        ContinueButton {
+                            id: copyButton
+                            objectName: "requestPaymentCopyButton"
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 300
+                            Layout.maximumWidth: 300
+                            text: qsTr("Copy request")
+                            iconSource: "qrc:/icons/copy"
+                            Accessible.name: text
+
+                            onClicked: {
+                                if (root.request) {
+                                    root.clipboard.setText(root.request.qrPayload)
+                                    copiedToast.show(copyButton)
+                                }
+                            }
                         }
-                        CoreText {
-                            text: qsTr("Edit")
-                            bold: true
-                            font.pixelSize: 18
-                            color: Theme.color.neutral9
+
+                        Button {
+                            id: qrButton
+                            objectName: "requestPaymentQRButton"
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 300
+                            Layout.maximumWidth: 300
+                            hoverEnabled: AppMode.isDesktop
+                            implicitHeight: 46
+                            Accessible.name: qsTr("Show QR code")
+
+                            contentItem: RowLayout {
+                                spacing: 6
+                                Item { Layout.fillWidth: true }
+                                Icon {
+                                    source: "qrc:/icons/qr-code"
+                                    color: Theme.color.neutral9
+                                    size: 24
+                                }
+                                CoreText {
+                                    text: qsTr("QR code")
+                                    bold: true
+                                    font.pixelSize: 18
+                                    color: Theme.color.neutral9
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            background: Rectangle {
+                                implicitHeight: 46
+                                color: Theme.color.background
+                                radius: 5
+                                border.width: 1
+                                border.color: qrButton.pressed ? Theme.color.orangeLight2 : qrButton.hovered ? Theme.color.neutral9 : Theme.color.neutral6
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                            }
+
+                            onClicked: qrPopup.open()
                         }
-                        Item { Layout.fillWidth: true }
                     }
 
-                    background: Rectangle {
-                        implicitHeight: 46
-                        color: Theme.color.background
-                        radius: 5
-                        border.width: 1
-                        border.color: editButton.pressed ? Theme.color.orangeLight2 : editButton.hovered ? Theme.color.neutral9 : Theme.color.neutral6
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
+                    Separator {
+                        objectName: "requestPaymentNewRequestSeparator"
+                        Layout.fillWidth: true
+                        Layout.topMargin: 14
                     }
 
-                    onClicked: {
-                        if (root.request) root.request.edit()
+                    OutlineButton {
+                        id: newRequestButton
+                        objectName: "requestPaymentNewRequestButton"
+                        Layout.preferredWidth: 300
+                        Layout.maximumWidth: 300
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: 14
+                        text: qsTr("New request")
+                        onClicked: {
+                            if (!root.request) return
+                            root.request.clear()
+                            root.requestError = ""
+                            root.resetSelectedReceiveAddressType()
+                        }
                     }
                 }
-
-                Button {
-                    id: copyButton
-                    objectName: "requestPaymentCopyButton"
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 0
-                    hoverEnabled: AppMode.isDesktop
-                    implicitHeight: 46
-                    Accessible.name: qsTr("Copy payment request")
-
-                    contentItem: RowLayout {
-                        spacing: 6
-                        Item { Layout.fillWidth: true }
-                        Icon {
-                            source: "qrc:/icons/copy"
-                            color: Theme.color.neutral9
-                            size: 24
-                        }
-                        CoreText {
-                            text: qsTr("Copy")
-                            bold: true
-                            font.pixelSize: 18
-                            color: Theme.color.neutral9
-                        }
-                        Item { Layout.fillWidth: true }
-                    }
-
-                    background: Rectangle {
-                        implicitHeight: 46
-                        color: Theme.color.background
-                        radius: 5
-                        border.width: 1
-                        border.color: copyButton.pressed ? Theme.color.orangeLight2 : copyButton.hovered ? Theme.color.neutral9 : Theme.color.neutral6
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
-                    }
-
-                    onClicked: {
-                        if (root.request) {
-                            Clipboard.setText(root.request.qrPayload)
-                            copiedToast.show(copyButton)
-                        }
-                    }
-                }
-
-                Button {
-                    id: qrButton
-                    objectName: "requestPaymentQRButton"
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 0
-                    hoverEnabled: AppMode.isDesktop
-                    implicitHeight: 46
-                    Accessible.name: qsTr("Show QR code")
-
-                    contentItem: RowLayout {
-                        spacing: 6
-                        Item { Layout.fillWidth: true }
-                        Icon {
-                            source: "qrc:/icons/qr-code"
-                            color: Theme.color.neutral9
-                            size: 24
-                        }
-                        CoreText {
-                            text: qsTr("QR Code")
-                            bold: true
-                            font.pixelSize: 18
-                            color: Theme.color.neutral9
-                        }
-                        Item { Layout.fillWidth: true }
-                    }
-
-                    background: Rectangle {
-                        implicitHeight: 46
-                        color: Theme.color.background
-                        radius: 5
-                        border.width: 1
-                        border.color: qrButton.pressed ? Theme.color.orangeLight2 : qrButton.hovered ? Theme.color.neutral9 : Theme.color.neutral6
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
-                    }
-
-                    onClicked: qrPopup.open()
-                }
-
             }
 
             Item {
@@ -744,7 +691,7 @@ Page {
         label: root.requestValue("label")
         onCopyRequested: {
             if (root.request) {
-                Clipboard.setText(root.request.qrPayload)
+                root.clipboard.setText(root.request.qrPayload)
                 copiedToast.show(copyButton)
             }
             qrPopup.close()

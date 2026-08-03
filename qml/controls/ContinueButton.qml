@@ -22,6 +22,7 @@ Button {
     property color borderPressedColor: "transparent"
     property bool bold: true
     property bool busy: false
+    property url iconSource: ""
     property var textStyle: bold ? Theme.text.buttonStrong : Theme.text.button
     property int textFontPixelSize: textStyle.pixelSize
     property string textFontStyleName: textStyle.styleName
@@ -32,13 +33,21 @@ Button {
         RowLayout {
             id: contentRow
             anchors.centerIn: parent
-            spacing: 8
+            spacing: 4
 
             SpinningIndicator {
                 Layout.alignment: Qt.AlignVCenter
                 visible: root.busy
                 running: root.busy
                 color: root.textColor
+            }
+
+            Icon {
+                Layout.alignment: Qt.AlignVCenter
+                visible: !root.busy && root.iconSource.toString() !== ""
+                source: root.iconSource
+                color: root.textColor
+                size: 24
             }
 
             CoreText {

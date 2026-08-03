@@ -111,7 +111,7 @@ def create_payment_request_from_first_unused_address(gui, expected_address):
     gui.click("addressRowCreatePaymentRequestButton")
     gui.settle()
     wait_for_text(gui, "requestPaymentLabelInput", ADDRESS_LABEL)
-    address = "".join(gui.get_text("requestPaymentAddressText").split())
+    address = gui.get_property("requestPaymentAddressText", "address")
     assert address == expected_address, (
         f"Expected receive view address {expected_address!r}, got {address!r}"
     )
