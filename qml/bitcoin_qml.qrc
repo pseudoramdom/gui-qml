@@ -2,6 +2,7 @@
     <qresource prefix="/qml">
         <file>components/AboutOptions.qml</file>
         <file>components/AddressDetailRow.qml</file>
+        <file>components/AddressLabel.qml</file>
         <file>components/AlertAction.qml</file>
         <file>components/AlertPopup.qml</file>
         <file>components/BitcoinAddressDisplayField.qml</file>
