@@ -6,6 +6,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtTest 1.2
+import "../../qml/components"
 import "../../qml/pages/wallet"
 
 TestCase {
@@ -84,6 +85,28 @@ TestCase {
             scriptType: "P2WPKH"
             used: false
         }
+    }
+
+    Component {
+        id: addressLabelComponent
+
+        AddressLabel {
+            width: 120
+            address: "abcdefghijklmnopqrst"
+        }
+    }
+
+    function test_addressLabel_alternates_color_every_four_characters() {
+        const label = createTemporaryObject(addressLabelComponent, host)
+        verify(label !== null)
+
+        const primary = label.primaryColor.toString()
+        const secondary = label.secondaryColor.toString()
+        verify(label.formattedText.indexOf("<font color=\"" + primary + "\">abcd</font>") !== -1)
+        verify(label.formattedText.indexOf("<font color=\"" + secondary + "\">efgh</font>") !== -1)
+        verify(label.formattedText.indexOf("<font color=\"" + primary + "\">ijkl</font>") !== -1)
+        verify(label.formattedText.indexOf("<font color=\"" + secondary + "\">mnop</font>") !== -1)
+        verify(label.formattedText.indexOf("<font color=\"" + primary + "\">qrst</font>") !== -1)
     }
 
     function test_row_uses_display_amount_and_emits_actions() {

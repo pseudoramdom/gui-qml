@@ -169,7 +169,6 @@ TestCase {
         compare(testWalletModel.lastLoadedPaymentRequestDetailId, "req-1")
         compare(testPaymentRequest.id, "req-1")
         compare(testPaymentRequest.isEditing, false)
-
         const editButton = findChild(page.currentItem, "paymentRequestDetailEdit")
         verify(editButton !== null)
         editButton.clicked()

@@ -21,6 +21,7 @@ ColumnLayout {
     property alias unitLabelObjectName: unitLabel.objectName
     property alias errorTextObjectName: errorTextLabel.objectName
     property bool enabled: true
+    property string placeholderText: root.amount ? root.amountInputPlaceholder(root.amount.unit) : "0.00000000"
 
     signal inputTextChanged
     signal textEdited
@@ -119,7 +120,7 @@ ColumnLayout {
             color: Theme.color.neutral9
             placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
             background: Item {}
-            placeholderText: root.amount ? root.amountInputPlaceholder(root.amount.unit) : "0.00000000"
+            placeholderText: root.placeholderText
             selectByMouse: true
 
             text: ""

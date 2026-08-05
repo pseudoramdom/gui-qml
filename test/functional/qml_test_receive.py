@@ -264,13 +264,13 @@ def run_test():
         assert "message=pizza" in qr_code, f"QR payload missing message: {qr_code!r}"
         print(f"[qml_receive_requests] created request with QR popup payload: {qr_code}")
 
-        # Verify the "Generate QR" button now says "New request"
-        button_text = gui.get_text("requestPaymentGenerateButton")
+        # Verify the generated-state outline button says "New request"
+        button_text = gui.get_text("requestPaymentNewRequestButton")
         assert "New request" in button_text, f"Expected 'New request' button, got: {button_text!r}"
         print("[qml_receive_requests] button text correctly shows 'New request'")
 
         # Click "New request" to reset to editing state
-        gui.click("requestPaymentGenerateButton")
+        gui.click("requestPaymentNewRequestButton")
         gui.wait_for_property("requestPaymentTitle", "text", "Request a payment", timeout_ms=10000)
         button_text = gui.get_text("requestPaymentGenerateButton")
         assert "Generate payment request" in button_text, f"Expected 'Generate payment request' after clear, got: {button_text!r}"
