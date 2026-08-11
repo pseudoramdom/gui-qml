@@ -189,9 +189,7 @@ QString SendRecipientsListModel::totalAmount() const
 void SendRecipientsListModel::clear()
 {
     beginResetModel();
-    for (auto* recipient : m_recipients) {
-        delete recipient;
-    }
+    const QList<SendRecipient*> old_recipients{m_recipients};
     m_recipients.clear();
     m_current = 0;
     m_totalAmount = 0;
@@ -208,6 +206,13 @@ void SendRecipientsListModel::clear()
     Q_EMIT currentRecipientChanged();
     Q_EMIT currentIndexChanged();
     Q_EMIT validationChanged();
+
+    // Defer deletion so QML bindings can switch to the replacement recipient
+    // without temporarily observing a null object.
+    for (auto* recipient : old_recipients) {
+        recipient->deleteLater();
+    }
+
     if (m_wallet) {
         m_wallet->clearSelectedCoins();
     }
