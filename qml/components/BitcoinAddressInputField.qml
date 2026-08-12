@@ -17,9 +17,35 @@ ColumnLayout {
     property string labelText: qsTr("Send to")
     property bool enabled: true
     property alias inputObjectName: addressInput.objectName
+    property bool interceptPaste: false
 
     signal textChanged()
     signal editingFinished()
+    signal pasteRequested()
+
+    function paymentUri(text) {
+        const trimmedText = String(text).trim()
+        return root.interceptPaste && trimmedText.toLowerCase().startsWith("bitcoin:")
+            ? trimmedText
+            : ""
+    }
+
+    function pastedPaymentUri(previousText, currentText) {
+        const clipboardText = Clipboard.text()
+        const uri = paymentUri(clipboardText)
+        if (uri.length === 0 || previousText === currentText) return ""
+        return String(currentText).indexOf(clipboardText) === -1 ? "" : uri
+    }
+
+    function paste() {
+        addressInput.paste()
+    }
+
+    function syncFromAddress() {
+        addressInput.syncFromAddress()
+    }
+
+    onAddressChanged: syncFromAddress()
 
     Layout.fillWidth: true
     spacing: 4
@@ -43,13 +69,34 @@ ColumnLayout {
 
         TextArea {
             id: addressInput
+            property bool syncingFromAddress: false
+
+            function syncFromAddress() {
+                const formattedAddress = root.address ? root.address.formattedAddress : ""
+                if (text === formattedAddress) return
+                syncingFromAddress = true
+                text = formattedAddress
+                syncingFromAddress = false
+            }
+
+            function handlePaymentUriInput() {
+                const previousText = root.address ? root.address.formattedAddress : ""
+                const uri = root.pastedPaymentUri(previousText, text)
+                if (uri.length === 0) return false
+                syncFromAddress()
+                root.pasteRequested()
+                syncFromAddress()
+                return true
+            }
+
             objectName: root.inputObjectName
             anchors.left: label.right
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             enabled: root.enabled
             placeholderText: qsTr("Enter address...")
-            text: root.address ? root.address.formattedAddress : ""
+            text: ""
+            Component.onCompleted: syncFromAddress()
             wrapMode: Text.WrapAnywhere
             leftPadding: 0
             topPadding: 0
@@ -62,7 +109,19 @@ ColumnLayout {
             background: Item {}
             selectByMouse: true
 
+            Keys.onPressed: (event) => {
+                if (root.interceptPaste && event.matches(StandardKey.Paste)) {
+                    root.pasteRequested()
+                    event.accepted = true
+                }
+            }
+
             onTextChanged: {
+                if (syncingFromAddress) {
+                    root.textChanged()
+                    return
+                }
+                if (handlePaymentUriInput()) return
                 if (root.address) {
                     cursorPosition = root.address.setAddress(text, cursorPosition)
                 }
@@ -79,6 +138,13 @@ ColumnLayout {
             onActiveFocusChanged: {
                 if (!activeFocus && root.address) {
                     root.address.setAddress(text)
+                }
+            }
+
+            Connections {
+                target: root.address ? root.address : null
+                function onFormattedAddressChanged() {
+                    addressInput.syncFromAddress()
                 }
             }
         }

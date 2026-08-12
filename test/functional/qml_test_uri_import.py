@@ -217,8 +217,61 @@ def run_tests():
         )
         print("Test 7 PASSED: DropArea hasUrls + non-file URL branch.")
 
+        # ----------------------------------------------------------------
+        # Test 8: Native text-control paste from every recipient field
+        # Calling paste() exercises the same control path as a context-menu
+        # Paste action without assuming a platform-specific keyboard shortcut.
+        # ----------------------------------------------------------------
+        amount_field_uri = (
+            f"bitcoin:{target_address}"
+            f"?amount=0.07000000&label=drop-url"
+        )
+        gui.set_clipboard_text(amount_field_uri)
+        gui.click("sendAmountInput")
+        gui.invoke("sendAmountInput", "paste")
+        gui.wait_for_property(
+            "sendAmountInput", "text",
+            lambda v: "0.07000000" in str(v), timeout_ms=5000,
+        )
+
+        label_field_uri = (
+            f"bitcoin:{target_address}"
+            f"?amount=0.07000000&label=field-paste"
+        )
+        gui.set_clipboard_text(label_field_uri)
+        gui.click("sendNoteInput")
+        gui.invoke("sendNoteInput", "paste")
+        gui.wait_for_property(
+            "sendNoteInput", "text", "field-paste", timeout_ms=5000,
+        )
+
+        address_field_uri = (
+            f"bitcoin:{target_address}"
+            f"?amount=0.07000000&label=field-paste&message=address-field-paste"
+        )
+        gui.set_clipboard_text(address_field_uri)
+        gui.click("sendAddressInput")
+        gui.invoke("sendAddressInput", "paste")
+        gui.wait_for_property(
+            "sendPaymentRequestMessageText", "text",
+            "address-field-paste", timeout_ms=5000,
+        )
+        print("Test 8 PASSED: native paste from recipient fields.")
+
+        # ----------------------------------------------------------------
+        # Test 9: Non-URI context-menu paste keeps normal text behavior
+        # ----------------------------------------------------------------
+        gui.set_clipboard_text("-ordinary-paste")
+        gui.click("sendNoteInput")
+        gui.invoke("sendNoteInput", "paste")
+        gui.wait_for_property(
+            "sendNoteInput", "text",
+            lambda v: "-ordinary-paste" in str(v), timeout_ms=5000,
+        )
+        print("Test 9 PASSED: non-URI native paste remains unchanged.")
+
         print("\n" + "=" * 50)
-        print("All URI import tests PASSED (7/7)")
+        print("All URI import tests PASSED (9/9)")
         print("=" * 50)
 
     except Exception as exc:

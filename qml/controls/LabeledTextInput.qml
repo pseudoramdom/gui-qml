@@ -5,6 +5,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import org.bitcoincore.qt 1.0
 
 Item {
     property alias labelText: label.text
@@ -18,11 +19,46 @@ Item {
     property alias maximumLength: input.maximumLength
     property alias cursorPosition: input.cursorPosition
     property alias inputActiveFocus: input.activeFocus
+    property bool interceptPaste: false
+    property string paymentUriRestoreText: ""
 
     signal iconClicked
     signal textEdited
     signal editingFinished
     signal inputFocusChanged
+    signal pasteRequested()
+
+    function paymentUri(text) {
+        const trimmedText = String(text).trim()
+        return root.interceptPaste && trimmedText.toLowerCase().startsWith("bitcoin:")
+            ? trimmedText
+            : ""
+    }
+
+    function pastedPaymentUri(previousText, currentText) {
+        const clipboardText = Clipboard.text()
+        const uri = paymentUri(clipboardText)
+        if (uri.length === 0 || previousText === currentText) return ""
+
+        let offset = String(currentText).indexOf(clipboardText)
+        while (offset !== -1) {
+            const prefix = String(currentText).slice(0, offset)
+            const suffix = String(currentText).slice(offset + clipboardText.length)
+            if (String(previousText).startsWith(prefix)
+                    && String(previousText).endsWith(suffix)
+                    && prefix.length + suffix.length <= String(previousText).length) {
+                return uri
+            }
+            offset = String(currentText).indexOf(clipboardText, offset + 1)
+        }
+        return ""
+    }
+
+    function paste() {
+        input.paste()
+    }
+
+    onPaymentUriRestoreTextChanged: if (root.interceptPaste) input.syncFromModel()
 
     id: root
     implicitHeight: 56
@@ -40,6 +76,24 @@ Item {
 
     TextField {
         id: input
+        property bool syncingFromModel: false
+
+        function syncFromModel() {
+            if (text === root.paymentUriRestoreText) return
+            syncingFromModel = true
+            text = root.paymentUriRestoreText
+            syncingFromModel = false
+        }
+
+        function handlePaymentUriInput() {
+            const uri = root.pastedPaymentUri(root.paymentUriRestoreText, text)
+            if (uri.length === 0) return false
+            syncFromModel()
+            root.pasteRequested()
+            syncFromModel()
+            return true
+        }
+
         anchors.left: label.right
         anchors.right: iconContainer.left
         anchors.verticalCenter: parent.verticalCenter
@@ -49,7 +103,17 @@ Item {
         placeholderTextColor: enabled ? Theme.color.neutral7 : Theme.color.neutral4
         background: Item {}
         selectByMouse: true
-        onTextEdited: root.textEdited()
+
+        Keys.onPressed: (event) => {
+            if (root.interceptPaste && event.matches(StandardKey.Paste)) {
+                root.pasteRequested()
+                event.accepted = true
+            }
+        }
+
+        Component.onCompleted: if (root.interceptPaste) syncFromModel()
+        onTextChanged: if (!syncingFromModel) handlePaymentUriInput()
+        onTextEdited: if (!handlePaymentUriInput()) root.textEdited()
         onEditingFinished: root.editingFinished()
         onActiveFocusChanged: root.inputFocusChanged()
     }
