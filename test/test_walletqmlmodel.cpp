@@ -184,6 +184,32 @@ void SetValidRecipient(WalletQmlModel& model,
     QVERIFY2(recipient->isValid(), "Recipient must be valid before scheduling fee estimates");
 }
 
+interfaces::WalletTx MakeOutgoingActivityWalletTx(const std::vector<CAmount>& output_values,
+                                                   const std::vector<bool>& output_is_mine,
+                                                   const std::vector<bool>& output_is_change)
+{
+    CMutableTransaction transaction;
+    transaction.vin.emplace_back(COutPoint{Txid::FromUint256(uint256{1}), 0});
+    for (const CAmount value : output_values) {
+        transaction.vout.emplace_back(value, CScript{});
+    }
+
+    interfaces::WalletTx wallet_tx;
+    wallet_tx.tx = MakeTransactionRef(std::move(transaction));
+    wallet_tx.txin_is_mine = {true};
+    wallet_tx.txout_is_mine = output_is_mine;
+    wallet_tx.txout_is_change = output_is_change;
+    wallet_tx.txout_address.assign(output_values.size(), DecodeDestination(VALID_MAINNET_ADDRESS.toStdString()));
+    wallet_tx.txout_address_is_mine = output_is_mine;
+    wallet_tx.credit = std::inner_product(
+        output_values.begin(), output_values.end(), output_is_mine.begin(), CAmount{0});
+    wallet_tx.debit = std::accumulate(output_values.begin(), output_values.end(), CAmount{0}) + 1'000;
+    wallet_tx.change = 0;
+    wallet_tx.time = 0;
+    wallet_tx.is_coinbase = false;
+    return wallet_tx;
+}
+
 class FakePasswordWallet : public StubWallet
 {
 public:
@@ -522,6 +548,8 @@ private Q_SLOTS:
     void availableReceiveAddressTypesHideUnavailableTaproot();
     void receiveAddressTypeDefaultPersistsPerWallet();
     void removeReceiveRequestRemovesPendingActivityRow();
+    void activityDetailsSelectLowestOutputIndex();
+    void activityDetailsPreferOutgoingForSelfPayment();
     void prepareTransactionOnLockedWalletRequiresPassword();
     void prepareTransactionWithPrivateKeysDisabledDoesNotRequirePassword();
     void sendRecipientRejectsDustAmount();
@@ -1613,6 +1641,42 @@ void WalletQmlModelTests::removeReceiveRequestRemovesPendingActivityRow()
     QCOMPARE(wallet->set_address_receive_request_calls, 2);
     QCOMPARE(wallet->receive_request_ids.back(), std::string{"1"});
     QCOMPARE(model->activityListModel()->rowCount(), 0);
+}
+
+void WalletQmlModelTests::activityDetailsSelectLowestOutputIndex()
+{
+    NiceMock<MockWallet>* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+    const interfaces::WalletTx wallet_tx = MakeOutgoingActivityWalletTx(
+        {10'000, 20'000, 30'000},
+        {true, false, false},
+        {true, false, false});
+    ON_CALL(*wallet, getWalletTxs()).WillByDefault(Return(std::set<interfaces::WalletTx>{wallet_tx}));
+    model->activityListModel()->reload();
+
+    const QString txid = QString::fromStdString(wallet_tx.tx->GetHash().ToString());
+    const QVariantMap first = model->activityListModel()->firstTransactionDetails(txid);
+    QCOMPARE(first.value("outputIndex").toInt(), 1);
+
+    const QVariantMap exact = model->activityListModel()->transactionDetails(txid, 2);
+    QCOMPARE(exact.value("outputIndex").toInt(), 2);
+}
+
+void WalletQmlModelTests::activityDetailsPreferOutgoingForSelfPayment()
+{
+    NiceMock<MockWallet>* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+    const interfaces::WalletTx wallet_tx = MakeOutgoingActivityWalletTx(
+        {20'000},
+        {true},
+        {false});
+    ON_CALL(*wallet, getWalletTxs()).WillByDefault(Return(std::set<interfaces::WalletTx>{wallet_tx}));
+    model->activityListModel()->reload();
+
+    const QString txid = QString::fromStdString(wallet_tx.tx->GetHash().ToString());
+    const QVariantMap details = model->activityListModel()->firstTransactionDetails(txid);
+    QCOMPARE(details.value("outputIndex").toInt(), 0);
+    QVERIFY(details.value("amount").toString().startsWith('-'));
 }
 
 void WalletQmlModelTests::prepareTransactionOnLockedWalletRequiresPassword()

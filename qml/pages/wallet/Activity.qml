@@ -15,11 +15,14 @@ PageStack {
     id: stackView
     objectName: "activityStack"
 
-    function navigateToTransaction(txid) {
+    function navigateToTransaction(txid, outputIndex) {
         if (!walletController.selectedWallet)
             return
 
-        var details = walletController.selectedWallet.activityListModel.transactionDetails(txid)
+        const model = walletController.selectedWallet.activityListModel
+        var details = outputIndex === undefined || outputIndex < 0
+            ? model.firstTransactionDetails(txid)
+            : model.transactionDetails(txid, outputIndex)
         if (Object.keys(details).length === 0)
             return
 
@@ -441,6 +444,7 @@ PageStack {
                         required property string replacedByTxid
                         required property bool isPendingRequest
                         required property string requestId
+                        required property int outputIndex
 
                         HoverHandler {
                             cursorShape: Qt.PointingHandCursor
@@ -521,6 +525,7 @@ PageStack {
                                 id: detailsPage
                                 ActivityDetails {
                                     txid: delegate.txid
+                                    outputIndex: delegate.outputIndex
                                     canBump: delegate.canBump
                                     replacedByTxid: delegate.replacedByTxid
                                     amount: delegate.amount

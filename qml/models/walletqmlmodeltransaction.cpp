@@ -70,6 +70,11 @@ QString WalletQmlModelTransaction::label() const
     return m_label;
 }
 
+QString WalletQmlModelTransaction::txid() const
+{
+    return m_wtx ? QString::fromStdString(m_wtx->GetHash().ToString()) : QString{};
+}
+
 void WalletQmlModelTransaction::setDisplayUnit(int unit)
 {
     if (unit != m_display_unit) {
@@ -87,7 +92,11 @@ CTransactionRef& WalletQmlModelTransaction::getWtx()
 
 void WalletQmlModelTransaction::setWtx(const CTransactionRef& newTx)
 {
+    const QString old_txid{txid()};
     m_wtx = newTx;
+    if (txid() != old_txid) {
+        Q_EMIT txidChanged();
+    }
 }
 
 CAmount WalletQmlModelTransaction::getTransactionFee() const

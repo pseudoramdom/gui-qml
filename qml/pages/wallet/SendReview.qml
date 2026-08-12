@@ -35,7 +35,7 @@ Page {
 
     signal finished()
     signal back()
-    signal transactionSent()
+    signal transactionSent(string txid)
 
     function commitSend() {
         if (root.sending) {
@@ -43,7 +43,7 @@ Page {
         }
         if (root.wallet && root.wallet.sendTransaction()) {
             root.sending = true
-            root.transactionSent()
+            root.transactionSent(root.transaction.txid)
         } else if (root.wallet && root.wallet.transactionNeedsUnlock) {
             sendPassphrasePopup.errorText = ""
             sendPassphrasePopup.open()
@@ -56,7 +56,7 @@ Page {
         }
         if (root.wallet && root.wallet.broadcastCurrentTransaction()) {
             root.sending = true
-            root.transactionSent()
+            root.transactionSent(root.transaction.txid)
         }
     }
 
@@ -309,7 +309,7 @@ Page {
                 sendPassphrasePopup.busy = false
                 sendPassphrasePopup.close()
                 root.sending = true
-                root.transactionSent()
+                root.transactionSent(root.transaction.txid)
                 return
             }
             sendPassphrasePopup.busy = false

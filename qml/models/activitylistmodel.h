@@ -43,11 +43,13 @@ public:
         TimestampRole,
         IsPendingRequestRole,
         RequestIdRole,
-        NetAmountSatRole
+        NetAmountSatRole,
+        OutputIndexRole
     };
 
     Q_INVOKABLE void reload();
-    Q_INVOKABLE QVariantMap transactionDetails(const QString& txid) const;
+    Q_INVOKABLE QVariantMap firstTransactionDetails(const QString& txid) const;
+    Q_INVOKABLE QVariantMap transactionDetails(const QString& txid, int output_index) const;
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     int count() const { return rowCount(); }
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -71,6 +73,7 @@ private:
     void unsubscribeFromCoreSignals();
     void updateTransaction(const uint256& hash, const interfaces::WalletTxStatus& wtx,
                            int num_blocks, int64_t block_time);
+    QVariantMap transactionDetails(const QSharedPointer<Transaction>& tx) const;
     int findTransactionIndex(const uint256& hash) const;
     int findPendingRequestIndex(const QString& address) const;
     void fulfillPendingRequest(int index, const QSharedPointer<Transaction>& real_tx);

@@ -123,6 +123,26 @@ TestCase {
         }
     }
 
+    function test_navigateToTransaction_uses_lowest_output_and_supports_exact_output() {
+        testActivityListModel.setCountForTest(3)
+        const page = createTemporaryObject(activityComponent, this)
+        verify(page !== null)
+
+        page.navigateToTransaction("bbbb")
+        tryCompare(page, "depth", 2)
+        compare(page.currentItem.txid, "bbbb")
+        compare(page.currentItem.outputIndex, 1)
+        compare(page.currentItem.address, "bcrt1qfirstsendaddress")
+
+        page.pop()
+        tryCompare(page, "depth", 1)
+        page.navigateToTransaction("bbbb", 2)
+        tryCompare(page, "depth", 2)
+        compare(page.currentItem.txid, "bbbb")
+        compare(page.currentItem.outputIndex, 2)
+        compare(page.currentItem.address, "bcrt1qsecondsendaddress")
+    }
+
     function test_selectedWalletChanged_pops_to_root() {
         const page = createTemporaryObject(activityComponent, this)
         verify(page !== null)

@@ -273,7 +273,7 @@ def run_test(save_screenshots=False, screenshot_root=None):
         checkpoints.checkpoint("search controls closed and filters reset", gui)
 
         txid, expected_amount = _activity_transaction_row(gui)
-        gui.invoke("activityStack", "navigateToTransaction", [txid])
+        gui.click(f"activityItem_{txid}")
         gui.wait_for_page("activityDetailsPage", timeout_ms=10000)
         actual_amount = gui.get_property("activityDetailsPage", "amount")
         assert actual_amount == expected_amount, (

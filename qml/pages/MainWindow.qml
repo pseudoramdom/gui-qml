@@ -232,7 +232,7 @@ ApplicationWindow {
             onBack: {
                 main.pop()
             }
-            onTransactionSent: {
+            onTransactionSent: (txid) => {
                 const externalSignerWallet = walletController.selectedWallet.hasExternalSigner
                 const descriptionText = externalSignerWallet
                     ? qsTr("Approved on external signer. It should be confirmed within the next 10 minutes.")
@@ -241,7 +241,8 @@ ApplicationWindow {
                 walletController.selectedWallet.recipients.clear()
                 main.push(sendResultPage, {
                     "descriptionText": descriptionText,
-                    "actionText": actionText
+                    "actionText": actionText,
+                    "txid": txid
                 })
             }
         }
@@ -253,7 +254,12 @@ ApplicationWindow {
             onDone: {
                 main.pop(null)
             }
-            onViewNewTransaction: {
+            onViewNewTransaction: (txid) => {
+                if (walletController.selectedWallet) {
+                    walletController.selectedWallet.activityListModel.reload()
+                }
+                const walletPage = main.get(0)
+                walletPage.navigateToTransaction(txid)
                 main.pop(null)
             }
         }

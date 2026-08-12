@@ -24,6 +24,11 @@ Page {
     signal addWallet()
     signal sendTransaction(bool multipleRecipientsEnabled)
 
+    function navigateToTransaction(txid, outputIndex) {
+        activityTabButton.checked = true
+        activityPage.navigateToTransaction(txid, outputIndex)
+    }
+
     function toggleWalletSelection() {
         if (!walletController.initialized) {
             return
@@ -294,8 +299,7 @@ Page {
                 root.sendTransaction(multipleRecipientsEnabled)
             }
             onViewTransactionInActivity: (txid) => {
-                activityTabButton.checked = true
-                activityPage.navigateToTransaction(txid)
+                root.navigateToTransaction(txid)
             }
         }
         RequestPayment {

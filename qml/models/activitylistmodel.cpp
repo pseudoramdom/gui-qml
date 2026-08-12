@@ -97,6 +97,8 @@ QVariant ActivityListModel::data(const QModelIndex &index, int role) const
         return tx->requestId;
     case NetAmountSatRole:
         return QVariant::fromValue<qlonglong>(tx->netAmount());
+    case OutputIndexRole:
+        return tx->idx;
     default:
         return QVariant();
     }
@@ -120,6 +122,7 @@ QHash<int, QByteArray> ActivityListModel::roleNames() const
     roles[IsPendingRequestRole] = "isPendingRequest";
     roles[RequestIdRole] = "requestId";
     roles[NetAmountSatRole] = "netAmountSat";
+    roles[OutputIndexRole] = "outputIndex";
     return roles;
 }
 
@@ -131,31 +134,60 @@ void ActivityListModel::reload()
     endResetModel();
 }
 
-QVariantMap ActivityListModel::transactionDetails(const QString& txid) const
+QVariantMap ActivityListModel::firstTransactionDetails(const QString& txid) const
 {
+    QSharedPointer<Transaction> first;
     for (const auto& tx : m_transactions) {
-        if (tx->txid == txid) {
-            updateTransactionStatus(tx);
-            updateTransactionLabel(tx);
-            const QVariantList payment_requests = m_wallet_model && m_wallet_model->receiveRequests()
-                ? m_wallet_model->receiveRequests()->matchingEntriesForAddress(tx->address)
-                : QVariantList{};
-            return {
-                {"txid", tx->txid},
-                {"canBump", m_wallet_model ? m_wallet_model->canBumpTransaction(tx->hash) : false},
-                {"replacedByTxid", tx->replacedByTxid},
-                {"amount", tx->prettyAmount(m_display_unit)},
-                {"date", tx->dateTimeString()},
-                {"depth", tx->depth},
-                {"type", tx->type},
-                {"status", tx->status},
-                {"address", tx->address},
-                {"label", tx->label},
-                {"paymentRequests", payment_requests}
-            };
+        if (tx->txid != txid) {
+            continue;
+        }
+        const bool prefer_outgoing_tie = first && tx->idx == first->idx
+            && tx->debit < 0 && first->debit >= 0;
+        if (!first || tx->idx < first->idx || prefer_outgoing_tie) {
+            first = tx;
         }
     }
-    return {};
+    return transactionDetails(first);
+}
+
+QVariantMap ActivityListModel::transactionDetails(const QString& txid, int output_index) const
+{
+    QSharedPointer<Transaction> match;
+    for (const auto& tx : m_transactions) {
+        if (tx->txid != txid || tx->idx != output_index) {
+            continue;
+        }
+        if (!match || (tx->debit < 0 && match->debit >= 0)) {
+            match = tx;
+        }
+    }
+    return transactionDetails(match);
+}
+
+QVariantMap ActivityListModel::transactionDetails(const QSharedPointer<Transaction>& tx) const
+{
+    if (!tx) {
+        return {};
+    }
+    updateTransactionStatus(tx);
+    updateTransactionLabel(tx);
+    const QVariantList payment_requests = m_wallet_model && m_wallet_model->receiveRequests()
+        ? m_wallet_model->receiveRequests()->matchingEntriesForAddress(tx->address)
+        : QVariantList{};
+    return {
+        {"txid", tx->txid},
+        {"outputIndex", tx->idx},
+        {"canBump", m_wallet_model ? m_wallet_model->canBumpTransaction(tx->hash) : false},
+        {"replacedByTxid", tx->replacedByTxid},
+        {"amount", tx->prettyAmount(m_display_unit)},
+        {"date", tx->dateTimeString()},
+        {"depth", tx->depth},
+        {"type", tx->type},
+        {"status", tx->status},
+        {"address", tx->address},
+        {"label", tx->label},
+        {"paymentRequests", payment_requests}
+    };
 }
 
 void ActivityListModel::setDisplayUnit(int unit)

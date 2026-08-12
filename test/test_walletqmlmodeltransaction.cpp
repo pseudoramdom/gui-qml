@@ -20,6 +20,7 @@ private Q_SLOTS:
     void multipleRecipientReviewAmountsStayInBtc();
     void recipientRolesExposeFormattedAddressAndUnitLabel();
     void removingRecipientUpdatesTotalOnce();
+    void txidTracksAssignedTransaction();
 };
 
 void WalletQmlModelTransactionTests::singleRecipientReviewAmountsInheritRecipientUnit()
@@ -88,6 +89,25 @@ void WalletQmlModelTransactionTests::removingRecipientUpdatesTotalOnce()
 
     QCOMPARE(recipients.totalAmountSatoshi(), 1000);
     QCOMPARE(total_changed_spy.count(), 1);
+}
+
+void WalletQmlModelTransactionTests::txidTracksAssignedTransaction()
+{
+    SendRecipientsListModel recipients;
+    WalletQmlModelTransaction transaction(&recipients);
+    QVERIFY(transaction.txid().isEmpty());
+
+    CMutableTransaction mutable_transaction;
+    mutable_transaction.vout.emplace_back(1'000, CScript{});
+    const CTransactionRef wallet_transaction = MakeTransactionRef(std::move(mutable_transaction));
+    QSignalSpy txid_changed_spy{&transaction, &WalletQmlModelTransaction::txidChanged};
+
+    transaction.setWtx(wallet_transaction);
+    QCOMPARE(transaction.txid(), QString::fromStdString(wallet_transaction->GetHash().ToString()));
+    QCOMPARE(txid_changed_spy.count(), 1);
+
+    transaction.setWtx(wallet_transaction);
+    QCOMPARE(txid_changed_spy.count(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

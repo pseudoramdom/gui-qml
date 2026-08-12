@@ -18,6 +18,7 @@ Page {
     signal showTransaction(string txid)
 
     property string txid: ""
+    property int outputIndex: -1
     property bool canBump: false
     property string replacedByTxid: ""
     property string message: ""
@@ -311,7 +312,8 @@ Page {
         anchors.centerIn: parent
         onBumpSucceeded: {
             var page = root.StackView.view.push("SendResult.qml", {
-                resultType: SendResult.ResultType.SpeedUp
+                resultType: SendResult.ResultType.SpeedUp,
+                txid: speedUpOverlay.newTxid
             })
             page.done.connect(function() {
                 if (walletController.selectedWallet) {
@@ -319,12 +321,12 @@ Page {
                 }
                 root.StackView.view.pop(null)
             })
-            page.viewNewTransaction.connect(function() {
+            page.viewNewTransaction.connect(function(txid) {
                 if (walletController.selectedWallet) {
                     walletController.selectedWallet.activityListModel.reload()
                 }
                 root.StackView.view.pop(null)
-                root.showTransaction(speedUpOverlay.newTxid)
+                root.showTransaction(txid)
             })
         }
     }

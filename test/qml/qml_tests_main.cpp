@@ -19,6 +19,7 @@
 #include <qqml.h>
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -1278,6 +1279,7 @@ class MockWalletQmlModelTransaction : public QObject
     Q_PROPERTY(QString amount MEMBER m_amount CONSTANT)
     Q_PROPERTY(QString fee MEMBER m_fee CONSTANT)
     Q_PROPERTY(QString total MEMBER m_total CONSTANT)
+    Q_PROPERTY(QString txid MEMBER m_txid CONSTANT)
     Q_PROPERTY(QObject* amountAmount READ amountAmount CONSTANT)
     Q_PROPERTY(QObject* feeAmount READ feeAmount CONSTANT)
     Q_PROPERTY(QObject* totalAmount READ totalAmount CONSTANT)
@@ -1295,6 +1297,7 @@ public:
     QString m_amount{QStringLiteral("0.01000000 BTC")};
     QString m_fee{QStringLiteral("0.00001000 BTC")};
     QString m_total{QStringLiteral("0.01001000 BTC")};
+    QString m_txid{QStringLiteral("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")};
     MockBitcoinAmount m_amount_amount;
     MockBitcoinAmount m_fee_amount;
     MockBitcoinAmount m_total_amount;
@@ -2784,7 +2787,8 @@ public:
         IsPendingRequestRole,
         RequestIdRole,
         TimestampRole,
-        NetAmountSatRole
+        NetAmountSatRole,
+        OutputIndexRole
     };
 
     int rowCount(const QModelIndex& parent = QModelIndex{}) const override
@@ -2815,12 +2819,18 @@ public:
             case RequestIdRole: return QString{};
             case TimestampRole: return 1767225600;
             case NetAmountSatRole: return 1000000;
+            case OutputIndexRole: return 0;
             default: return {};
             }
         }
+        const bool first_send_output = index.row() >= 2;
         switch (role) {
-        case AddressRole: return QStringLiteral("bcrt1qsendaddress");
-        case AmountRole: return QStringLiteral("-0.00100000 BTC");
+        case AddressRole: return first_send_output
+                ? QStringLiteral("bcrt1qfirstsendaddress")
+                : QStringLiteral("bcrt1qsecondsendaddress");
+        case AmountRole: return first_send_output
+                ? QStringLiteral("-0.00200000 BTC")
+                : QStringLiteral("-0.00100000 BTC");
         case DateRole: return QStringLiteral("2026-01-02 00:00");
         case DepthRole: return 0;
         case LabelRole: return QStringLiteral("coffee");
@@ -2833,7 +2843,8 @@ public:
         case IsPendingRequestRole: return false;
         case RequestIdRole: return QString{};
         case TimestampRole: return 1767312000;
-        case NetAmountSatRole: return -100000;
+        case NetAmountSatRole: return first_send_output ? -200000 : -100000;
+        case OutputIndexRole: return first_send_output ? 1 : 2;
         default: return {};
         }
     }
@@ -2856,10 +2867,39 @@ public:
             {RequestIdRole, "requestId"},
             {TimestampRole, "timestamp"},
             {NetAmountSatRole, "netAmountSat"},
+            {OutputIndexRole, "outputIndex"},
         };
     }
 
     Q_INVOKABLE void reload() {}
+    Q_INVOKABLE QVariantMap firstTransactionDetails(const QString& txid) const
+    {
+        int first_row{-1};
+        int first_output{std::numeric_limits<int>::max()};
+        for (int row = 0; row < rowCount(); ++row) {
+            const QModelIndex model_index = index(row, 0);
+            if (data(model_index, TxidRole).toString() != txid) continue;
+            const int output_index = data(model_index, OutputIndexRole).toInt();
+            if (output_index < first_output) {
+                first_row = row;
+                first_output = output_index;
+            }
+        }
+        return transactionDetailsForRow(first_row);
+    }
+
+    Q_INVOKABLE QVariantMap transactionDetails(const QString& txid, int output_index) const
+    {
+        for (int row = 0; row < rowCount(); ++row) {
+            const QModelIndex model_index = index(row, 0);
+            if (data(model_index, TxidRole).toString() == txid
+                && data(model_index, OutputIndexRole).toInt() == output_index) {
+                return transactionDetailsForRow(row);
+            }
+        }
+        return {};
+    }
+
     Q_INVOKABLE void setCountForTest(int count)
     {
         if (m_count == count) return;
@@ -2873,6 +2913,26 @@ Q_SIGNALS:
     void countChanged();
 
 private:
+    QVariantMap transactionDetailsForRow(int row) const
+    {
+        if (row < 0 || row >= rowCount()) return {};
+        const QModelIndex model_index = index(row, 0);
+        return {
+            {"txid", data(model_index, TxidRole)},
+            {"outputIndex", data(model_index, OutputIndexRole)},
+            {"canBump", data(model_index, CanBumpRole)},
+            {"replacedByTxid", data(model_index, ReplacedByTxidRole)},
+            {"amount", data(model_index, AmountRole)},
+            {"date", data(model_index, DateRole)},
+            {"depth", data(model_index, DepthRole)},
+            {"type", data(model_index, TypeRole)},
+            {"status", data(model_index, StatusRole)},
+            {"address", data(model_index, AddressRole)},
+            {"label", data(model_index, LabelRole)},
+            {"paymentRequests", QVariantList{}},
+        };
+    }
+
     int m_count{2};
 };
 
