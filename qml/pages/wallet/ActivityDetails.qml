@@ -70,6 +70,7 @@ Page {
     header: NavigationBar2 {
         id: navbar
         leftItem: NavButton {
+            objectName: "activityDetailsBackButton"
             iconSource: "image://images/caret-left"
             text: qsTr("Back")
             onClicked: {

@@ -382,7 +382,7 @@ def run_test(*, save_screenshots=False, screenshot_root=None):
         assert gui.get_property("activityDetailsPage", "txid") == txid
         assert gui.get_property("activityDetailsPage", "outputIndex") == receiver_output_index
         checkpoints.checkpoint("view transaction opens the sent activity", gui)
-        gui.invoke("activityStack", "pop")
+        gui.click("activityDetailsBackButton")
         gui.wait_for_property("activityTabButton", "visible", True, timeout_ms=10000)
         gui.click("sendTabButton")
         gui.wait_for_page("sendPage", timeout_ms=10000)
