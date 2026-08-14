@@ -15,6 +15,7 @@ ColumnLayout {
 
     property WalletQmlModel wallet: walletController.selectedWallet
     property WalletQmlModelTransaction transaction: wallet ? wallet.currentTransaction : null
+    property var recipients: wallet ? wallet.recipients : null
 
     spacing: 15
 
@@ -27,7 +28,7 @@ ColumnLayout {
         objectName: "multipleSendReviewRecipientsList"
         Layout.fillWidth: true
         Layout.preferredHeight: contentHeight
-        model: root.wallet ? root.wallet.recipients : null
+        model: root.recipients
         clip: true
         interactive: false
 
@@ -42,12 +43,11 @@ ColumnLayout {
             required property string amount;
             required property string formattedAddress;
             required property string amountUnitLabel;
+            required property int index;
             property bool expanded: false
             readonly property bool expandable: formattedAddress.length > 0
             readonly property string amountText: amountUnitLabel.length > 0 ? amount + " " + amountUnitLabel : amount
-            readonly property string primaryText: label.length > 0 ? label : address
-            readonly property string secondaryText: expanded ? formattedAddress : (label.length > 0 ? address : "")
-            readonly property bool secondaryVisible: secondaryText.length > 0
+            readonly property string addressText: expanded ? formattedAddress : address
 
             activeFocusOnTab: expandable
             Accessible.role: Accessible.Button
@@ -86,33 +86,58 @@ ColumnLayout {
                     height: 15
                 }
 
-                RowLayout {
+                GridLayout {
                     width: parent.width
-                    spacing: 10
-
-                    HoverHandler {
-                        enabled: delegate.expandable
-                        cursorShape: Qt.PointingHandCursor
-                    }
-
-                    TapHandler {
-                        enabled: delegate.expandable
-                        onTapped: delegate.click()
-                    }
+                    columns: 2
+                    columnSpacing: 10
+                    rowSpacing: 0
 
                     CoreText {
                         objectName: "multipleSendReviewRecipient" + index + "PrimaryText"
+                        visible: delegate.label.length > 0
+                        Layout.row: 0
+                        Layout.column: 0
                         Layout.fillWidth: true
                         Layout.preferredWidth: 0
                         horizontalAlignment: Text.AlignLeft
                         verticalAlignment: Text.AlignTop
                         wrap: false
                         elide: Text.ElideRight
-                        text: delegate.primaryText
+                        text: delegate.label
                         font: Theme.text.description.font
                         lineHeight: Theme.text.description.lineHeight
                         lineHeightMode: Text.FixedHeight
                         color: Theme.color.neutral9
+                    }
+
+                    CoreText {
+                        id: addressTextItem
+                        objectName: "multipleSendReviewRecipient" + index + "AddressText"
+                        Layout.row: delegate.label.length > 0 ? 1 : 0
+                        Layout.column: 0
+                        Layout.columnSpan: delegate.label.length > 0 ? 2 : 1
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        Layout.topMargin: delegate.label.length > 0 ? 10 : 0
+                        horizontalAlignment: Text.AlignLeft
+                        verticalAlignment: Text.AlignTop
+                        wrap: delegate.expanded
+                        elide: delegate.expanded ? Text.ElideNone : Text.ElideRight
+                        text: delegate.addressText
+                        font: Theme.text.monoBody.font
+                        lineHeight: Theme.text.monoBody.lineHeight
+                        lineHeightMode: Text.FixedHeight
+                        color: Theme.color.neutral9
+
+                        HoverHandler {
+                            enabled: delegate.expandable
+                            cursorShape: Qt.PointingHandCursor
+                        }
+
+                        TapHandler {
+                            enabled: delegate.expandable
+                            onTapped: delegate.click()
+                        }
                     }
 
                     Item {
@@ -121,6 +146,8 @@ ColumnLayout {
                         property string text: delegate.amountText
                         implicitWidth: amountRow.implicitWidth
                         implicitHeight: amountRow.implicitHeight
+                        Layout.row: 0
+                        Layout.column: 1
                         Layout.alignment: Qt.AlignRight | Qt.AlignTop
 
                         RowLayout {
@@ -152,37 +179,13 @@ ColumnLayout {
 
                 Item {
                     width: 1
-                    height: 10
-                    visible: delegate.secondaryVisible
-                }
-
-                TextArea {
-                    objectName: "multipleSendReviewRecipient" + index + "SecondaryText"
-                    width: parent.width
-                    visible: delegate.secondaryVisible
-                    readOnly: true
-                    selectByMouse: true
-                    text: delegate.secondaryText
-                    wrapMode: Text.WordWrap
-                    leftPadding: 0
-                    topPadding: 0
-                    rightPadding: 0
-                    bottomPadding: 0
-                    height: visible ? Math.max(contentHeight, 21) : 0
-                    font: Theme.text.description.font
-                    color: Theme.color.neutral9
-                    background: Item {}
-                }
-
-                Item {
-                    width: 1
                     height: 15
-                    visible: index < ListView.view.count - 1
+                    visible: index < inputsList.count - 1
                 }
 
                 Separator {
                     width: parent.width
-                    visible: index < ListView.view.count - 1
+                    visible: index < inputsList.count - 1
                 }
             }
 
