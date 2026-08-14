@@ -1221,7 +1221,7 @@ PageStack {
     WalletPassphrasePopup {
         id: reviewPassphrasePopup
         parent: Overlay.overlay
-        width: Math.min(420, root.width - 40)
+        width: Math.min(480, root.width - 40)
         popupObjectName: "reviewPassphrasePopup"
         passphraseFieldObjectName: "reviewPassphraseField"
         errorTextObjectName: "reviewPassphraseErrorText"

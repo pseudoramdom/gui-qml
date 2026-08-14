@@ -22,15 +22,56 @@ Popup {
     property string cancelButtonObjectName: ""
     property string confirmButtonObjectName: ""
     property bool busy: false
+    property real verticalOffset: 0
 
     signal submitted(string passphrase)
 
     objectName: popupObjectName
     modal: true
+    dim: true
     padding: 0
     implicitWidth: 420
     implicitHeight: columnLayout.implicitHeight
-    anchors.centerIn: parent
+    x: parent ? Math.round((parent.width - width) / 2) : 0
+    y: parent ? Math.round((parent.height - height) / 2) + verticalOffset : verticalOffset
+
+    Overlay.modal: Rectangle {
+        color: Qt.rgba(0, 0, 0, 0.4)
+    }
+
+    enter: Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            property: "verticalOffset"
+            from: -30
+            to: 0
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    exit: Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 1
+            to: 0
+            duration: 250
+            easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            property: "verticalOffset"
+            from: 0
+            to: -30
+            duration: 250
+            easing.type: Easing.InCubic
+        }
+    }
 
     function clearPassphraseField() {
         if (passphraseField.text.length > 0) {
@@ -49,13 +90,14 @@ Popup {
         clearPassphraseField()
         passphraseField.forceActiveFocus()
     }
+    onAboutToHide: clearPassphraseField()
     onClosed: clearPassphraseField()
     Component.onDestruction: clearPassphraseField()
 
     background: Rectangle {
-        color: Theme.color.background
+        color: Theme.color.neutral1
         radius: 10
-        border.color: Theme.color.neutral4
+        border.color: Theme.color.neutral2
         border.width: 1
     }
 
@@ -76,6 +118,7 @@ Popup {
 
         Separator {
             Layout.fillWidth: true
+            color: Theme.color.neutral2
         }
 
         Header {
@@ -95,6 +138,17 @@ Popup {
             Layout.rightMargin: 20
             hideText: true
             placeholderText: qsTr("Enter password...")
+            background: Rectangle {
+                color: Theme.color.neutral2
+                radius: 5
+                border.color: Theme.color.neutral2
+                border.width: 1
+            }
+            onAccepted: {
+                if (confirmButton.enabled) {
+                    root.submitPassphrase()
+                }
+            }
         }
 
         CoreText {
@@ -126,6 +180,7 @@ Popup {
             }
 
             ContinueButton {
+                id: confirmButton
                 objectName: root.confirmButtonObjectName
                 Layout.fillWidth: true
                 Layout.minimumWidth: 120
