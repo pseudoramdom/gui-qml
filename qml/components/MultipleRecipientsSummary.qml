@@ -86,39 +86,38 @@ ColumnLayout {
                     height: 15
                 }
 
-                GridLayout {
+                CoreText {
+                    objectName: "multipleSendReviewRecipient" + index + "PrimaryText"
+                    visible: delegate.label.length > 0
                     width: parent.width
-                    columns: 2
-                    columnSpacing: 10
-                    rowSpacing: 0
+                    horizontalAlignment: Text.AlignLeft
+                    verticalAlignment: Text.AlignTop
+                    wrap: false
+                    elide: Text.ElideRight
+                    text: delegate.label
+                    font: Theme.text.description.font
+                    lineHeight: Theme.text.description.lineHeight
+                    lineHeightMode: Text.FixedHeight
+                    color: Theme.color.neutral9
+                }
 
-                    CoreText {
-                        objectName: "multipleSendReviewRecipient" + index + "PrimaryText"
-                        visible: delegate.label.length > 0
-                        Layout.row: 0
-                        Layout.column: 0
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignTop
-                        wrap: false
-                        elide: Text.ElideRight
-                        text: delegate.label
-                        font: Theme.text.description.font
-                        lineHeight: Theme.text.description.lineHeight
-                        lineHeightMode: Text.FixedHeight
-                        color: Theme.color.neutral9
-                    }
+                Item {
+                    width: 1
+                    height: 10
+                    visible: delegate.label.length > 0
+                }
+
+                Item {
+                    width: parent.width
+                    height: Math.max(addressTextItem.implicitHeight, amountDisplay.implicitHeight)
 
                     CoreText {
                         id: addressTextItem
                         objectName: "multipleSendReviewRecipient" + index + "AddressText"
-                        Layout.row: delegate.label.length > 0 ? 1 : 0
-                        Layout.column: 0
-                        Layout.columnSpan: delegate.label.length > 0 ? 2 : 1
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        Layout.topMargin: delegate.label.length > 0 ? 10 : 0
+                        anchors.left: parent.left
+                        anchors.right: amountDisplay.left
+                        anchors.rightMargin: 10
+                        anchors.top: parent.top
                         horizontalAlignment: Text.AlignLeft
                         verticalAlignment: Text.AlignTop
                         wrap: delegate.expanded
@@ -146,9 +145,10 @@ ColumnLayout {
                         property string text: delegate.amountText
                         implicitWidth: amountRow.implicitWidth
                         implicitHeight: amountRow.implicitHeight
-                        Layout.row: 0
-                        Layout.column: 1
-                        Layout.alignment: Qt.AlignRight | Qt.AlignTop
+                        anchors.right: parent.right
+                        anchors.top: addressTextItem.top
+                        width: implicitWidth
+                        height: implicitHeight
 
                         RowLayout {
                             id: amountRow
@@ -156,20 +156,20 @@ ColumnLayout {
                             spacing: 5
 
                             CoreText {
+                                objectName: "multipleSendReviewRecipient" + index + "AmountValue"
                                 text: delegate.amount
-                                font: Theme.text.description.font
-                                lineHeight: Theme.text.description.lineHeight
-                                lineHeightMode: Text.FixedHeight
+                                font.family: optionsModel.moneyFont.family
+                                font.weight: optionsModel.moneyFont.weight
+                                font.pixelSize: Theme.text.body.pixelSize
                                 wrap: false
                                 color: Theme.color.neutral9
                             }
 
                             CoreText {
+                                objectName: "multipleSendReviewRecipient" + index + "AmountUnit"
                                 visible: delegate.amountUnitLabel.length > 0
                                 text: delegate.amountUnitLabel
-                                font: Theme.text.description.font
-                                lineHeight: Theme.text.description.lineHeight
-                                lineHeightMode: Text.FixedHeight
+                                font: Theme.text.body.font
                                 wrap: false
                                 color: Theme.color.neutral9
                             }
@@ -180,12 +180,11 @@ ColumnLayout {
                 Item {
                     width: 1
                     height: 15
-                    visible: index < inputsList.count - 1
                 }
 
                 Separator {
+                    objectName: "multipleSendReviewRecipient" + index + "Separator"
                     width: parent.width
-                    visible: index < inputsList.count - 1
                 }
             }
 
