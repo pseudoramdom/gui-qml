@@ -218,18 +218,19 @@ def prepare_single_send(gui, address, amount, amount_unit="btc"):
     gui.wait_for_property("sendReviewSendButton", "visible", True, timeout_ms=10000)
 
 
-def prepare_multi_send(gui, first_address, first_amount_btc, second_address, second_amount_sat):
+def prepare_multi_send(gui, first_address, first_amount_btc, second_address, second_amount_btc):
     open_send_page(gui)
     set_multiple_recipients(gui, True)
 
-    set_amount_unit(gui, "sat")
-    gui.set_text("sendAddressInput", second_address)
-    gui.set_text("sendAmountInput", second_amount_sat)
-    gui.click("sendRecipientPrevButton")
     set_amount_unit(gui, "₿")
+    gui.set_text("sendAddressInput", second_address)
+    gui.set_text("sendAmountInput", second_amount_btc)
+    gui.click("sendRecipientPrevButton")
     gui.set_text("sendAddressInput", first_address)
     gui.set_text("sendAmountInput", first_amount_btc)
     gui.set_text("sendNoteInput", "Alice's salary")
+    gui.click("sendRecipientNextButton")
+    set_amount_unit(gui, "sat")
     gui.wait_for_property("sendReviewButton", "enabled", True, timeout_ms=10000)
     gui.click("sendReviewButton")
     gui.wait_for_page("sendReviewPage", timeout_ms=10000)
@@ -388,7 +389,7 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         first_address=first_address,
         first_amount_btc="0.50000000",
         second_address=second_address,
-        second_amount_sat="2000",
+        second_amount_btc="0.00002000",
     )
     checkpoints.checkpoint("multi review page displayed", gui)
 
@@ -417,7 +418,7 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         view_object_name="multipleSendReviewRecipientsList",
         row_index=0,
         prop="amountText",
-    ) == "0.50000000 ₿"
+    ) == "50000000 sats"
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
@@ -428,14 +429,11 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         row_index=1,
         prop="formattedAddress",
     ) == format_full_address(second_address)
-    second_amount_text = gui.get_list_item_property(
+    assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
         prop="amountText",
-    )
-    assert second_amount_text in {"2000 sat", "2000 sats"}, (
-        f"Expected second recipient amount to use a satoshi unit, got {second_amount_text!r}"
-    )
+    ) == "2000 sats"
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
@@ -459,8 +457,8 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         prop="secondaryText",
     ) == format_full_address(second_address)
     checkpoints.checkpoint("multi review recipient expanded", gui)
-    assert_unit_suffix(gui, "multipleSendReviewFeeField", "₿")
-    assert_unit_suffix(gui, "multipleSendReviewTotalField", "₿")
+    assert_unit_suffix(gui, "multipleSendReviewFeeField", "sats")
+    assert_unit_suffix(gui, "multipleSendReviewTotalField", "sats")
     return_to_send_page(gui, "sendReviewBackButton")
 
 

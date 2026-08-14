@@ -158,6 +158,20 @@ void SendRecipientsListModel::connectRecipientSignals(SendRecipient* recipient)
     connect(recipient->amount(), &BitcoinAmount::unitChanged, this, [emit_roles_changed] {
         emit_roles_changed({AmountRole, AmountUnitLabelRole});
     });
+    connect(recipient->amount(), &BitcoinAmount::unitChanged, this, [this, recipient] {
+        if (m_syncing_units) {
+            return;
+        }
+
+        m_syncing_units = true;
+        const BitcoinAmount::Unit unit = recipient->amount()->unit();
+        for (auto* other_recipient : m_recipients) {
+            if (other_recipient != recipient) {
+                other_recipient->amount()->setUnit(unit);
+            }
+        }
+        m_syncing_units = false;
+    });
     connect(recipient, &SendRecipient::subtractFeeFromAmountChanged,
             this, &SendRecipientsListModel::subtractFeeFromAmountChanged);
     connect(recipient, &SendRecipient::isValidChanged, this, &SendRecipientsListModel::validationChanged);

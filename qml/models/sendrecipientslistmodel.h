@@ -72,6 +72,7 @@ private:
     QList<SendRecipient*> m_recipients;
     int m_current{0};
     qint64 m_totalAmount{0};
+    bool m_syncing_units{false};
 };
 
 #endif // BITCOIN_QML_MODELS_SENDRECIPIENTSLISTMODEL_H
