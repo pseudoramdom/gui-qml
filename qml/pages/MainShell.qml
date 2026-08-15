@@ -13,6 +13,7 @@ import "./wallet"
 
 Page {
     id: root
+    objectName: "mainShellPage"
     background: Rectangle { color: Theme.color.background }
 
     signal addWallet()

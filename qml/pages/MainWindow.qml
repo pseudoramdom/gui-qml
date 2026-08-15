@@ -15,7 +15,7 @@ ApplicationWindow {
     id: appWindow
     objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
-    minimumWidth: AppMode.tabViewShellEnabled ? 550 : 800
+    minimumWidth: AppMode.adaptiveSidebarLayout ? 550 : 800
     minimumHeight: 665
     color: Theme.color.background
 
@@ -46,12 +46,25 @@ ApplicationWindow {
             return
         }
         appWindow.postOnboardingWalletRouteResolved = true
-        main.replace(AppMode.tabViewShellEnabled ? mainShell : desktopWallets, {}, StackView.Immediate)
+        main.replace(appWindow.applicationShell(), {}, StackView.Immediate)
         if (walletController.noWalletsFound) {
             main.push(createWalletWizard, {
                 "launchContext": CreateWalletWizard.Context.Onboarding
             }, StackView.Immediate)
         }
+    }
+
+    function applicationShell() {
+        if (AppMode.adaptiveSidebarLayout) return mainShell
+        return appWindow.desktopWalletMode ? desktopWallets : node
+    }
+
+    function applyLayoutPreference() {
+        if (appWindow.waitForPostOnboardingWalletRoute
+                && !appWindow.postOnboardingWalletRouteResolved) {
+            return
+        }
+        main.replace(appWindow.applicationShell(), {}, StackView.Immediate)
     }
 
     AppSettings {
@@ -144,9 +157,7 @@ ApplicationWindow {
         objectName: "mainPageStack"
         initialItem: appWindow.waitForPostOnboardingWalletRoute
             ? postOnboardingStartup
-            : (AppMode.tabViewShellEnabled
-                ? mainShell
-                : (appWindow.desktopWalletMode ? desktopWallets : node))
+            : appWindow.applicationShell()
         anchors.fill: parent
         focus: true
         Keys.onReleased: (event) => {
@@ -154,6 +165,13 @@ ApplicationWindow {
                 nodeModel.requestShutdown()
                 event.accepted = true
             }
+        }
+    }
+
+    Connections {
+        target: AppMode
+        function onAdaptiveSidebarLayoutChanged() {
+            Qt.callLater(appWindow.applyLayoutPreference)
         }
     }
 
