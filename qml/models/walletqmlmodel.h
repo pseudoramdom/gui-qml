@@ -28,6 +28,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include <QHash>
@@ -81,6 +82,12 @@ private:
     Q_PROPERTY(WalletQmlModelTransaction* currentTransaction READ currentTransaction NOTIFY currentTransactionChanged)
     Q_PROPERTY(unsigned int targetBlocks READ feeTargetBlocks WRITE setFeeTargetBlocks NOTIFY feeTargetBlocksChanged)
     Q_PROPERTY(QString estimatedFee READ estimatedFee NOTIFY estimatedFeeChanged)
+    Q_PROPERTY(QString estimatedFeeRate READ estimatedFeeRate NOTIFY sendPreviewChanged)
+    Q_PROPERTY(bool sendPreviewAvailable READ sendPreviewAvailable NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewSending READ sendPreviewSending NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewFee READ sendPreviewFee NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewTotal READ sendPreviewTotal NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewRemainingBalance READ sendPreviewRemainingBalance NOTIFY sendPreviewChanged)
     Q_PROPERTY(bool sendAmountExhaustsBalance READ sendAmountExhaustsBalance NOTIFY sendAmountExhaustsBalanceChanged)
     Q_PROPERTY(bool customFeeEnabled READ customFeeEnabled WRITE setCustomFeeEnabled NOTIFY customFeeEnabledChanged)
     Q_PROPERTY(QString customFeeRate READ customFeeRate WRITE setCustomFeeRate NOTIFY customFeeRateChanged)
@@ -136,6 +143,12 @@ public:
     ReceiveRequestHistoryModel* receiveRequests() const { return m_receive_requests; }
     WalletQmlModelTransaction* currentTransaction() const { return m_current_transaction; }
     QString estimatedFee() const;
+    QString estimatedFeeRate() const;
+    bool sendPreviewAvailable() const;
+    QString sendPreviewSending() const;
+    QString sendPreviewFee() const;
+    QString sendPreviewTotal() const;
+    QString sendPreviewRemainingBalance() const;
     CFeeRate dustRelayFee() const;
     bool sendAmountExhaustsBalance() const;
     bool customFeeEnabled() const { return m_custom_fee_enabled; }
@@ -152,6 +165,7 @@ public:
     Q_INVOKABLE QVariantList availableReceiveAddressTypes() const;
     Q_INVOKABLE QString defaultReceiveAddressType() const;
     Q_INVOKABLE QString estimatedFeeForTarget(unsigned int target_blocks) const;
+    Q_INVOKABLE QString estimatedFeeRateForTarget(unsigned int target_blocks) const;
     Q_INVOKABLE int feeTargetIndex(unsigned int target_blocks) const;
     Q_INVOKABLE void scheduleFeeEstimates();
     Q_INVOKABLE bool setCurrentPaymentRequestAddress(QString address);
@@ -234,6 +248,7 @@ Q_SIGNALS:
     void currentTransactionChanged();
     void feeTargetBlocksChanged();
     void estimatedFeeChanged();
+    void sendPreviewChanged();
     void sendAmountExhaustsBalanceChanged();
     void customFeeEnabledChanged();
     void customFeeRateChanged();
@@ -261,10 +276,14 @@ private:
 
     void initializeFeeEstimator();
     void requestFeeEstimatesNow();
-    void applyFeeEstimates(const QHash<unsigned int, CAmount>& estimates,
-                           const std::optional<CAmount>& custom_estimate,
+    using FeePreview = std::pair<CAmount, CAmount>; // fee, effective satoshis per kvB
+
+    void applyFeeEstimates(const QHash<unsigned int, FeePreview>& estimates,
+                           const std::optional<FeePreview>& custom_estimate,
                            quint64 request_id);
+    std::optional<FeePreview> selectedFeePreview() const;
     std::optional<CAmount> selectedFeeEstimate() const;
+    QString formatSendPreviewAmount(CAmount amount) const;
     void clearFeeEstimates();
     unsigned int nextPaymentRequestId() const;
     void subscribeToWalletSignals();
@@ -302,8 +321,8 @@ private:
     QObject* m_fee_estimation_worker{nullptr};
     QThread* m_fee_estimation_thread{nullptr};
     QTimer* m_fee_estimation_timer{nullptr};
-    QHash<unsigned int, CAmount> m_fee_estimates;
-    std::optional<CAmount> m_custom_fee_estimate;
+    QHash<unsigned int, FeePreview> m_fee_estimates;
+    std::optional<FeePreview> m_custom_fee_estimate;
     QString m_custom_fee_rate;
     quint64 m_fee_estimate_request_id{0};
     int m_fee_estimate_revision{0};

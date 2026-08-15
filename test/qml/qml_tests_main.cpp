@@ -661,6 +661,19 @@ public:
 
     Q_INVOKABLE void prev() { setCurrentIndex(m_current_index - 1); }
     Q_INVOKABLE void next() { setCurrentIndex(m_current_index + 1); }
+    Q_INVOKABLE QObject* recipientAt(int index) const
+    {
+        if (index < 0 || index >= count()) return nullptr;
+        QQmlEngine::setObjectOwnership(m_current, QQmlEngine::CppOwnership);
+        return m_current;
+    }
+    Q_INVOKABLE void select(int index) { setCurrentIndex(index + 1); }
+    Q_INVOKABLE void removeAt(int index)
+    {
+        if (index < 0 || index >= count() || count() <= 1) return;
+        setCurrentIndex(index + 1);
+        remove();
+    }
 
     Q_INVOKABLE void remove()
     {
@@ -827,6 +840,7 @@ class MockWalletQmlModel : public QObject
     Q_OBJECT
     Q_PROPERTY(QString name MEMBER m_name NOTIFY nameChanged)
     Q_PROPERTY(QString balance MEMBER m_balance NOTIFY balanceChanged)
+    Q_PROPERTY(qint64 balanceSatoshi MEMBER m_balance_satoshi NOTIFY balanceChanged)
     Q_PROPERTY(QObject* activityListModel READ activityListModel CONSTANT)
     Q_PROPERTY(QObject* bumpModel READ bumpModel CONSTANT)
     Q_PROPERTY(QObject* recipients READ recipients CONSTANT)
@@ -840,9 +854,16 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(QObject* receiveRequests READ receiveRequests CONSTANT)
     Q_PROPERTY(MockAddressListModel* addressListModel READ addressListModel CONSTANT)
     Q_PROPERTY(bool hasExternalSigner MEMBER m_has_external_signer NOTIFY walletInfoChanged)
+    Q_PROPERTY(KeyScheme keySchemeKind MEMBER m_key_scheme_kind NOTIFY walletInfoChanged)
     Q_PROPERTY(int displayUnit MEMBER m_display_unit NOTIFY displayUnitChanged)
     Q_PROPERTY(int targetBlocks READ targetBlocks WRITE setTargetBlocks NOTIFY targetBlocksChanged)
     Q_PROPERTY(QString estimatedFee READ estimatedFee NOTIFY feeEstimateRevisionChanged)
+    Q_PROPERTY(QString estimatedFeeRate READ estimatedFeeRate NOTIFY feeEstimateRevisionChanged)
+    Q_PROPERTY(bool sendPreviewAvailable READ sendPreviewAvailable NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewSending READ sendPreviewSending NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewFee READ sendPreviewFee NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewTotal READ sendPreviewTotal NOTIFY sendPreviewChanged)
+    Q_PROPERTY(QString sendPreviewRemainingBalance READ sendPreviewRemainingBalance NOTIFY sendPreviewChanged)
     Q_PROPERTY(bool customFeeEnabled READ customFeeEnabled WRITE setCustomFeeEnabled NOTIFY customFeeEnabledChanged)
     Q_PROPERTY(QString customFeeRate READ customFeeRate WRITE setCustomFeeRate NOTIFY customFeeRateChanged)
     Q_PROPERTY(bool customFeeRateValid READ customFeeRateValid NOTIFY customFeeRateValidChanged)
@@ -874,8 +895,25 @@ class MockWalletQmlModel : public QObject
     Q_PROPERTY(QString lastRemovedRequestId MEMBER m_last_removed_request_id NOTIFY lastRemovedRequestIdChanged)
 
 public:
+    enum KeyScheme {
+        SingleKey = 0,
+        WatchOnly,
+        MultiKey,
+        ExternalSigner,
+    };
+    Q_ENUM(KeyScheme)
+
+    enum PsbtImportResult {
+        PsbtUnsupported = 0,
+        WalletCanSign,
+        WalletCannotSign,
+        TransactionAlreadyKnown,
+    };
+    Q_ENUM(PsbtImportResult)
+
     QString m_name{QStringLiteral("testwallet")};
     QString m_balance{QStringLiteral("1.00000000 BTC")};
+    qint64 m_balance_satoshi{100'000'000};
     QObject* m_activity_list_model{nullptr};
     QObject* m_bump_model{nullptr};
     QObject* m_recipients{nullptr};
@@ -884,6 +922,7 @@ public:
     QObject* m_current_payment_request{nullptr};
     MockReceiveRequests m_receive_requests{};
     bool m_has_external_signer{false};
+    KeyScheme m_key_scheme_kind{SingleKey};
     int m_display_unit{0};
     QString m_default_receive_address_type{QStringLiteral("bech32")};
     QString m_last_commit_address_type;
@@ -937,6 +976,24 @@ public:
     {
         return m_custom_fee_enabled ? m_custom_fee_estimate : estimatedFeeForTarget(m_target_blocks);
     }
+    QString estimatedFeeRate() const
+    {
+        return m_custom_fee_enabled
+            ? (customFeeRateValid() ? m_custom_fee_rate + QStringLiteral(" sat/vB") : QString{})
+            : estimatedFeeRateForTarget(m_target_blocks);
+    }
+    bool sendPreviewAvailable() const
+    {
+        const auto* recipients_model = qobject_cast<const MockRecipientsModel*>(m_recipients);
+        return recipients_model && recipients_model->allValid()
+            && !m_fee_estimate_pending
+            && !m_send_amount_exhausts_balance
+            && !estimatedFee().isEmpty();
+    }
+    QString sendPreviewSending() const { return sendPreviewAvailable() ? QStringLiteral("0.01000000 ₿") : QString{}; }
+    QString sendPreviewFee() const { return sendPreviewAvailable() ? estimatedFee() : QString{}; }
+    QString sendPreviewTotal() const { return sendPreviewAvailable() ? QStringLiteral("0.01000500 ₿") : QString{}; }
+    QString sendPreviewRemainingBalance() const { return sendPreviewAvailable() ? QStringLiteral("0.98999500 ₿") : QString{}; }
     bool customFeeEnabled() const { return m_custom_fee_enabled; }
     QString customFeeRate() const { return m_custom_fee_rate; }
     bool customFeeRateValid() const
@@ -962,6 +1019,15 @@ public:
         }
 
         return {};
+    }
+    Q_INVOKABLE QString estimatedFeeRateForTarget(const int target) const
+    {
+        switch (target) {
+        case 1: return QStringLiteral("12.000 sat/vB");
+        case 6: return QStringLiteral("2.000 sat/vB");
+        case 2:
+        default: return QStringLiteral("5.000 sat/vB");
+        }
     }
     Q_INVOKABLE int feeTargetIndex(const int target) const
     {
@@ -1101,6 +1167,7 @@ public:
         }
         return m_send_transaction_result;
     }
+    Q_INVOKABLE bool sendTransactionWithPassphrase(const QString&) { return sendTransaction(); }
     Q_INVOKABLE bool broadcastCurrentTransaction()
     {
         ++m_broadcast_current_transaction_calls;
@@ -1119,6 +1186,9 @@ public:
         Q_EMIT currentTransactionChanged();
         Q_EMIT discardCurrentTransactionCallsChanged();
     }
+    Q_INVOKABLE void approveExternalSignerTransaction() { Q_EMIT externalSignerApprovalSucceeded(); }
+    Q_INVOKABLE QString saveCurrentTransactionAsPsbt(const QString&) { return {}; }
+    Q_INVOKABLE int importPsbtFromFile(const QString&) { return WalletCanSign; }
     Q_INVOKABLE bool commitPaymentRequest()
     {
         auto* request = qobject_cast<MockPaymentRequest*>(m_current_payment_request);
@@ -1215,6 +1285,7 @@ Q_SIGNALS:
     void customFeeRateValidChanged();
     void feeEstimatePendingChanged();
     void feeEstimateRevisionChanged();
+    void sendPreviewChanged();
     void sendAmountExhaustsBalanceChanged();
     void prepareTransactionResultChanged();
     void sendTransactionResultChanged();
@@ -3359,6 +3430,18 @@ public Q_SLOTS:
         wallet_model.setCurrentTransaction(&wallet_transaction);
         wallet_model.setCurrentPaymentRequest(&payment_request);
         wallet_controller.setSelectedWalletObject(&wallet_model);
+        QObject::connect(&recipients_model, &MockRecipientsModel::validationChanged,
+                         &wallet_model, &MockWalletQmlModel::sendPreviewChanged,
+                         Qt::UniqueConnection);
+        QObject::connect(&wallet_model, &MockWalletQmlModel::feeEstimateRevisionChanged,
+                         &wallet_model, &MockWalletQmlModel::sendPreviewChanged,
+                         Qt::UniqueConnection);
+        QObject::connect(&wallet_model, &MockWalletQmlModel::sendAmountExhaustsBalanceChanged,
+                         &wallet_model, &MockWalletQmlModel::sendPreviewChanged,
+                         Qt::UniqueConnection);
+        QObject::connect(&wallet_model, &MockWalletQmlModel::balanceChanged,
+                         &wallet_model, &MockWalletQmlModel::sendPreviewChanged,
+                         Qt::UniqueConnection);
         qmlRegisterSingletonInstance<MockAppMode>("org.bitcoincore.qt", 1, 0, "AppMode", &app_mode);
         qmlRegisterSingletonInstance<MockBuildInfo>("org.bitcoincore.qt", 1, 0, "BuildInfo", &build_info);
         qmlRegisterUncreatableType<MockPeerDetailsModel>(

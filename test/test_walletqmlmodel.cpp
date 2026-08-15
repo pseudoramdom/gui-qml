@@ -22,6 +22,7 @@
 #include <key.h>
 #include <key_io.h>
 #include <outputtype.h>
+#include <policy/policy.h>
 #include <psbt.h>
 #include <primitives/transaction.h>
 #include <script/signingprovider.h>
@@ -431,6 +432,7 @@ private Q_SLOTS:
     void cleanupTestCase();
     void feeTargetIndex_mapsStandardTargets();
     void estimatedFeeForTarget_returnsEmptyWhenUnavailable();
+    void feePreviewExposesSummaryAndRates();
     void scheduleFeeEstimates_populatesFormattedEstimates();
     void scheduleFeeEstimates_fallsBackWhenNetworkFeeEstimatesUnavailable();
     void scheduleFeeEstimates_usesStaticRegtestFeeOverride();
@@ -647,6 +649,48 @@ void WalletQmlModelTests::estimatedFeeForTarget_returnsEmptyWhenUnavailable()
     QCOMPARE(model.estimatedFeeForTarget(1), QString());
     QCOMPARE(model.estimatedFeeForTarget(2), QString());
     QCOMPARE(model.estimatedFee(), QString());
+    QCOMPARE(model.estimatedFeeRateForTarget(2), QString());
+    QCOMPARE(model.estimatedFeeRate(), QString());
+    QVERIFY(!model.sendPreviewAvailable());
+}
+
+void WalletQmlModelTests::feePreviewExposesSummaryAndRates()
+{
+    NiceMock<MockWallet>* wallet{nullptr};
+    auto model = MakeWalletModel(wallet);
+    ON_CALL(*wallet, getBalance()).WillByDefault(Return(100'000));
+    ON_CALL(*wallet, getAvailableBalance(testing::_)).WillByDefault(Return(100'000));
+    SetValidRecipient(*model);
+
+    wallet->createTransactionHandler = [](const std::vector<wallet::CRecipient>&,
+                                          const wallet::CCoinControl& coin_control,
+                                          bool,
+                                          int& change_pos,
+                                          CAmount& fee) -> util::Result<CTransactionRef> {
+        change_pos = -1;
+        fee = coin_control.m_confirm_target.value_or(2) * 100;
+        return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
+    };
+
+    model->scheduleFeeEstimates();
+    QTRY_VERIFY_WITH_TIMEOUT(model->sendPreviewAvailable(), FEE_ESTIMATE_TIMEOUT_MS);
+
+    const CTransaction empty_tx{CMutableTransaction{}};
+    const QString expected_rate{QString::fromStdString(
+        CFeeRate{200, static_cast<int32_t>(GetVirtualTransactionSize(empty_tx))}.ToString(FeeRateFormat::SAT_VB))};
+    QCOMPARE(model->estimatedFeeRateForTarget(2), expected_rate);
+    QCOMPARE(model->estimatedFeeRate(), expected_rate);
+    QCOMPARE(model->sendPreviewSending(), QString::fromUtf8("0.00050000 \xe2\x82\xbf"));
+    QCOMPARE(model->sendPreviewFee(), QString::fromUtf8("0.00000200 \xe2\x82\xbf"));
+    QCOMPARE(model->sendPreviewTotal(), QString::fromUtf8("0.00050200 \xe2\x82\xbf"));
+    QCOMPARE(model->sendPreviewRemainingBalance(), QString::fromUtf8("0.00049800 \xe2\x82\xbf"));
+
+    model->sendRecipientList()->currentRecipient()->setSubtractFeeFromAmount(true);
+    model->scheduleFeeEstimates();
+    QTRY_VERIFY_WITH_TIMEOUT(model->sendPreviewAvailable(), FEE_ESTIMATE_TIMEOUT_MS);
+    QCOMPARE(model->sendPreviewSending(), QString::fromUtf8("0.00049800 \xe2\x82\xbf"));
+    QCOMPARE(model->sendPreviewTotal(), QString::fromUtf8("0.00050000 \xe2\x82\xbf"));
+    QCOMPARE(model->sendPreviewRemainingBalance(), QString::fromUtf8("0.00050000 \xe2\x82\xbf"));
 }
 
 void WalletQmlModelTests::scheduleFeeEstimates_populatesFormattedEstimates()

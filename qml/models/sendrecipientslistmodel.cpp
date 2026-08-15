@@ -8,6 +8,8 @@
 #include <key_io.h>
 #include <qml/models/sendrecipient.h>
 
+#include <QQmlEngine>
+
 #include <set>
 
 SendRecipientsListModel::SendRecipientsListModel(QObject* parent)
@@ -73,6 +75,30 @@ void SendRecipientsListModel::add()
     Q_EMIT countChanged();
     Q_EMIT validationChanged();
     setCurrentIndex(row);
+}
+
+SendRecipient* SendRecipientsListModel::recipientAt(const int row) const
+{
+    if (row < 0 || row >= m_recipients.size()) {
+        return nullptr;
+    }
+    auto* recipient = m_recipients.at(row);
+    QQmlEngine::setObjectOwnership(recipient, QQmlEngine::CppOwnership);
+    return recipient;
+}
+
+void SendRecipientsListModel::select(const int row)
+{
+    setCurrentIndex(row);
+}
+
+void SendRecipientsListModel::removeAt(const int row)
+{
+    if (row < 0 || row >= m_recipients.size() || m_recipients.size() == 1) {
+        return;
+    }
+    setCurrentIndex(row);
+    remove();
 }
 
 void SendRecipientsListModel::setCurrentIndex(int row)

@@ -10,6 +10,7 @@ import QtQuick.Window 2.15
 import org.bitcoincore.qt 1.0
 
 import "../../controls"
+import "./sendv2"
 
 PageStack {
     id: root
@@ -133,20 +134,10 @@ PageStack {
 
     Component {
         id: sendPage
-        Page {
-            background: null
-            header: NavigationBar2 {
-                leftItem: NavButton {
-                    iconSource: "image://images/caret-left"
-                    iconHeight: 22
-                    iconWidth: 22
-                    onClicked: root.pop()
-                }
-            }
-            Send {
-                anchors.fill: parent
-                onTransactionPrepared: root.push(sendReviewPage)
-            }
+        SendContainer {
+            wallet: walletController.selectedWallet
+            onExitRequested: root.pop()
+            onViewTransactionRequested: root.pop(null)
         }
     }
 
@@ -168,26 +159,4 @@ PageStack {
         }
     }
 
-    function _completeSend() {
-        walletController.selectedWallet.recipients.clear()
-        root.pop()
-        root.pop()
-        root.push(sendResultPage)
-    }
-
-    Component {
-        id: sendReviewPage
-        SendReview {
-            onBack: root.pop()
-            onTransactionSent: root._completeSend()
-        }
-    }
-
-    Component {
-        id: sendResultPage
-        SendResult {
-            onDone: root.pop(null)
-            onViewNewTransaction: root.pop(null)
-        }
-    }
 }

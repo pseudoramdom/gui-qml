@@ -22,6 +22,7 @@ class SendRecipientsListModelTests : public QObject
 
 private Q_SLOTS:
     void clearKeepsCurrentRecipientValidForQmlBindings();
+    void indexedAccessSelectsAndRemovesRecipients();
 };
 
 void SendRecipientsListModelTests::clearKeepsCurrentRecipientValidForQmlBindings()
@@ -66,6 +67,33 @@ void SendRecipientsListModelTests::clearKeepsCurrentRecipientValidForQmlBindings
     QVERIFY(observer->property("address").toString().isEmpty());
     QVERIFY(observer->property("label").toString().isEmpty());
     QCOMPARE(observer->property("amount").value<QObject*>(), recipients.currentRecipient()->amount());
+}
+
+void SendRecipientsListModelTests::indexedAccessSelectsAndRemovesRecipients()
+{
+    SendRecipientsListModel recipients;
+    auto* first = recipients.recipientAt(0);
+    QVERIFY(first != nullptr);
+    first->setLabel(QStringLiteral("First"));
+
+    recipients.add();
+    auto* second = recipients.recipientAt(1);
+    QVERIFY(second != nullptr);
+    second->setLabel(QStringLiteral("Second"));
+
+    QCOMPARE(recipients.recipientAt(-1), nullptr);
+    QCOMPARE(recipients.recipientAt(2), nullptr);
+    QCOMPARE(recipients.currentRecipient(), second);
+
+    recipients.select(0);
+    QCOMPARE(recipients.currentRecipient(), first);
+    QCOMPARE(recipients.currentIndex(), 1);
+
+    recipients.removeAt(0);
+    QCOMPARE(recipients.count(), 1);
+    QCOMPARE(recipients.currentRecipient(), second);
+    QCOMPARE(recipients.currentIndex(), 1);
+    QCOMPARE(recipients.currentRecipient()->label(), QStringLiteral("Second"));
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

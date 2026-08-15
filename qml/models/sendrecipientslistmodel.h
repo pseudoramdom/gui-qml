@@ -38,6 +38,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE void add();
+    Q_INVOKABLE SendRecipient* recipientAt(int row) const;
+    Q_INVOKABLE void select(int row);
+    Q_INVOKABLE void removeAt(int row);
     Q_INVOKABLE void next();
     Q_INVOKABLE void prev();
     Q_INVOKABLE void remove();

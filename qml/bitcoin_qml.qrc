@@ -55,6 +55,7 @@
         <file>components/WalletPassphrasePopup.qml</file>
         <file>controls/AddWalletButton.qml</file>
         <file>controls/CaretRightIcon.qml</file>
+        <file>controls/CardSurface.qml</file>
         <file>controls/ContextMenu.qml</file>
         <file>controls/ContextMenuButton.qml</file>
         <file>controls/ContextMenuDivider.qml</file>
@@ -68,6 +69,7 @@
         <file>controls/EditableKeyValueRow.qml</file>
         <file>controls/ExternalLink.qml</file>
         <file>controls/FocusBorder.qml</file>
+        <file>controls/FieldSurface.qml</file>
         <file>controls/Header.qml</file>
         <file>controls/Icon.qml</file>
         <file>controls/IconButton.qml</file>
@@ -91,11 +93,14 @@
         <file>controls/qmldir</file>
         <file>controls/SendOptionsPopup.qml</file>
         <file>controls/SegmentedPicker.qml</file>
+        <file>controls/SectionLabel.qml</file>
+        <file>controls/SelectableCard.qml</file>
         <file>controls/Setting.qml</file>
         <file>controls/SettingsHeader.qml</file>
         <file>controls/SizeClass.qml</file>
         <file>controls/Skeleton.qml</file>
         <file>controls/SpinningIndicator.qml</file>
+        <file>controls/SummaryRow.qml</file>
         <file>controls/Tab.qml</file>
         <file>controls/TabSection.qml</file>
         <file>controls/TabView.qml</file>
@@ -164,6 +169,14 @@
         <file>pages/wallet/Send.qml</file>
         <file>pages/wallet/SendResult.qml</file>
         <file>pages/wallet/SendReview.qml</file>
+        <file>pages/wallet/sendv2/SendComposeView.qml</file>
+        <file>pages/wallet/sendv2/SendContainer.qml</file>
+        <file>pages/wallet/sendv2/SendFeeSelector.qml</file>
+        <file>pages/wallet/sendv2/SendFormCard.qml</file>
+        <file>pages/wallet/sendv2/SendFormMenu.qml</file>
+        <file>pages/wallet/sendv2/SendRecipientCard.qml</file>
+        <file>pages/wallet/sendv2/SendReviewView.qml</file>
+        <file>pages/wallet/sendv2/SendTransactionSummary.qml</file>
         <file>pages/wallet/SpeedUpOverlay.qml</file>
         <file>pages/wallet/SignVerifyMessage.qml</file>
         <file>pages/wallet/WalletBadge.qml</file>
