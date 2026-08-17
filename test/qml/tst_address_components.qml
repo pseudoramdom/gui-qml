@@ -118,7 +118,10 @@ TestCase {
         compare(label.embedded, false)
         compare(label.textAlignment, Text.AlignLeft)
         const valueText = findObject(label, "testAddressLabelValue")
+        const copiedStatusText = findObject(label, "testAddressLabelCopiedStatusText")
         verify(valueText !== null)
+        verify(copiedStatusText !== null)
+        compare(copiedStatusText.font.pixelSize, label.textStyle.font.pixelSize)
         label.address = "bc1qabcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuv"
         tryVerify(function() { return valueText.paintedHeight > label.textStyle.lineHeight })
         compare(valueText.wrapMode, Text.WordWrap)
