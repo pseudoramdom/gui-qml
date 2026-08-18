@@ -388,6 +388,8 @@ Page {
                 onLoaded: retainItem = true
                 sourceComponent: SettingsView {
                     showDoneButton: false
+                    onSelectWalletRequested: root.openWalletSelection()
+                    onReceiveRequested: receiveTabButton.checked = true
                 }
             }
         }
