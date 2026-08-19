@@ -170,6 +170,7 @@ SettingsPage {
         title: qsTr("Wallet actions")
 
         ListRow {
+            objectName: "settingsv2WalletAddressesRow"
             Layout.fillWidth: true
             title: qsTr("Addresses")
             showsDisclosureIndicator: true
@@ -177,6 +178,7 @@ SettingsPage {
         }
 
         ListRow {
+            objectName: "settingsv2WalletPasswordRow"
             visible: root.canManagePassphrase
             Layout.fillWidth: true
             title: root.wallet && root.wallet.isEncrypted ? qsTr("Update password") : qsTr("Set password")
@@ -185,6 +187,7 @@ SettingsPage {
         }
 
         ListRow {
+            objectName: "settingsv2WalletBackupRow"
             Layout.fillWidth: true
             title: qsTr("Back up wallet")
             showsDisclosureIndicator: true
@@ -192,6 +195,7 @@ SettingsPage {
         }
 
         ListRow {
+            objectName: "settingsv2WalletSignVerifyMessageRow"
             Layout.fillWidth: true
             title: qsTr("Sign or verify message")
             showDivider: false

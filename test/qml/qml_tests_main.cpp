@@ -1429,7 +1429,7 @@ public:
         Q_EMIT walletMigrationSucceeded();
     }
     Q_INVOKABLE void requestOpenWalletSettings() { Q_EMIT openWalletSettingsRequested(); }
-    void setSelectedWalletObject(QObject* wallet)
+    Q_INVOKABLE void setSelectedWalletObject(QObject* wallet)
     {
         if (m_selected_wallet == wallet) return;
         m_selected_wallet = wallet;

@@ -300,23 +300,18 @@ ApplicationWindow {
                 id: node
                 NodeRunner {
                     onSettingsClicked: {
-                        nodeStack.push(nodeSettings)
+                        nodeStack.push(settingsPage)
                     }
                     onPeersClicked: {
                         peerTableModel.startAutoRefresh()
                         nodeStack.push(peersPage)
                     }
-                    onConsoleClicked: {
-                        nodeStack.push(consolePage)
-                    }
                 }
             }
             Component {
-                id: nodeSettings
-                 NodeSettings {
-                    onDoneClicked: {
-                        nodeStack.pop()
-                    }
+                id: settingsPage
+                SettingsView {
+                    onDoneClicked: nodeStack.pop()
                 }
             }
             Component {
@@ -343,12 +338,6 @@ ApplicationWindow {
             Component {
                 id: bannedPeersPage
                 BannedPeers {
-                    onBack: nodeStack.pop()
-                }
-            }
-            Component {
-                id: consolePage
-                CommandConsole {
                     onBack: nodeStack.pop()
                 }
             }

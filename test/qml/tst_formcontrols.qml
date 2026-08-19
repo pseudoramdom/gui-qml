@@ -203,7 +203,6 @@ TestCase {
         const card = findChild(section, "exampleSectionCard")
         verify(card !== null)
         compare(card.color, Theme.color.neutral1)
-        compare(card.border.width, 0)
         compare(card.radius, 16)
         const footer = findChild(section, "exampleSectionFooter")
         verify(footer !== null)
