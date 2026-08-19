@@ -537,17 +537,18 @@ PageStack {
             anchors.centerIn: Overlay.overlay
             width: Math.min(sendPage.width - 40, 420)
             modal: true
+            dim: true
             padding: 20
 
-            background: Item {
-                anchors.fill: parent
-                Rectangle {
-                    color: Theme.color.neutral0
-                    border.color: Theme.color.neutral4
-                    radius: 5
-                    border.width: 1
-                    anchors.fill: parent
-                }
+            Overlay.modal: Rectangle {
+                color: Qt.rgba(0, 0, 0, 0.5)
+            }
+
+            background: Rectangle {
+                color: Theme.color.neutral1
+                border.color: Theme.color.neutral2
+                radius: 5
+                border.width: 1
             }
 
             contentItem: ColumnLayout {
@@ -565,6 +566,11 @@ PageStack {
                     objectName: "sendUriImportInput"
                     Layout.fillWidth: true
                     placeholderText: qsTr("bitcoin:address?amount=…")
+                    background: Rectangle {
+                        color: Theme.color.neutral2
+                        radius: 5
+                        border.width: 0
+                    }
                 }
 
                 RowLayout {
@@ -573,6 +579,7 @@ PageStack {
 
                     OutlineButton {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         text: qsTr("Cancel")
                         onClicked: sendUriImportPopup.close()
                     }
@@ -580,6 +587,7 @@ PageStack {
                     ContinueButton {
                         objectName: "sendUriImportApplyButton"
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         text: qsTr("Apply")
                         enabled: uriImportInput.text.trim().length > 0
                         onClicked: {
@@ -731,6 +739,7 @@ PageStack {
                 Rectangle {
                     objectName: "clipboardUriBanner"
                     Layout.fillWidth: true
+                    Layout.bottomMargin: visible ? 16 : 0
                     visible: sendPage.showClipboardUriBanner
                     color: Theme.color.neutral1
                     radius: 5
@@ -1125,7 +1134,9 @@ PageStack {
                 ContinueButton {
                     id: continueButton
                     objectName: "sendReviewButton"
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: 300
+                    Layout.maximumWidth: 300
+                    Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 36
                     Layout.bottomMargin: 24
                     text: root.externalSignerWallet ? qsTr("Review transaction") : qsTr("Review")

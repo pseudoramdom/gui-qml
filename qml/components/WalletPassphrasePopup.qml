@@ -36,7 +36,7 @@ Popup {
     y: parent ? Math.round((parent.height - height) / 2) + verticalOffset : verticalOffset
 
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.4)
+        color: Qt.rgba(0, 0, 0, 0.5)
     }
 
     enter: Transition {
