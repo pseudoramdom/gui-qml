@@ -710,7 +710,7 @@ PageStack {
                 ToastBanner {
                     Layout.fillWidth: true
                     visible: sendPage.paymentRequestIsError && sendPage.paymentRequestStatus.length > 0
-                    backgroundColor: Theme.color.red
+                    tintColor: Theme.color.red
                     iconSource: "image://images/alert-filled"
                     text: sendPage.paymentRequestStatus
                     textObjectName: "sendPaymentRequestStatusText"
