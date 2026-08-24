@@ -70,8 +70,6 @@ In addition the following dependencies are required for the GUI and tests:
 
 ```
 sudo apt install \
-  libgmock-dev \
-  libgtest-dev \
   qt6-base-dev \
   qt6-base-dev-tools \
   qt6-tools-dev \

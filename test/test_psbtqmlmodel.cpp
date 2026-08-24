@@ -206,9 +206,10 @@ void PsbtQmlModelTests::savePreservesPsbtMetadata()
 
 void PsbtQmlModelTests::broadcastsCompletePsbt()
 {
-    testing::NiceMock<MockNode> node;
-    EXPECT_CALL(node, broadcastTransaction(testing::_, testing::_, testing::_))
-        .WillOnce(testing::Return(node::TransactionError::OK));
+    MockNode node;
+    node.broadcast_transaction_fn = [](CTransactionRef, CAmount, std::string&) {
+        return node::TransactionError::OK;
+    };
 
     QTemporaryDir temp_dir;
     QVERIFY(temp_dir.isValid());
@@ -222,6 +223,7 @@ void PsbtQmlModelTests::broadcastsCompletePsbt()
 
     model.broadcast();
     QVERIFY(model.status().startsWith(QStringLiteral("Transaction broadcast successfully.")));
+    QCOMPARE(node.calls.broadcastTransaction.load(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

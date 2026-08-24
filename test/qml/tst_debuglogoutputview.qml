@@ -3,23 +3,16 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 import QtQuick 2.15
-import QtQuick.Window 2.15
 import QtTest 1.2
 import org.bitcoincore.qt 1.0
 import "../../qml/components"
 
 TestCase {
+    id: testCase
     name: "DebugLogOutputView"
     when: windowShown
     width: 440
     height: 300
-
-    Window {
-        id: testWindow
-        width: 440
-        height: 300
-        visible: true
-    }
 
     Component {
         id: outputViewComponent
@@ -38,7 +31,7 @@ TestCase {
     }
 
     function createOutputView() {
-        const view = createTemporaryObject(outputViewComponent, testWindow.contentItem)
+        const view = createTemporaryObject(outputViewComponent, testCase.Window.window.contentItem)
         verify(view !== null)
         tryCompare(view, "count", testDebugLogModel.count)
         return view

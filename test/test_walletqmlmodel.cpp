@@ -2,19 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <QtTest/QtTest>
-
-#include <test/mocks/mocknode.h>
-#include <test/mocks/mockwallet.h>
-#include <qml/models/activitylistmodel.h>
-#include <qml/models/psbtqmlmodel.h>
-#include <qml/models/sendrecipient.h>
-#include <qml/models/sendrecipientslistmodel.h>
-#include <qml/models/walletqmlmodel.h>
-#include <qml/models/walletqmlmodeltransaction.h>
-
-#include <chainparams.h>
 #include <addresstype.h>
+#include <chainparams.h>
 #include <common/messages.h>
 #include <common/signmessage.h>
 #include <interfaces/handler.h>
@@ -22,30 +11,41 @@
 #include <key.h>
 #include <key_io.h>
 #include <outputtype.h>
-#include <psbt.h>
 #include <primitives/transaction.h>
+#include <psbt.h>
+#include <qml/models/activitylistmodel.h>
+#include <qml/models/psbtqmlmodel.h>
+#include <qml/models/sendrecipient.h>
+#include <qml/models/sendrecipientslistmodel.h>
+#include <qml/models/walletqmlmodel.h>
+#include <qml/models/walletqmlmodeltransaction.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
+#include <test/mocks/mocknode.h>
+#include <test/mocks/mockwallet.h>
 #include <wallet/coincontrol.h>
 #include <wallet/types.h>
 
 #include <QFile>
+#include <QSemaphore>
 #include <QSettings>
 #include <QSignalSpy>
-#include <QSemaphore>
 #include <QTemporaryDir>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QtTest/QtTest>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
-#include <set>
 #include <vector>
 
 namespace {
@@ -55,11 +55,6 @@ std::unique_ptr<interfaces::Handler> MakeNoopHandler()
 }
 
 constexpr auto NON_P2PKH_ADDRESS{"bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj"};
-
-using ::testing::AtLeast;
-using ::testing::Invoke;
-using ::testing::NiceMock;
-using ::testing::Return;
 
 constexpr auto FEE_ESTIMATE_TIMEOUT_MS{3'000};
 const auto VALID_MAINNET_ADDRESS = QStringLiteral("1BoatSLRHtKNngkdXEeobR76b53LETtpyT");
@@ -84,25 +79,95 @@ private:
     ChainType m_previous_chain_type;
 };
 
-std::unique_ptr<WalletQmlModel> MakeWalletModel(NiceMock<MockWallet>*& wallet_out, interfaces::Node* node = nullptr)
+struct FeeEstimateCall {
+    unsigned int target;
+    bool sign;
+    bool selected_inputs;
+    std::optional<CAmount> fee_rate;
+    size_t recipient_count;
+};
+
+struct BalancePreviewCall {
+    unsigned int target;
+    CAmount total_amount;
+    bool subtracts_fee;
+};
+
+struct SelectedCoinEstimateCall {
+    unsigned int target;
+    bool sign;
+    bool expected_coin_selected;
+    bool allow_other_inputs;
+    size_t selected_count;
+};
+
+template <typename T>
+class ThreadSafeCallLog
 {
-    auto wallet = std::make_unique<NiceMock<MockWallet>>();
-    wallet_out = wallet.get();
+public:
+    void Append(T call)
+    {
+        std::lock_guard<std::mutex> lock{m_mutex};
+        m_calls.push_back(std::move(call));
+    }
 
-    ON_CALL(*wallet_out, getWalletTxs()).WillByDefault(Return(std::set<interfaces::WalletTx>{}));
-    ON_CALL(*wallet_out, listCoins()).WillByDefault(Return(interfaces::Wallet::CoinsList{}));
-    ON_CALL(*wallet_out, getBalance()).WillByDefault(Return(10 * COIN));
-    ON_CALL(*wallet_out, getAvailableBalance(testing::_)).WillByDefault(Return(10 * COIN));
-    ON_CALL(*wallet_out, getRequiredFee(testing::_)).WillByDefault(Return(1000));
-    ON_CALL(*wallet_out, getDefaultAddressType()).WillByDefault(Return(OutputType::BECH32));
-    ON_CALL(*wallet_out, handleTransactionChanged(testing::_)).WillByDefault(Invoke([](interfaces::Wallet::TransactionChangedFn) {
+    size_t Size() const
+    {
+        std::lock_guard<std::mutex> lock{m_mutex};
+        return m_calls.size();
+    }
+
+    std::vector<T> Snapshot() const
+    {
+        std::lock_guard<std::mutex> lock{m_mutex};
+        return m_calls;
+    }
+
+private:
+    mutable std::mutex m_mutex;
+    std::vector<T> m_calls;
+};
+
+void CompareFeeEstimateCalls(const std::vector<FeeEstimateCall>& actual, const std::vector<FeeEstimateCall>& expected)
+{
+    QCOMPARE(actual.size(), expected.size());
+    for (size_t index{0}; index < std::min(actual.size(), expected.size()); ++index) {
+        QCOMPARE(actual[index].target, expected[index].target);
+        QCOMPARE(actual[index].sign, expected[index].sign);
+        QCOMPARE(actual[index].selected_inputs, expected[index].selected_inputs);
+        QCOMPARE(actual[index].fee_rate.has_value(), expected[index].fee_rate.has_value());
+        if (actual[index].fee_rate && expected[index].fee_rate) {
+            QCOMPARE(*actual[index].fee_rate, *expected[index].fee_rate);
+        }
+        QCOMPARE(actual[index].recipient_count, expected[index].recipient_count);
+    }
+}
+
+template <typename Wallet>
+struct WalletModelHarness {
+    Wallet* wallet;
+    std::unique_ptr<WalletQmlModel> model;
+};
+
+WalletModelHarness<MockWallet> MakeWalletModel(interfaces::Node* node = nullptr)
+{
+    auto wallet = std::make_unique<MockWallet>();
+    MockWallet* const wallet_view{wallet.get()};
+
+    wallet_view->get_wallet_txs_fn = [] { return std::set<interfaces::WalletTx>{}; };
+    wallet_view->list_coins_fn = [] { return interfaces::Wallet::CoinsList{}; };
+    wallet_view->get_balance_fn = [] { return 10 * COIN; };
+    wallet_view->get_available_balance_fn = [](const wallet::CCoinControl&) { return 10 * COIN; };
+    wallet_view->get_required_fee_fn = [](unsigned int) { return 1000; };
+    wallet_view->get_default_address_type_fn = [] { return OutputType::BECH32; };
+    wallet_view->handle_transaction_changed_fn = [](interfaces::Wallet::TransactionChangedFn) {
         return std::unique_ptr<interfaces::Handler>{};
-    }));
-    ON_CALL(*wallet_out, getNewDestinationValue(testing::_, testing::_)).WillByDefault(Invoke([](OutputType, const std::string&) {
+    };
+    wallet_view->get_new_destination_fn = [](OutputType, const std::string&) {
         return DecodeDestination(VALID_MAINNET_ADDRESS.toStdString());
-    }));
+    };
 
-    return std::make_unique<WalletQmlModel>(std::move(wallet), node);
+    return {wallet_view, std::make_unique<WalletQmlModel>(std::move(wallet), node)};
 }
 
 void SetValidRecipient(WalletQmlModel& model,
@@ -360,11 +425,11 @@ public:
     std::unique_ptr<interfaces::Handler> handleCanGetAddressesChanged(CanGetAddressesChangedFn) override { return MakeNoopHandler(); }
 };
 
-std::unique_ptr<WalletQmlModel> MakeWalletModel(FakePasswordWallet*& wallet_out, interfaces::Node* node = nullptr)
+WalletModelHarness<FakePasswordWallet> MakePasswordWalletModel(interfaces::Node* node = nullptr)
 {
     auto wallet = std::make_unique<FakePasswordWallet>();
-    wallet_out = wallet.get();
-    return std::make_unique<WalletQmlModel>(std::move(wallet), node);
+    FakePasswordWallet* const wallet_view{wallet.get()};
+    return {wallet_view, std::make_unique<WalletQmlModel>(std::move(wallet), node)};
 }
 
 void SetPasswordRecipient(WalletQmlModel& model, qint64 satoshis)
@@ -520,8 +585,7 @@ void WalletQmlModelTests::cleanupTestCase()
 
 void WalletQmlModelTests::displayNameDefaultsToWalletName()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     QCOMPARE(model->displayName(), QString("fake-wallet"));
     model->setDisplayName("Personal");
@@ -530,8 +594,7 @@ void WalletQmlModelTests::displayNameDefaultsToWalletName()
 
 void WalletQmlModelTests::detailPropertiesReflectWalletCapabilities()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     wallet->private_keys_disabled = true;
     wallet->external_signer = true;
@@ -564,8 +627,7 @@ void WalletQmlModelTests::encryptWalletUpdatesSecurityState()
 
 void WalletQmlModelTests::changeWalletPassphraseForwardsPasswords()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     QVERIFY(model->changeWalletPassphrase("secret", "new-secret"));
     QCOMPARE(wallet->change_passphrase_calls, 1);
@@ -579,8 +641,7 @@ void WalletQmlModelTests::changeWalletPassphraseForwardsPasswords()
 
 void WalletQmlModelTests::backupWalletForwardsPath()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     QVERIFY(model->backupWallet("/tmp/fake-wallet.bak"));
     QCOMPARE(wallet->backup_calls, 1);
@@ -590,8 +651,7 @@ void WalletQmlModelTests::backupWalletForwardsPath()
 
 void WalletQmlModelTests::availableReceiveAddressTypesHideUnavailableTaproot()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     QVariantList types = model->availableReceiveAddressTypes();
     QCOMPARE(types.size(), 4);
@@ -611,8 +671,7 @@ void WalletQmlModelTests::receiveAddressTypeDefaultPersistsPerWallet()
     settings.remove("receiveAddressTypes/fake-wallet");
     settings.sync();
 
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->default_address_type = OutputType::BECH32;
 
     QCOMPARE(model->defaultReceiveAddressType(), QString("bech32"));
@@ -651,31 +710,28 @@ void WalletQmlModelTests::estimatedFeeForTarget_returnsEmptyWhenUnavailable()
 
 void WalletQmlModelTests::scheduleFeeEstimates_populatesFormattedEstimates()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
     QSemaphore release_first_call;
     std::atomic<bool> first_call_started{false};
     std::atomic<bool> first_call_blocked{false};
-    std::atomic<bool> saw_sign_true{false};
-    std::atomic<bool> saw_wrong_recipient_count{false};
-    std::atomic<bool> saw_selected_inputs{false};
-    std::atomic<bool> saw_nonempty_feerate{false};
-    std::vector<unsigned int> requested_targets;
+    ThreadSafeCallLog<FeeEstimateCall> calls;
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>& recipients,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool sign,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        if (sign) saw_sign_true = true;
-        if (recipients.size() != 1U) saw_wrong_recipient_count = true;
-        if (coin_control.HasSelected() || !coin_control.ListSelected().empty()) saw_selected_inputs = true;
-        if (coin_control.m_feerate.has_value()) saw_nonempty_feerate = true;
-
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
+        calls.Append({
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate ? std::optional<CAmount>{coin_control.m_feerate->GetFeePerK()} : std::nullopt,
+            recipients.size(),
+        });
         change_pos = -1;
         fee = coin_control.m_confirm_target.value_or(0) * 100;
         if (!first_call_blocked.exchange(true)) {
@@ -693,14 +749,12 @@ void WalletQmlModelTests::scheduleFeeEstimates_populatesFormattedEstimates()
 
     release_first_call.release();
 
-    QTRY_VERIFY_WITH_TIMEOUT(requested_targets.size() == 3, FEE_ESTIMATE_TIMEOUT_MS);
-    QVERIFY(!saw_sign_true.load());
-    QVERIFY(!saw_wrong_recipient_count.load());
-    QVERIFY(!saw_selected_inputs.load());
-    QVERIFY(!saw_nonempty_feerate.load());
-    QCOMPARE(requested_targets.at(0), 1U);
-    QCOMPARE(requested_targets.at(1), 2U);
-    QCOMPARE(requested_targets.at(2), 6U);
+    QTRY_VERIFY_WITH_TIMEOUT(calls.Size() == 3, FEE_ESTIMATE_TIMEOUT_MS);
+    CompareFeeEstimateCalls(calls.Snapshot(), {
+                                                  {1, false, false, std::nullopt, 1},
+                                                  {2, false, false, std::nullopt, 1},
+                                                  {6, false, false, std::nullopt, 1},
+                                              });
     QTRY_VERIFY_WITH_TIMEOUT(!model->feeEstimatePending(), FEE_ESTIMATE_TIMEOUT_MS);
     QCOMPARE(model->estimatedFeeForTarget(1), QStringLiteral("0.00000100 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(2), QStringLiteral("0.00000200 ₿"));
@@ -710,28 +764,32 @@ void WalletQmlModelTests::scheduleFeeEstimates_populatesFormattedEstimates()
 
 void WalletQmlModelTests::scheduleFeeEstimates_fallsBackWhenNetworkFeeEstimatesUnavailable()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
-    std::atomic<bool> saw_fallback_feerate{false};
-    std::vector<CAmount> fallback_fee_rates;
+    ThreadSafeCallLog<FeeEstimateCall> fallback_calls;
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    EXPECT_CALL(*wallet, getRequiredFee(1000)).Times(AtLeast(3)).WillRepeatedly(Return(1000));
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->ExpectAtLeast(wallet->calls.getRequiredFee, 3);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         change_pos = -1;
 
         if (!coin_control.m_feerate.has_value()) {
             return util::Error{Untranslated("fee estimation unavailable")};
         }
 
-        saw_fallback_feerate = true;
-        fallback_fee_rates.push_back(coin_control.m_feerate->GetFeePerK());
+        fallback_calls.Append({
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate->GetFeePerK(),
+            recipients.size(),
+        });
         fee = coin_control.m_feerate->GetFee(250);
         return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
     };
@@ -740,39 +798,41 @@ void WalletQmlModelTests::scheduleFeeEstimates_fallsBackWhenNetworkFeeEstimatesU
 
     QTRY_COMPARE_WITH_TIMEOUT(model->estimatedFeeForTarget(2), QStringLiteral("0.00000500 ₿"), FEE_ESTIMATE_TIMEOUT_MS);
     QTRY_VERIFY_WITH_TIMEOUT(!model->feeEstimatePending(), FEE_ESTIMATE_TIMEOUT_MS);
-    QVERIFY(saw_fallback_feerate.load());
-    QVERIFY(!fallback_fee_rates.empty());
+    QTRY_VERIFY_WITH_TIMEOUT(fallback_calls.Size() == 3, FEE_ESTIMATE_TIMEOUT_MS);
     QCOMPARE(model->estimatedFeeForTarget(1), QStringLiteral("0.00000750 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(2), QStringLiteral("0.00000500 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(6), QStringLiteral("0.00000250 ₿"));
     QCOMPARE(model->estimatedFee(), QStringLiteral("0.00000500 ₿"));
-    QCOMPARE(fallback_fee_rates.size(), 3U);
-    QCOMPARE(fallback_fee_rates.at(0), CAmount{3000});
-    QCOMPARE(fallback_fee_rates.at(1), CAmount{2000});
-    QCOMPARE(fallback_fee_rates.at(2), CAmount{1000});
+    CompareFeeEstimateCalls(fallback_calls.Snapshot(), {
+                                                           {0, false, false, CAmount{3000}, 1},
+                                                           {0, false, false, CAmount{2000}, 1},
+                                                           {0, false, false, CAmount{1000}, 1},
+                                                       });
 }
 
 void WalletQmlModelTests::scheduleFeeEstimates_usesStaticRegtestFeeOverride()
 {
     ChainSelectionGuard chain_guard{ChainType::REGTEST};
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model, VALID_REGTEST_ADDRESS);
 
-    bool saw_sign_true{false};
-    std::vector<unsigned int> requested_targets;
-    std::vector<CAmount> requested_fee_rates;
+    ThreadSafeCallLog<FeeEstimateCall> calls;
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    EXPECT_CALL(*wallet, getRequiredFee(1000)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool sign,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        if (sign) saw_sign_true = true;
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
-        requested_fee_rates.push_back(coin_control.m_feerate.has_value() ? coin_control.m_feerate->GetFeePerK() : 0);
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->ExpectNoCalls(wallet->calls.getRequiredFee);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
+        calls.Append({
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate ? std::optional<CAmount>{coin_control.m_feerate->GetFeePerK()} : std::nullopt,
+            recipients.size(),
+        });
         change_pos = -1;
 
         if (!coin_control.m_feerate.has_value()) return util::Error{Untranslated("missing regtest fee override")};
@@ -784,37 +844,37 @@ void WalletQmlModelTests::scheduleFeeEstimates_usesStaticRegtestFeeOverride()
     model->scheduleFeeEstimates();
 
     QTRY_COMPARE_WITH_TIMEOUT(model->estimatedFeeForTarget(2), QStringLiteral("0.00000250 ₿"), FEE_ESTIMATE_TIMEOUT_MS);
-    QVERIFY(!saw_sign_true);
     QCOMPARE(model->estimatedFeeForTarget(1), QStringLiteral("0.00000250 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(2), QStringLiteral("0.00000250 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(6), QStringLiteral("0.00000250 ₿"));
-    QCOMPARE(requested_targets.size(), 3U);
-    QCOMPARE(requested_targets.at(0), 0U);
-    QCOMPARE(requested_targets.at(1), 0U);
-    QCOMPARE(requested_targets.at(2), 0U);
-    QCOMPARE(requested_fee_rates.size(), 3U);
-    QCOMPARE(requested_fee_rates.at(0), CAmount{wallet::DEFAULT_TRANSACTION_MINFEE});
-    QCOMPARE(requested_fee_rates.at(1), CAmount{wallet::DEFAULT_TRANSACTION_MINFEE});
-    QCOMPARE(requested_fee_rates.at(2), CAmount{wallet::DEFAULT_TRANSACTION_MINFEE});
+    CompareFeeEstimateCalls(calls.Snapshot(), {
+                                                  {0, false, false, CAmount{wallet::DEFAULT_TRANSACTION_MINFEE}, 1},
+                                                  {0, false, false, CAmount{wallet::DEFAULT_TRANSACTION_MINFEE}, 1},
+                                                  {0, false, false, CAmount{wallet::DEFAULT_TRANSACTION_MINFEE}, 1},
+                                              });
 }
 
 void WalletQmlModelTests::scheduleFeeEstimates_usesCustomFeeRateWhenEnabled()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
-    std::vector<unsigned int> requested_targets;
-    std::vector<CAmount> requested_fee_rates;
+    ThreadSafeCallLog<FeeEstimateCall> calls;
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
-        requested_fee_rates.push_back(coin_control.m_feerate.has_value() ? coin_control.m_feerate->GetFeePerK() : 0);
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
+        calls.Append({
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate ? std::optional<CAmount>{coin_control.m_feerate->GetFeePerK()} : std::nullopt,
+            recipients.size(),
+        });
         change_pos = -1;
         fee = coin_control.m_feerate.has_value()
             ? coin_control.m_feerate->GetFee(250)
@@ -827,21 +887,33 @@ void WalletQmlModelTests::scheduleFeeEstimates_usesCustomFeeRateWhenEnabled()
     model->scheduleFeeEstimates();
 
     QTRY_COMPARE_WITH_TIMEOUT(model->estimatedFee(), QStringLiteral("0.00000500 ₿"), FEE_ESTIMATE_TIMEOUT_MS);
-    QCOMPARE(requested_targets.size(), 4U);
-    QCOMPARE(requested_fee_rates.size(), 4U);
-    QVERIFY(std::find(requested_fee_rates.begin(), requested_fee_rates.end(), CAmount{2000}) != requested_fee_rates.end());
-    QVERIFY(std::find(requested_targets.begin(), requested_targets.end(), 1U) != requested_targets.end());
-    QVERIFY(std::find(requested_targets.begin(), requested_targets.end(), 2U) != requested_targets.end());
-    QVERIFY(std::find(requested_targets.begin(), requested_targets.end(), 6U) != requested_targets.end());
-    QVERIFY(std::find(requested_targets.begin(), requested_targets.end(), 0U) != requested_targets.end());
+    const auto recorded_calls{calls.Snapshot()};
+    QCOMPARE(recorded_calls.size(), 4U);
+    for (const FeeEstimateCall& call : recorded_calls) {
+        QVERIFY(!call.sign);
+        QVERIFY(!call.selected_inputs);
+        QCOMPARE(call.recipient_count, 1U);
+        if (call.target == 0) {
+            QVERIFY(call.fee_rate.has_value());
+            QCOMPARE(*call.fee_rate, CAmount{2000});
+        } else {
+            QVERIFY(!call.fee_rate.has_value());
+        }
+    }
+    const auto called_target = [&](unsigned int target) {
+        return std::ranges::any_of(recorded_calls, [&](const FeeEstimateCall& call) { return call.target == target; });
+    };
+    QVERIFY(called_target(0));
+    QVERIFY(called_target(1));
+    QVERIFY(called_target(2));
+    QVERIFY(called_target(6));
 }
 
 void WalletQmlModelTests::scheduleFeeEstimates_estimatesWhenAmountWouldExceedBalanceWithFee()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
-    ON_CALL(*wallet, getBalance()).WillByDefault(Return(50'000));
-    ON_CALL(*wallet, getAvailableBalance(testing::_)).WillByDefault(Return(50'000));
+    auto [wallet, model] = MakeWalletModel();
+    wallet->get_balance_fn = [] { return CAmount{50'000}; };
+    wallet->get_available_balance_fn = [](const wallet::CCoinControl&) { return CAmount{50'000}; };
     SetValidRecipient(*model);
     auto* recipient = model->sendRecipientList()->currentRecipient();
     QVERIFY(recipient != nullptr);
@@ -849,17 +921,15 @@ void WalletQmlModelTests::scheduleFeeEstimates_estimatesWhenAmountWouldExceedBal
     QVERIFY(!model->sendAmountExhaustsBalance());
     QSignalSpy balance_exhausted_spy{model.get(), &WalletQmlModel::sendAmountExhaustsBalanceChanged};
 
-    bool saw_regular_recipient{false};
-    bool saw_fee_subtracted_recipient{false};
-    std::vector<unsigned int> requested_targets;
+    ThreadSafeCallLog<BalancePreviewCall> calls;
 
-    EXPECT_CALL(*wallet, getRequiredFee(testing::_)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>& recipients,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getRequiredFee);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         change_pos = -1;
         fee = coin_control.m_feerate.has_value()
             ? 50
@@ -872,12 +942,11 @@ void WalletQmlModelTests::scheduleFeeEstimates_estimatesWhenAmountWouldExceedBal
             return recipient.fSubtractFeeFromAmount;
         });
 
+        calls.Append({coin_control.m_confirm_target.value_or(0), total_amount, subtracts_fee});
         if (subtracts_fee) {
-            saw_fee_subtracted_recipient = true;
             return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
         }
 
-        saw_regular_recipient = true;
         if (total_amount + fee <= 50'000) {
             return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
         }
@@ -890,9 +959,11 @@ void WalletQmlModelTests::scheduleFeeEstimates_estimatesWhenAmountWouldExceedBal
     QTRY_VERIFY_WITH_TIMEOUT(model->sendAmountExhaustsBalance(), FEE_ESTIMATE_TIMEOUT_MS);
     QVERIFY(model->sendAmountExhaustsBalance());
     QVERIFY(balance_exhausted_spy.count() > 0);
-    QVERIFY(saw_regular_recipient);
-    QVERIFY(saw_fee_subtracted_recipient);
-    QVERIFY(requested_targets.size() >= 5);
+    QTRY_VERIFY_WITH_TIMEOUT(calls.Size() >= 5, FEE_ESTIMATE_TIMEOUT_MS);
+    const auto preview_calls{calls.Snapshot()};
+    QVERIFY(std::ranges::any_of(preview_calls, [](const BalancePreviewCall& call) { return !call.subtracts_fee; }));
+    QVERIFY(std::ranges::any_of(preview_calls, [](const BalancePreviewCall& call) { return call.subtracts_fee; }));
+    QVERIFY(std::ranges::all_of(preview_calls, [](const BalancePreviewCall& call) { return call.total_amount == 49'850; }));
     QCOMPARE(model->sendRecipientList()->currentRecipient()->subtractFeeFromAmount(), false);
     QCOMPARE(model->estimatedFeeForTarget(1), QStringLiteral("0.00000100 ₿"));
     QCOMPARE(model->estimatedFeeForTarget(2), QStringLiteral("0.00000200 ₿"));
@@ -914,8 +985,7 @@ void WalletQmlModelTests::scheduleFeeEstimates_estimatesWhenAmountWouldExceedBal
 
 void WalletQmlModelTests::sendAmountExhaustsBalance_requiresFeeBuffer()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->balance = 50'000;
     SetPasswordRecipient(*model, 50'000);
 
@@ -948,31 +1018,32 @@ void WalletQmlModelTests::sendAmountExhaustsBalance_requiresFeeBuffer()
 
 void WalletQmlModelTests::sendAmountExhaustsBalance_usesCoinControlAvailableBalance()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
     const COutPoint selected_outpoint{Txid::FromUint256(uint256::ONE), 1};
     bool create_transaction_called{false};
 
-    EXPECT_CALL(*wallet, getBalance()).Times(0);
-    EXPECT_CALL(*wallet, getAvailableBalance(testing::_))
-        .WillRepeatedly(Invoke([&](const wallet::CCoinControl& coin_control) {
-            if (coin_control.HasSelected()) {
-                EXPECT_TRUE(coin_control.IsSelected(selected_outpoint));
-                EXPECT_FALSE(coin_control.m_allow_other_inputs);
-                return CAmount{20'000};
-            }
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getBalance);
+    bool selected_coin_control_valid{true};
+    bool unselected_coin_control_valid{true};
+    wallet->get_available_balance_fn = [&](const wallet::CCoinControl& coin_control) {
+        if (coin_control.HasSelected()) {
+            selected_coin_control_valid &= coin_control.IsSelected(selected_outpoint);
+            selected_coin_control_valid &= !coin_control.m_allow_other_inputs;
+            return CAmount{20'000};
+        }
 
-            EXPECT_TRUE(coin_control.m_allow_other_inputs);
-            return CAmount{100'000};
-        }));
+        unselected_coin_control_valid &= coin_control.m_allow_other_inputs;
+        return CAmount{100'000};
+    };
 
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl&,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>&,
+                                        const wallet::CCoinControl&,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         create_transaction_called = true;
         change_pos = -1;
         fee = 200;
@@ -1004,25 +1075,25 @@ void WalletQmlModelTests::sendAmountExhaustsBalance_usesCoinControlAvailableBala
 
     model->clearSelectedCoins();
     QCOMPARE(spy.count(), 4);
+    QVERIFY(selected_coin_control_valid);
+    QVERIFY(unselected_coin_control_valid);
 }
 
 void WalletQmlModelTests::scheduleFeeEstimates_usesDummyPreviewChangeDestination()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
-    std::atomic<int> create_transaction_calls{0};
     std::atomic<bool> saw_missing_change{false};
     std::atomic<bool> saw_wrong_change_type{false};
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        ++create_transaction_calls;
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>&,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         if (std::get_if<CNoDestination>(&coin_control.destChange)) {
             saw_missing_change = true;
         }
@@ -1036,7 +1107,7 @@ void WalletQmlModelTests::scheduleFeeEstimates_usesDummyPreviewChangeDestination
 
     model->scheduleFeeEstimates();
 
-    QTRY_COMPARE_WITH_TIMEOUT(create_transaction_calls.load(), 3, FEE_ESTIMATE_TIMEOUT_MS);
+    QTRY_COMPARE_WITH_TIMEOUT(wallet->calls.createTransaction.load(), 3, FEE_ESTIMATE_TIMEOUT_MS);
     QVERIFY(!saw_missing_change.load());
     QVERIFY(!saw_wrong_change_type.load());
 }
@@ -1044,23 +1115,25 @@ void WalletQmlModelTests::scheduleFeeEstimates_usesDummyPreviewChangeDestination
 void WalletQmlModelTests::prepareTransaction_usesStaticRegtestFeeOverride()
 {
     ChainSelectionGuard chain_guard{ChainType::REGTEST};
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model, VALID_REGTEST_ADDRESS);
 
-    bool saw_sign_false{false};
-    std::vector<unsigned int> requested_targets;
-    std::vector<CAmount> requested_fee_rates;
+    std::optional<FeeEstimateCall> call;
 
-    EXPECT_CALL(*wallet, getRequiredFee(1000)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool sign,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        if (!sign) saw_sign_false = true;
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
-        requested_fee_rates.push_back(coin_control.m_feerate.has_value() ? coin_control.m_feerate->GetFeePerK() : 0);
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getRequiredFee);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
+        call = FeeEstimateCall{
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate ? std::optional<CAmount>{coin_control.m_feerate->GetFeePerK()} : std::nullopt,
+            recipients.size(),
+        };
         change_pos = -1;
 
         if (!coin_control.m_feerate.has_value()) return util::Error{Untranslated("missing regtest fee override")};
@@ -1070,33 +1143,36 @@ void WalletQmlModelTests::prepareTransaction_usesStaticRegtestFeeOverride()
     };
 
     QVERIFY(model->prepareTransaction());
-    QVERIFY(!saw_sign_false);
     QVERIFY(model->currentTransaction() != nullptr);
     QCOMPARE(model->currentTransaction()->feeAmount()->satoshi(), CAmount{250});
-    QCOMPARE(requested_targets.size(), 1U);
-    QCOMPARE(requested_targets.at(0), 0U);
-    QCOMPARE(requested_fee_rates.size(), 1U);
-    QCOMPARE(requested_fee_rates.at(0), CAmount{wallet::DEFAULT_TRANSACTION_MINFEE});
+    QVERIFY(call.has_value());
+    CompareFeeEstimateCalls({*call}, {
+                                         {0, true, false, CAmount{wallet::DEFAULT_TRANSACTION_MINFEE}, 1},
+                                     });
 }
 
 void WalletQmlModelTests::prepareTransaction_usesCustomFeeRateWithoutRegtestOverride()
 {
     ChainSelectionGuard chain_guard{ChainType::REGTEST};
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model, VALID_REGTEST_ADDRESS);
 
-    std::vector<unsigned int> requested_targets;
-    std::vector<CAmount> requested_fee_rates;
+    std::optional<FeeEstimateCall> call;
 
-    EXPECT_CALL(*wallet, getRequiredFee(1000)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        requested_targets.push_back(coin_control.m_confirm_target.value_or(0));
-        requested_fee_rates.push_back(coin_control.m_feerate.has_value() ? coin_control.m_feerate->GetFeePerK() : 0);
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getRequiredFee);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
+        call = FeeEstimateCall{
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() || !coin_control.ListSelected().empty(),
+            coin_control.m_feerate ? std::optional<CAmount>{coin_control.m_feerate->GetFeePerK()} : std::nullopt,
+            recipients.size(),
+        };
         change_pos = -1;
 
         if (!coin_control.m_feerate.has_value()) {
@@ -1113,25 +1189,24 @@ void WalletQmlModelTests::prepareTransaction_usesCustomFeeRateWithoutRegtestOver
     QVERIFY(model->prepareTransaction());
     QVERIFY(model->currentTransaction() != nullptr);
     QCOMPARE(model->currentTransaction()->feeAmount()->satoshi(), CAmount{500});
-    QCOMPARE(requested_targets.size(), 1U);
-    QCOMPARE(requested_targets.at(0), 0U);
-    QCOMPARE(requested_fee_rates.size(), 1U);
-    QCOMPARE(requested_fee_rates.at(0), CAmount{2000});
+    QVERIFY(call.has_value());
+    CompareFeeEstimateCalls({*call}, {
+                                         {0, true, false, CAmount{2000}, 1},
+                                     });
 }
 
 void WalletQmlModelTests::prepareTransaction_reassignsAmountWhenFeeIncluded()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model, VALID_MAINNET_ADDRESS, /*subtract_fee_from_amount=*/true);
 
     bool saw_subtract_fee_from_amount{false};
     bool saw_wrong_recipient_count{false};
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>& recipients,
-                                           const wallet::CCoinControl&,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl&,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         if (recipients.size() != 1U) {
             saw_wrong_recipient_count = true;
             return util::Error{Untranslated("unexpected recipient count")};
@@ -1198,33 +1273,27 @@ void WalletQmlModelTests::walletQmlModelTransaction_reassignAmounts_excludesChan
 
 void WalletQmlModelTests::scheduleFeeEstimates_usesSelectedCoinsInCoinControl()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
     const COutPoint selected_outpoint{Txid{}, 5};
-    std::atomic<int> create_transaction_calls{0};
-    std::atomic<bool> saw_sign_true{false};
-    std::atomic<bool> saw_missing_selection{false};
-    std::atomic<bool> saw_other_inputs_allowed{false};
-    std::atomic<int> selected_count{-1};
-    std::vector<unsigned int> selected_targets;
+    ThreadSafeCallLog<SelectedCoinEstimateCall> calls;
 
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool sign,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        if (sign) saw_sign_true = true;
-        if (!coin_control.HasSelected() || !coin_control.IsSelected(selected_outpoint)) saw_missing_selection = true;
-        if (coin_control.m_allow_other_inputs) saw_other_inputs_allowed = true;
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>&,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         const auto selected = coin_control.ListSelected();
-        selected_count = static_cast<int>(selected.size());
-        if (selected.size() != 1U || selected.front() != selected_outpoint) saw_missing_selection = true;
-
-        selected_targets.push_back(coin_control.m_confirm_target.value_or(0));
-        ++create_transaction_calls;
+        calls.Append({
+            coin_control.m_confirm_target.value_or(0),
+            sign,
+            coin_control.HasSelected() && coin_control.IsSelected(selected_outpoint) && selected.size() == 1U && selected.front() == selected_outpoint,
+            coin_control.m_allow_other_inputs,
+            selected.size(),
+        });
         change_pos = -1;
         fee = coin_control.m_confirm_target.value_or(0) * 200;
         return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
@@ -1232,41 +1301,41 @@ void WalletQmlModelTests::scheduleFeeEstimates_usesSelectedCoinsInCoinControl()
 
     model->selectCoin(selected_outpoint);
 
-    QTRY_COMPARE_WITH_TIMEOUT(create_transaction_calls.load(), 3, FEE_ESTIMATE_TIMEOUT_MS);
-    QVERIFY(!saw_sign_true.load());
-    QVERIFY(!saw_missing_selection.load());
-    QVERIFY(!saw_other_inputs_allowed.load());
-    QCOMPARE(selected_count.load(), 1);
-    QCOMPARE(selected_targets.size(), 3U);
-    QCOMPARE(selected_targets.at(0), 1U);
-    QCOMPARE(selected_targets.at(1), 2U);
-    QCOMPARE(selected_targets.at(2), 6U);
+    QTRY_COMPARE_WITH_TIMEOUT(calls.Size(), size_t{3}, FEE_ESTIMATE_TIMEOUT_MS);
+    const auto selected_calls{calls.Snapshot()};
+    constexpr std::array expected_targets{1U, 2U, 6U};
+    for (size_t index{0}; index < selected_calls.size(); ++index) {
+        QCOMPARE(selected_calls[index].target, expected_targets[index]);
+        QVERIFY(!selected_calls[index].sign);
+        QVERIFY(selected_calls[index].expected_coin_selected);
+        QVERIFY(!selected_calls[index].allow_other_inputs);
+        QCOMPARE(selected_calls[index].selected_count, 1U);
+    }
 }
 
 void WalletQmlModelTests::prepareTransaction_disallowsOtherInputsWhenCoinsSelected()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
     const COutPoint selected_outpoint{Txid::FromUint256(uint256::ONE), 1};
     std::optional<bool> available_balance_allow_other_inputs;
     bool saw_selected_coin{false};
     bool saw_other_inputs_allowed{true};
-    int create_transaction_calls{0};
 
-    EXPECT_CALL(*wallet, getAvailableBalance(testing::_))
-        .WillOnce(Invoke([&](const wallet::CCoinControl& coin_control) {
-            available_balance_allow_other_inputs = coin_control.m_allow_other_inputs;
-            return 10 * COIN;
-        }));
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectExactly(wallet->calls.getAvailableBalance, 1);
+    wallet->ExpectExactly(wallet->calls.createTransaction, 1);
+    wallet->get_available_balance_fn = [&](const wallet::CCoinControl& coin_control) {
+        available_balance_allow_other_inputs = coin_control.m_allow_other_inputs;
+        return 10 * COIN;
+    };
 
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        ++create_transaction_calls;
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>&,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         saw_selected_coin = coin_control.HasSelected() && coin_control.IsSelected(selected_outpoint);
         saw_other_inputs_allowed = coin_control.m_allow_other_inputs;
         change_pos = -1;
@@ -1277,7 +1346,6 @@ void WalletQmlModelTests::prepareTransaction_disallowsOtherInputsWhenCoinsSelect
     model->selectCoin(selected_outpoint);
 
     QVERIFY(model->prepareTransaction());
-    QCOMPARE(create_transaction_calls, 1);
     QVERIFY(saw_selected_coin);
     QVERIFY(available_balance_allow_other_inputs.has_value());
     QVERIFY(!*available_balance_allow_other_inputs);
@@ -1286,21 +1354,18 @@ void WalletQmlModelTests::prepareTransaction_disallowsOtherInputsWhenCoinsSelect
 
 void WalletQmlModelTests::scheduleFeeEstimates_debouncesRapidRestarts()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     SetValidRecipient(*model);
 
-    std::atomic<int> create_transaction_calls{0};
-
-    EXPECT_CALL(*wallet, getNewDestinationValue(testing::_, testing::_)).Times(0);
+    [[maybe_unused]] auto verify_wallet = wallet->VerifyOnExit();
+    wallet->ExpectNoCalls(wallet->calls.getNewDestination);
     std::atomic<bool> saw_sign_true{false};
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>&,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool sign,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>&,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool sign,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         if (sign) saw_sign_true = true;
-        ++create_transaction_calls;
         change_pos = -1;
         fee = coin_control.m_confirm_target.value_or(0) * 250;
         return util::Result<CTransactionRef>{MakeTransactionRef(CMutableTransaction{})};
@@ -1310,7 +1375,7 @@ void WalletQmlModelTests::scheduleFeeEstimates_debouncesRapidRestarts()
     model->scheduleFeeEstimates();
     model->scheduleFeeEstimates();
 
-    QTRY_COMPARE_WITH_TIMEOUT(create_transaction_calls.load(), 3, FEE_ESTIMATE_TIMEOUT_MS);
+    QTRY_COMPARE_WITH_TIMEOUT(wallet->calls.createTransaction.load(), 3, FEE_ESTIMATE_TIMEOUT_MS);
     QVERIFY(!saw_sign_true.load());
     QTRY_VERIFY_WITH_TIMEOUT(!model->feeEstimatePending(), FEE_ESTIMATE_TIMEOUT_MS);
     QCOMPARE(model->estimatedFeeForTarget(1), QStringLiteral("0.00000250 ₿"));
@@ -1320,27 +1385,24 @@ void WalletQmlModelTests::scheduleFeeEstimates_debouncesRapidRestarts()
 
 void WalletQmlModelTests::scheduleFeeEstimates_invalidatesStalePreviewState()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
-    ON_CALL(*wallet, getAvailableBalance(testing::_)).WillByDefault(Return(50'000));
+    auto [wallet, model] = MakeWalletModel();
+    wallet->get_available_balance_fn = [](const wallet::CCoinControl&) { return CAmount{50'000}; };
     SetValidRecipient(*model);
 
     auto* recipient = model->sendRecipientList()->currentRecipient();
     QVERIFY(recipient != nullptr);
     recipient->amount()->setSatoshi(49'000);
 
-    std::atomic<int> create_transaction_calls{0};
     std::atomic<bool> stale_request_started{false};
     std::atomic<bool> fresh_request_started{false};
     QSemaphore release_stale_request;
     QSemaphore release_fresh_request;
 
-    wallet->createTransactionHandler = [&](const std::vector<wallet::CRecipient>& recipients,
-                                           const wallet::CCoinControl& coin_control,
-                                           bool,
-                                           int& change_pos,
-                                           CAmount& fee) -> util::Result<CTransactionRef> {
-        ++create_transaction_calls;
+    wallet->create_transaction_fn = [&](const std::vector<wallet::CRecipient>& recipients,
+                                        const wallet::CCoinControl& coin_control,
+                                        bool,
+                                        int& change_pos,
+                                        CAmount& fee) -> util::Result<CTransactionRef> {
         const CAmount total_amount = std::accumulate(recipients.begin(), recipients.end(), CAmount{0}, [](const CAmount total, const wallet::CRecipient& recipient) {
             return total + recipient.nAmount;
         });
@@ -1381,21 +1443,21 @@ void WalletQmlModelTests::scheduleFeeEstimates_invalidatesStalePreviewState()
     QTRY_COMPARE_WITH_TIMEOUT(model->estimatedFeeForTarget(2), QStringLiteral("0.00000200 ₿"), FEE_ESTIMATE_TIMEOUT_MS);
     QTRY_VERIFY_WITH_TIMEOUT(!model->feeEstimatePending(), FEE_ESTIMATE_TIMEOUT_MS);
     QVERIFY(model->sendAmountExhaustsBalance());
-    QVERIFY(create_transaction_calls.load() >= 6);
+    QVERIFY(wallet->calls.createTransaction.load() >= 6);
 }
 
 void WalletQmlModelTests::transactionChangedEmitsBalanceChanged()
 {
-    auto wallet = std::make_unique<NiceMock<MockWallet>>();
+    auto wallet = std::make_unique<MockWallet>();
     auto* wallet_ptr = wallet.get();
 
     CAmount balance{50 * COIN};
     interfaces::Wallet::TransactionChangedFn transaction_changed;
-    ON_CALL(*wallet_ptr, getBalance()).WillByDefault(Invoke([&] { return balance; }));
-    ON_CALL(*wallet_ptr, handleTransactionChanged(testing::_)).WillByDefault(Invoke([&](interfaces::Wallet::TransactionChangedFn fn) {
+    wallet_ptr->get_balance_fn = [&] { return balance; };
+    wallet_ptr->handle_transaction_changed_fn = [&](interfaces::Wallet::TransactionChangedFn fn) {
         transaction_changed = std::move(fn);
         return std::unique_ptr<interfaces::Handler>{};
-    }));
+    };
 
     WalletQmlModel model{std::move(wallet)};
     QSignalSpy balance_spy{&model, &WalletQmlModel::balanceChanged};
@@ -1412,8 +1474,7 @@ void WalletQmlModelTests::transactionChangedEmitsBalanceChanged()
 
 void WalletQmlModelTests::commitPaymentRequestUsesSelectedAddressType()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     model->currentPaymentRequest()->setLabel(QStringLiteral("typed receive"));
     model->currentPaymentRequest()->setAddressType(QStringLiteral("bech32m"));
@@ -1428,8 +1489,7 @@ void WalletQmlModelTests::commitPaymentRequestUsesSelectedAddressType()
 
 void WalletQmlModelTests::setCurrentPaymentRequestAddressUsesAddressListLabel()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->wallet_addresses.emplace_back(
         DecodeDestination(VALID_MAINNET_ADDRESS.toStdString()),
         true,
@@ -1444,8 +1504,7 @@ void WalletQmlModelTests::setCurrentPaymentRequestAddressUsesAddressListLabel()
 
 void WalletQmlModelTests::usePaymentRequestAsTemplatePreservesAddressType()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->get_new_destination_fn = [wallet](OutputType type, const std::string& label) -> util::Result<CTxDestination> {
         ++wallet->get_new_destination_calls;
         wallet->new_destination_types.push_back(type);
@@ -1466,8 +1525,7 @@ void WalletQmlModelTests::usePaymentRequestAsTemplatePreservesAddressType()
 
 void WalletQmlModelTests::commitPaymentRequestOnLockedWalletSignalsNeedsUnlock()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->get_new_destination_fn = [wallet](OutputType, const std::string& label) -> util::Result<CTxDestination> {
         ++wallet->get_new_destination_calls;
         wallet->new_destination_labels.push_back(label);
@@ -1487,8 +1545,7 @@ void WalletQmlModelTests::commitPaymentRequestOnLockedWalletSignalsNeedsUnlock()
 
 void WalletQmlModelTests::commitPaymentRequestWithPassphraseUnlocksRetriesAndRelocks()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->get_new_destination_fn = [wallet](OutputType, const std::string& label) -> util::Result<CTxDestination> {
         ++wallet->get_new_destination_calls;
         wallet->new_destination_labels.push_back(label);
@@ -1516,8 +1573,7 @@ void WalletQmlModelTests::commitPaymentRequestWithPassphraseUnlocksRetriesAndRel
 
 void WalletQmlModelTests::commitPaymentRequestWithPassphraseWrongPasswordSurfacesError()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->get_new_destination_fn = [wallet](OutputType, const std::string& label) -> util::Result<CTxDestination> {
         ++wallet->get_new_destination_calls;
         wallet->new_destination_labels.push_back(label);
@@ -1544,8 +1600,7 @@ void WalletQmlModelTests::commitPaymentRequestWithPassphraseWrongPasswordSurface
 
 void WalletQmlModelTests::removeReceiveRequestRemovesPendingActivityRow()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     model->currentPaymentRequest()->setLabel(QStringLiteral("request label"));
 
     QCOMPARE(model->activityListModel()->rowCount(), 0);
@@ -1562,8 +1617,7 @@ void WalletQmlModelTests::removeReceiveRequestRemovesPendingActivityRow()
 
 void WalletQmlModelTests::prepareTransactionOnLockedWalletRequiresPassword()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     QVERIFY(!model->prepareTransaction());
@@ -1578,8 +1632,7 @@ void WalletQmlModelTests::prepareTransactionOnLockedWalletRequiresPassword()
 
 void WalletQmlModelTests::prepareTransactionWithPrivateKeysDisabledDoesNotRequirePassword()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
     wallet->private_keys_disabled = true;
 
@@ -1594,8 +1647,7 @@ void WalletQmlModelTests::prepareTransactionWithPrivateKeysDisabledDoesNotRequir
 
 void WalletQmlModelTests::sendRecipientRejectsDustAmount()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* recipient = model->sendRecipientList()->currentRecipient();
     QVERIFY(recipient != nullptr);
 
@@ -1609,10 +1661,11 @@ void WalletQmlModelTests::sendRecipientRejectsDustAmount()
 
 void WalletQmlModelTests::sendRecipientUsesNodeDustRelayFee()
 {
-    FakePasswordWallet* wallet{nullptr};
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getDustRelayFee()).Times(AtLeast(1)).WillRepeatedly(Return(CFeeRate{10'000}));
-    auto model = MakeWalletModel(wallet, &node);
+    MockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.get_dust_relay_fee_fn = [] { return CFeeRate{10'000}; };
+    node.ExpectAtLeast(node.calls.getDustRelayFee, 1);
+    auto [wallet, model] = MakePasswordWalletModel(&node);
     auto* recipient = model->sendRecipientList()->currentRecipient();
     QVERIFY(recipient != nullptr);
 
@@ -1626,8 +1679,7 @@ void WalletQmlModelTests::sendRecipientUsesNodeDustRelayFee()
 
 void WalletQmlModelTests::prepareTransactionRejectsDuplicateRecipientsBeforeUnlock()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     model->sendRecipientList()->add();
@@ -1649,8 +1701,7 @@ void WalletQmlModelTests::prepareTransactionRejectsDuplicateRecipientsBeforeUnlo
 
 void WalletQmlModelTests::prepareTransactionWithPassphraseForwardsUtf8Bytes()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     const QString passphrase{QString::fromUtf8("pässwörd-₿")};
@@ -1665,8 +1716,7 @@ void WalletQmlModelTests::prepareTransactionWithPassphraseForwardsUtf8Bytes()
 
 void WalletQmlModelTests::prepareTransactionWithPassphraseRelocksWhenRecipientsInvalid()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* recipient = model->sendRecipientList()->currentRecipient();
     QVERIFY(recipient != nullptr);
     recipient->amount()->setSatoshi(1'000);
@@ -1685,8 +1735,7 @@ void WalletQmlModelTests::prepareTransactionWithPassphraseRelocksWhenRecipientsI
 
 void WalletQmlModelTests::prepareTransactionWithPassphraseRequiresCompleteMultiRecipient()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     model->sendRecipientList()->add();
@@ -1707,8 +1756,7 @@ void WalletQmlModelTests::prepareTransactionWithPassphraseRequiresCompleteMultiR
 
 void WalletQmlModelTests::prepareTransactionWithPassphraseRelocksWhenCustomFeeInvalid()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
     model->setCustomFeeEnabled(true);
     model->setCustomFeeRate(QStringLiteral("not-a-fee"));
@@ -1722,8 +1770,7 @@ void WalletQmlModelTests::prepareTransactionWithPassphraseRelocksWhenCustomFeeIn
 
 void WalletQmlModelTests::prepareTransactionWithPassphraseReportsCreateErrorAndRelocks()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     wallet->create_transaction_fn = [](const std::vector<wallet::CRecipient>&,
@@ -1746,8 +1793,7 @@ void WalletQmlModelTests::prepareTransactionWithPassphraseReportsCreateErrorAndR
 
 void WalletQmlModelTests::sendTransactionCommitsPreparedTransactionWithoutUnlockingAgain()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     QVERIFY(model->prepareTransactionWithPassphrase("secret"));
@@ -1767,8 +1813,7 @@ void WalletQmlModelTests::sendTransactionCommitsPreparedTransactionWithoutUnlock
 
 void WalletQmlModelTests::sendTransactionClearsSelectedCoins()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
     const COutPoint selected_outpoint{Txid::FromUint256(uint256::ONE), 1};
 
@@ -1782,8 +1827,7 @@ void WalletQmlModelTests::sendTransactionClearsSelectedCoins()
 
 void WalletQmlModelTests::clearingRecipientsClearsSelectedCoins()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     const COutPoint selected_outpoint{Txid::FromUint256(uint256::ONE), 1};
 
     model->selectCoin(selected_outpoint);
@@ -1795,8 +1839,7 @@ void WalletQmlModelTests::clearingRecipientsClearsSelectedCoins()
 
 void WalletQmlModelTests::saveCurrentTransactionAsPsbt_savesUnsignedPreparedTransaction()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
 
     const std::vector<unsigned char> script_sig_bytes{0x51};
@@ -1846,8 +1889,7 @@ void WalletQmlModelTests::saveCurrentTransactionAsPsbt_savesUnsignedPreparedTran
 
 void WalletQmlModelTests::importPsbtFromFile_opensOwnedUnsignedPsbtWithoutSigning()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     const COutPoint owned_outpoint{Txid::FromUint256(uint256::ONE), 0};
     wallet->txin_is_mine_fn = [owned_outpoint](const CTxIn& txin) {
@@ -1904,8 +1946,7 @@ void WalletQmlModelTests::importPsbtFromFile_opensOwnedUnsignedPsbtWithoutSignin
 
 void WalletQmlModelTests::importPsbtFromFile_opensForeignUnsignedPsbtForReviewOnly()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
@@ -1957,8 +1998,7 @@ void WalletQmlModelTests::importPsbtFromFile_opensForeignUnsignedPsbtForReviewOn
 
 void WalletQmlModelTests::saveReviewOnlyPsbt_preservesOriginalWithoutDerivationMetadata()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     PartiallySignedTransaction psbt{MakeReviewPsbt()};
     psbt.unknown[{0x50}] = {0x01};
@@ -2001,8 +2041,7 @@ void WalletQmlModelTests::saveReviewOnlyPsbt_preservesOriginalWithoutDerivationM
 
 void WalletQmlModelTests::discardCurrentTransaction_clearsReviewState()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
                                     PartiallySignedTransaction&,
@@ -2040,8 +2079,7 @@ void WalletQmlModelTests::discardCurrentTransaction_clearsReviewState()
 
 void WalletQmlModelTests::importPsbtFromFile_opensWatchOnlyUnsignedPsbtForReviewOnly()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->private_keys_disabled = true;
 
     const PartiallySignedTransaction psbt{MakeReviewPsbt()};
@@ -2075,8 +2113,7 @@ void WalletQmlModelTests::importPsbtFromFile_opensWatchOnlyUnsignedPsbtForReview
 
 void WalletQmlModelTests::saveCurrentTransactionAsPsbt_preservesImportedMetadata()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     PartiallySignedTransaction psbt{MakeReviewPsbt()};
     psbt.unknown[{0x50}] = {0x01};
@@ -2130,8 +2167,7 @@ void WalletQmlModelTests::saveCurrentTransactionAsPsbt_preservesImportedMetadata
 
 void WalletQmlModelTests::sendImportedPsbtWithPassphraseSignsOnceAndRelocks()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     const PartiallySignedTransaction psbt{MakeReviewPsbt()};
     const COutPoint owned_outpoint{FirstInputPrevout(psbt)};
@@ -2175,8 +2211,7 @@ void WalletQmlModelTests::sendImportedPsbtWithPassphraseSignsOnceAndRelocks()
 
 void WalletQmlModelTests::externalSignerApprovalSignsImportedPsbtOnlyOnce()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->private_keys_disabled = true;
     wallet->external_signer = true;
 
@@ -2219,8 +2254,7 @@ void WalletQmlModelTests::externalSignerApprovalSignsImportedPsbtOnlyOnce()
 
 void WalletQmlModelTests::externalSignerApprovalKeepsIncompleteSignedPsbt()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->private_keys_disabled = true;
     wallet->external_signer = true;
 
@@ -2279,9 +2313,8 @@ void WalletQmlModelTests::externalSignerApprovalKeepsIncompleteSignedPsbt()
 
 void WalletQmlModelTests::importPsbtFromFile_broadcastsCompleteForeignMultisigPsbt()
 {
-    NiceMock<MockNode> node;
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet, &node);
+    MockNode node;
+    auto [wallet, model] = MakePasswordWalletModel(&node);
 
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
@@ -2334,8 +2367,9 @@ void WalletQmlModelTests::importPsbtFromFile_broadcastsCompleteForeignMultisigPs
     QVERIFY(model->currentTransactionReviewMessage().isEmpty());
     QCOMPARE(wallet->commit_calls, 0);
 
-    EXPECT_CALL(node, broadcastTransaction(testing::_, testing::_, testing::_))
-        .WillOnce(Return(node::TransactionError::OK));
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.broadcast_transaction_fn = [](CTransactionRef, CAmount, std::string&) { return node::TransactionError::OK; };
+    node.ExpectExactly(node.calls.broadcastTransaction, 1);
     QVERIFY(model->broadcastCurrentTransaction());
     QCOMPARE(wallet->commit_calls, 0);
     QVERIFY(!model->currentTransactionCanBroadcast());
@@ -2344,9 +2378,8 @@ void WalletQmlModelTests::importPsbtFromFile_broadcastsCompleteForeignMultisigPs
 
 void WalletQmlModelTests::saveCompleteBroadcastableImportedPsbt_preservesOriginalPsbt()
 {
-    NiceMock<MockNode> node;
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet, &node);
+    MockNode node;
+    auto [wallet, model] = MakePasswordWalletModel(&node);
 
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
@@ -2420,8 +2453,7 @@ void WalletQmlModelTests::saveCompleteBroadcastableImportedPsbt_preservesOrigina
 
 void WalletQmlModelTests::importPsbtFromFile_skipsZeroValueOpReturnOutputs()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
@@ -2466,8 +2498,7 @@ void WalletQmlModelTests::importPsbtFromFile_skipsZeroValueOpReturnOutputs()
 
 void WalletQmlModelTests::importPsbtFromFile_opensUnsignedMultisigPsbtForReviewOnly()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     wallet->fill_psbt_fn = [wallet](const common::PSBTFillOptions& options,
                                     size_t* n_signed,
@@ -2511,9 +2542,8 @@ void WalletQmlModelTests::importPsbtFromFile_opensUnsignedMultisigPsbtForReviewO
 
 void WalletQmlModelTests::importPsbtFromFile_blocksBroadcastWhenFeeIsInvalid()
 {
-    NiceMock<MockNode> node;
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet, &node);
+    MockNode node;
+    auto [wallet, model] = MakePasswordWalletModel(&node);
 
     CKey key1;
     CKey key2;
@@ -2549,15 +2579,15 @@ void WalletQmlModelTests::importPsbtFromFile_blocksBroadcastWhenFeeIsInvalid()
         model->currentTransactionReviewMessage(),
         QString("The transaction fee is missing or invalid. Add valid input information before broadcasting."));
 
-    EXPECT_CALL(node, broadcastTransaction(testing::_, testing::_, testing::_)).Times(0);
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    node.ExpectNoCalls(node.calls.broadcastTransaction);
     QVERIFY(!model->broadcastCurrentTransaction());
     QCOMPARE(model->transactionError(), QString("This transaction is not ready to broadcast."));
 }
 
 void WalletQmlModelTests::importPsbtFromFile_returnsTransactionAlreadyKnownWhenTxIsInWallet()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
 
     CMutableTransaction mtx;
     mtx.vin.emplace_back(COutPoint{Txid::FromUint256(uint256::ONE), 0});
@@ -2586,8 +2616,7 @@ void WalletQmlModelTests::importPsbtFromFile_returnsTransactionAlreadyKnownWhenT
 
 void WalletQmlModelTests::bumpTransactionOnLockedWalletRequiresPassword()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* bump_model = model->bumpModel();
 
     bump_model->prepareFeeBump(QString::fromStdString(Txid::FromUint256(uint256::ONE).GetHex()), 1);
@@ -2604,8 +2633,7 @@ void WalletQmlModelTests::bumpTransactionOnLockedWalletRequiresPassword()
 
 void WalletQmlModelTests::bumpTransactionWithPassphraseUnlocksCommitsAndRelocks()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* bump_model = model->bumpModel();
 
     bump_model->prepareFeeBump(QString::fromStdString(Txid::FromUint256(uint256::ONE).GetHex()), 1);
@@ -2626,8 +2654,7 @@ void WalletQmlModelTests::bumpTransactionWithPassphraseUnlocksCommitsAndRelocks(
 
 void WalletQmlModelTests::bumpTransactionWithWrongPassphraseDoesNotSign()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->unlock_fn = [wallet](const SecureString& passphrase) {
         ++wallet->unlock_calls;
         wallet->unlock_passphrases.emplace_back(passphrase.begin(), passphrase.end());
@@ -2651,8 +2678,7 @@ void WalletQmlModelTests::bumpTransactionWithWrongPassphraseDoesNotSign()
 
 void WalletQmlModelTests::signVerifyMessageRejectsNonP2PKHAddress()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* sign_verify = model->signVerifyMessageModel();
 
     QVERIFY(!sign_verify->isLegacyP2PKHAddress(QString::fromLatin1(NON_P2PKH_ADDRESS)));
@@ -2663,8 +2689,7 @@ void WalletQmlModelTests::signVerifyMessageRejectsNonP2PKHAddress()
 
 void WalletQmlModelTests::signVerifyMessageSignsWithLegacyP2PKHAddress()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->encrypted = false;
     wallet->locked = false;
     auto* sign_verify = model->signVerifyMessageModel();
@@ -2680,8 +2705,7 @@ void WalletQmlModelTests::signVerifyMessageSignsWithLegacyP2PKHAddress()
 
 void WalletQmlModelTests::signVerifyMessageWithPassphraseUnlocksSignsAndRelocks()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* sign_verify = model->signVerifyMessageModel();
 
     QVERIFY(!sign_verify->signMessage(VALID_MAINNET_ADDRESS, "hello"));
@@ -2697,8 +2721,7 @@ void WalletQmlModelTests::signVerifyMessageWithPassphraseUnlocksSignsAndRelocks(
 
 void WalletQmlModelTests::signVerifyMessageSurfacesSigningFailure()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->encrypted = false;
     wallet->locked = false;
     wallet->sign_message_fn = [](const std::string&, const PKHash&, std::string&) {
@@ -2720,8 +2743,7 @@ void WalletQmlModelTests::signVerifyMessageVerifiesValidSignature()
     std::string signature;
     QVERIFY(MessageSign(key, message.toStdString(), signature));
 
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* sign_verify = model->signVerifyMessageModel();
 
     QVERIFY(sign_verify->isLegacyP2PKHAddress(address));
@@ -2732,8 +2754,7 @@ void WalletQmlModelTests::signVerifyMessageVerifiesValidSignature()
 
 void WalletQmlModelTests::signVerifyMessageSignsEmptyMessage()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->encrypted = false;
     wallet->locked = false;
     auto* sign_verify = model->signVerifyMessageModel();
@@ -2747,8 +2768,7 @@ void WalletQmlModelTests::signVerifyMessageSignsEmptyMessage()
 
 void WalletQmlModelTests::signVerifyMessageWrongPassphraseSurfacesErrorAndDoesNotRelock()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->unlock_fn = [wallet](const SecureString& passphrase) {
         ++wallet->unlock_calls;
         wallet->unlock_passphrases.emplace_back(passphrase.begin(), passphrase.end());
@@ -2775,8 +2795,7 @@ void WalletQmlModelTests::signVerifyMessageWithoutWalletSurfacesError()
 
 void WalletQmlModelTests::signVerifyMessageClearResetsState()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     wallet->encrypted = false;
     wallet->locked = false;
     auto* sign_verify = model->signVerifyMessageModel();
@@ -2796,8 +2815,7 @@ void WalletQmlModelTests::signVerifyMessageClearResetsState()
 
 void WalletQmlModelTests::signVerifyMessageVerifyRejectsEmptySignature()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     auto* sign_verify = model->signVerifyMessageModel();
 
     QVERIFY(!sign_verify->verifyMessage(VALID_MAINNET_ADDRESS, "hello", QString()));
@@ -2806,8 +2824,7 @@ void WalletQmlModelTests::signVerifyMessageVerifyRejectsEmptySignature()
 
 void WalletQmlModelTests::sendTransactionWithPrivateKeysDisabledDoesNotCommit()
 {
-    FakePasswordWallet* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakePasswordWalletModel();
     SetPasswordRecipient(*model, 1'000);
     wallet->private_keys_disabled = true;
 

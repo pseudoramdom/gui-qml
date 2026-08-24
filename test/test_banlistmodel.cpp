@@ -47,28 +47,24 @@ private Q_SLOTS:
 
 void BanListModelTests::refreshPopulatesRolesAndRows()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     banmap_t banned;
     const CSubNet subnet_a = ParseSubnet("10.0.0.0/8");
     const CSubNet subnet_b = ParseSubnet("127.0.0.1/32");
     banned.emplace(subnet_a, MakeBanEntry(1'900'000'000));
     banned.emplace(subnet_b, MakeBanEntry(2'000'000'000));
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getBanned(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(banned), Return(true)));
+    MockNode node;
+    node.get_banned_fn = [&](banmap_t& result) {
+        result = banned;
+        return true;
+    };
 
     BanListModel model{node, nullptr};
     QSignalSpy count_spy(&model, &BanListModel::countChanged);
 
     model.refresh();
 
+    QCOMPARE(node.calls.getBanned.load(), 1);
     QCOMPARE(model.count(), 2);
     QCOMPARE(model.rowCount(), 2);
     QCOMPARE(model.rowCount(model.index(0, 0)), 0);
@@ -97,85 +93,74 @@ void BanListModelTests::refreshPopulatesRolesAndRows()
 
 void BanListModelTests::unbanAtTargetsSelectedSubnet()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-    using ::testing::Truly;
-
     banmap_t banned;
     const CSubNet subnet = ParseSubnet("10.0.0.0/8");
     banned.emplace(subnet, MakeBanEntry(1'900'000'000));
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getBanned(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(banned), Return(true)));
+    MockNode node;
+    node.get_banned_fn = [&](banmap_t& result) {
+        result = banned;
+        return true;
+    };
 
     BanListModel model{node, nullptr};
     model.refresh();
 
-    EXPECT_CALL(node, unban(Truly([&](const CSubNet& value) {
-        return value.ToString() == subnet.ToString();
-    }))).Times(1).WillOnce(Return(true));
+    bool received_expected_subnet{false};
+    node.unban_fn = [&](const CSubNet& value) {
+        received_expected_subnet = value.ToString() == subnet.ToString();
+        return true;
+    };
     QVERIFY(model.unbanAt(0));
+    QCOMPARE(node.calls.getBanned.load(), 1);
+    QCOMPARE(node.calls.unban.load(), 1);
+    QVERIFY(received_expected_subnet);
 }
 
 void BanListModelTests::unbanAtReturnsFalseWhenNodeRejectsSubnet()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     banmap_t banned;
     banned.emplace(ParseSubnet("10.0.0.0/8"), MakeBanEntry(1'900'000'000));
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getBanned(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(banned), Return(true)));
+    MockNode node;
+    node.get_banned_fn = [&](banmap_t& result) {
+        result = banned;
+        return true;
+    };
 
     BanListModel model{node, nullptr};
     model.refresh();
 
-    EXPECT_CALL(node, unban(_)).Times(1).WillOnce(Return(false));
+    node.unban_fn = [](const CSubNet&) { return false; };
     QVERIFY(!model.unbanAt(0));
+    QCOMPARE(node.calls.getBanned.load(), 1);
+    QCOMPARE(node.calls.unban.load(), 1);
 }
 
 void BanListModelTests::unbanAtIgnoresInvalidRows()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     banmap_t banned;
     banned.emplace(ParseSubnet("10.0.0.0/8"), MakeBanEntry(1'900'000'000));
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getBanned(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(banned), Return(true)));
+    MockNode node;
+    node.get_banned_fn = [&](banmap_t& result) {
+        result = banned;
+        return true;
+    };
 
     BanListModel model{node, nullptr};
     model.refresh();
 
-    EXPECT_CALL(node, unban(_)).Times(0);
     QVERIFY(!model.unbanAt(-1));
     QVERIFY(!model.unbanAt(42));
+    QCOMPARE(node.calls.getBanned.load(), 1);
+    QCOMPARE(node.calls.unban.load(), 0);
 }
 
-int RunBanListModelTests(int argc, char* argv[])
-{
-    BanListModelTests tests;
-    return QTest::qExec(&tests, argc, argv);
-}
-
-#ifndef BITCOINQML_NO_TEST_MAIN
+#ifdef BITCOINQML_NO_TEST_MAIN
+#include <test/qt_test_registry.h>
+BITCOINQML_REGISTER_QT_TEST(BanListModelTests)
+#else
 QTEST_MAIN(BanListModelTests)
 #endif
 #include "test_banlistmodel.moc"

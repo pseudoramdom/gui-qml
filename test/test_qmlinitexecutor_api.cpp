@@ -2,15 +2,14 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <QtTest/QtTest>
-
-#include <test/gmocktestfixture.h>
 #include <net_processing.h>
-#include <test/mocks/mocknode.h>
 #include <qml/initexecutor.h>
-
+#include <test/mocks/mocknode.h>
 #include <util/translation.h>
 
+#include <QtTest/QtTest>
+
+#include <atomic>
 #include <stdexcept>
 
 Q_DECLARE_METATYPE(interfaces::BlockAndHeaderTipInfo)
@@ -19,7 +18,7 @@ namespace {
 constexpr auto SIGNAL_TIMEOUT{5'000};
 }
 
-class QmlInitExecutorApiTests : public GmockTestFixture
+class QmlInitExecutorApiTests : public QObject
 {
     Q_OBJECT
 
@@ -38,14 +37,11 @@ void QmlInitExecutorApiTests::initTestCase()
 
 void QmlInitExecutorApiTests::initializeEmitsResultAndRunsOffMainThread()
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::StrictMock;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    std::atomic_bool ran_off_main_thread{false};
 
-    StrictMock<MockNode> node;
-    bool ran_off_main_thread{false};
-
-    EXPECT_CALL(node, appInitMain(_)).WillOnce(Invoke([&](interfaces::BlockAndHeaderTipInfo* tip_info) {
+    node.app_init_main_fn = [&](interfaces::BlockAndHeaderTipInfo* tip_info) {
         ran_off_main_thread = QThread::currentThread() != QCoreApplication::instance()->thread();
         tip_info->block_height = 101;
         tip_info->block_time = 1'700'000'001;
@@ -53,7 +49,7 @@ void QmlInitExecutorApiTests::initializeEmitsResultAndRunsOffMainThread()
         tip_info->header_time = 1'700'000'099;
         tip_info->verification_progress = 0.75;
         return true;
-    }));
+    };
 
     QmlInitExecutor executor{node};
     QSignalSpy initialize_spy(&executor, &QmlInitExecutor::initializeResult);
@@ -64,7 +60,8 @@ void QmlInitExecutorApiTests::initializeEmitsResultAndRunsOffMainThread()
     QVERIFY(initialize_spy.wait(SIGNAL_TIMEOUT));
     QCOMPARE(initialize_spy.count(), 1);
     QCOMPARE(runaway_spy.count(), 0);
-    QVERIFY(ran_off_main_thread);
+    QVERIFY(ran_off_main_thread.load());
+    QCOMPARE(node.calls.appInitMain.load(), 1);
 
     const QList<QVariant> arguments = initialize_spy.takeFirst();
     QCOMPARE(arguments.at(0).toBool(), true);
@@ -79,15 +76,12 @@ void QmlInitExecutorApiTests::initializeEmitsResultAndRunsOffMainThread()
 
 void QmlInitExecutorApiTests::initializeEmitsRunawayExceptionOnFailure()
 {
-    using ::testing::_;
-    using ::testing::Invoke;
-    using ::testing::StrictMock;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
 
-    StrictMock<MockNode> node;
-
-    EXPECT_CALL(node, appInitMain(_)).WillOnce(Invoke([](interfaces::BlockAndHeaderTipInfo*) -> bool {
+    node.app_init_main_fn = [](interfaces::BlockAndHeaderTipInfo*) -> bool {
         throw std::runtime_error{"init failed"};
-    }));
+    };
 
     QmlInitExecutor executor{node};
     QSignalSpy initialize_spy(&executor, &QmlInitExecutor::initializeResult);
@@ -99,19 +93,18 @@ void QmlInitExecutorApiTests::initializeEmitsRunawayExceptionOnFailure()
     QCOMPARE(runaway_spy.count(), 1);
     QCOMPARE(initialize_spy.count(), 0);
     QCOMPARE(runaway_spy.takeFirst().at(0).toString(), QString{"init failed"});
+    QCOMPARE(node.calls.appInitMain.load(), 1);
 }
 
 void QmlInitExecutorApiTests::shutdownEmitsResultAndRunsOffMainThread()
 {
-    using ::testing::Invoke;
-    using ::testing::StrictMock;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
+    std::atomic_bool ran_off_main_thread{false};
 
-    StrictMock<MockNode> node;
-    bool ran_off_main_thread{false};
-
-    EXPECT_CALL(node, appShutdown()).WillOnce(Invoke([&] {
+    node.app_shutdown_fn = [&] {
         ran_off_main_thread = QThread::currentThread() != QCoreApplication::instance()->thread();
-    }));
+    };
 
     QmlInitExecutor executor{node};
     QSignalSpy shutdown_spy(&executor, &QmlInitExecutor::shutdownResult);
@@ -122,19 +115,18 @@ void QmlInitExecutorApiTests::shutdownEmitsResultAndRunsOffMainThread()
     QVERIFY(shutdown_spy.wait(SIGNAL_TIMEOUT));
     QCOMPARE(shutdown_spy.count(), 1);
     QCOMPARE(runaway_spy.count(), 0);
-    QVERIFY(ran_off_main_thread);
+    QVERIFY(ran_off_main_thread.load());
+    QCOMPARE(node.calls.appShutdown.load(), 1);
 }
 
 void QmlInitExecutorApiTests::shutdownEmitsRunawayExceptionOnFailure()
 {
-    using ::testing::Invoke;
-    using ::testing::StrictMock;
+    StrictMockNode node;
+    [[maybe_unused]] auto verify_node = node.VerifyOnExit();
 
-    StrictMock<MockNode> node;
-
-    EXPECT_CALL(node, appShutdown()).WillOnce(Invoke([] {
+    node.app_shutdown_fn = [] {
         throw std::runtime_error{"shutdown failed"};
-    }));
+    };
 
     QmlInitExecutor executor{node};
     QSignalSpy shutdown_spy(&executor, &QmlInitExecutor::shutdownResult);
@@ -146,6 +138,7 @@ void QmlInitExecutorApiTests::shutdownEmitsRunawayExceptionOnFailure()
     QCOMPARE(runaway_spy.count(), 1);
     QCOMPARE(shutdown_spy.count(), 0);
     QCOMPARE(runaway_spy.takeFirst().at(0).toString(), QString{"shutdown failed"});
+    QCOMPARE(node.calls.appShutdown.load(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

@@ -4,7 +4,6 @@
 
 #include <QtTest/QtTest>
 
-#include <test/gmocktestfixture.h>
 #include <test/mocks/mocknode.h>
 #include <qml/models/peerlistsortproxy.h>
 #include <qml/models/peerlistmodel.h>
@@ -44,7 +43,7 @@ constexpr auto AUTO_REFRESH_TRIGGER_TIMEOUT{2'000};
 constexpr auto AUTO_REFRESH_STOP_WAIT{450};
 } // namespace
 
-class PeerListModelTests : public GmockTestFixture
+class PeerListModelTests : public QObject
 {
     Q_OBJECT
 
@@ -58,17 +57,12 @@ private Q_SLOTS:
 
 void PeerListModelTests::mapsRoleData()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     const auto stats{MakeStats({MakeNodeStats(7, "127.0.0.1:8333", false, ConnectionType::OUTBOUND_FULL_RELAY, NET_IPV4)})};
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getNodesStats(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(stats), Return(true)));
+    MockNode node;
+    node.get_nodes_stats_fn = [&](interfaces::Node::NodesStats& result) {
+        result = stats;
+        return true;
+    };
 
     PeerListModel model{node, nullptr};
     QCOMPARE(model.rowCount(), 1);
@@ -101,16 +95,11 @@ void PeerListModelTests::mapsRoleData()
     QCOMPARE(model.flags(QModelIndex{}), Qt::NoItemFlags);
     QVERIFY(model.flags(index).testFlag(Qt::ItemIsSelectable));
     QVERIFY(model.flags(index).testFlag(Qt::ItemIsEnabled));
+    QCOMPARE(node.calls.getNodesStats.load(), 1);
 }
 
 void PeerListModelTests::refreshUpdatesRows()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     const auto stats_initial{MakeStats({
         MakeNodeStats(1, "10.0.0.1:8333", true, ConnectionType::INBOUND, NET_IPV4),
         MakeNodeStats(2, "10.0.0.2:8333", false, ConnectionType::MANUAL, NET_IPV6),
@@ -123,12 +112,13 @@ void PeerListModelTests::refreshUpdatesRows()
         MakeNodeStats(3, "10.0.0.3:8333", false, ConnectionType::BLOCK_RELAY, NET_ONION),
     })};
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getNodesStats(_))
-        .Times(3)
-        .WillOnce(DoAll(SetArgReferee<0>(stats_initial), Return(true)))
-        .WillOnce(DoAll(SetArgReferee<0>(stats_remove), Return(true)))
-        .WillOnce(DoAll(SetArgReferee<0>(stats_insert), Return(true)));
+    MockNode node;
+    const std::vector<interfaces::Node::NodesStats> responses{stats_initial, stats_remove, stats_insert};
+    size_t response_index{0};
+    node.get_nodes_stats_fn = [&](interfaces::Node::NodesStats& result) {
+        result = responses.at(response_index++);
+        return true;
+    };
 
     PeerListModel model{node, nullptr};
     QCOMPARE(model.rowCount(), 2);
@@ -143,23 +133,21 @@ void PeerListModelTests::refreshUpdatesRows()
     QCOMPARE(model.rowCount(), 2);
     QCOMPARE(model.data(model.index(0, 0), PeerListModel::NetNodeId).toLongLong(), 2LL);
     QCOMPARE(model.data(model.index(1, 0), PeerListModel::NetNodeId).toLongLong(), 3LL);
+    QCOMPARE(node.calls.getNodesStats.load(), 3);
 }
 
 void PeerListModelTests::refreshHandlesGetNodesStatsFailure()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     const auto stats{MakeStats({MakeNodeStats(1, "10.0.0.1:8333", true, ConnectionType::INBOUND, NET_IPV4)})};
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getNodesStats(_))
-        .Times(2)
-        .WillOnce(DoAll(SetArgReferee<0>(stats), Return(true)))
-        .WillOnce(Return(false));
+    MockNode node;
+    node.get_nodes_stats_fn = [&](interfaces::Node::NodesStats& result) {
+        if (node.calls.getNodesStats.load() == 1) {
+            result = stats;
+            return true;
+        }
+        return false;
+    };
 
     PeerListModel model{node, nullptr};
     QCOMPARE(model.rowCount(), 1);
@@ -168,26 +156,20 @@ void PeerListModelTests::refreshHandlesGetNodesStatsFailure()
     model.refresh();
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.data(model.index(0, 0), PeerListModel::NetNodeId).toLongLong(), 1LL);
+    QCOMPARE(node.calls.getNodesStats.load(), 2);
 }
 
 void PeerListModelTests::startStopAutoRefresh()
 {
-    using ::testing::_;
-    using ::testing::AtLeast;
-    using ::testing::Invoke;
-    using ::testing::NiceMock;
-
     const auto stats{MakeStats({MakeNodeStats(1, "10.0.0.1:8333", true, ConnectionType::INBOUND, NET_IPV4)})};
 
-    NiceMock<MockNode> node;
+    MockNode node;
     int get_nodes_stats_calls{0};
-    EXPECT_CALL(node, getNodesStats(_))
-        .Times(AtLeast(2))
-        .WillRepeatedly(Invoke([&](interfaces::Node::NodesStats& out_stats) {
-            ++get_nodes_stats_calls;
-            out_stats = stats;
-            return true;
-        }));
+    node.get_nodes_stats_fn = [&](interfaces::Node::NodesStats& out_stats) {
+        ++get_nodes_stats_calls;
+        out_stats = stats;
+        return true;
+    };
 
     PeerListModel model{node, nullptr};
     const int calls_after_ctor = get_nodes_stats_calls;
@@ -200,16 +182,11 @@ void PeerListModelTests::startStopAutoRefresh()
     const int calls_after_stop = get_nodes_stats_calls;
     QTest::qWait(AUTO_REFRESH_STOP_WAIT);
     QCOMPARE(get_nodes_stats_calls, calls_after_stop);
+    QVERIFY(node.calls.getNodesStats.load() >= 2);
 }
 
 void PeerListModelTests::sortProxySortsByRoles()
 {
-    using ::testing::_;
-    using ::testing::DoAll;
-    using ::testing::NiceMock;
-    using ::testing::Return;
-    using ::testing::SetArgReferee;
-
     auto stats_a = MakeNodeStats(10, "10.0.0.20:8333", false, ConnectionType::MANUAL, NET_IPV6);
     stats_a.m_connected = NodeClock::time_point{std::chrono::seconds{200}};
     stats_a.m_min_ping_time = std::chrono::microseconds{5'000};
@@ -239,10 +216,11 @@ void PeerListModelTests::sortProxySortsByRoles()
         {stats_c.nodeid, stats_c},
     };
 
-    NiceMock<MockNode> node;
-    EXPECT_CALL(node, getNodesStats(_))
-        .Times(1)
-        .WillOnce(DoAll(SetArgReferee<0>(stats), Return(true)));
+    MockNode node;
+    node.get_nodes_stats_fn = [&](interfaces::Node::NodesStats& result) {
+        result = stats;
+        return true;
+    };
 
     PeerListModel model{node, nullptr};
     PeerListSortProxy proxy{nullptr};
@@ -289,6 +267,7 @@ void PeerListModelTests::sortProxySortsByRoles()
     assert_sort("sent", [](const CNodeStats& left, const CNodeStats& right) { return left.nSendBytes < right.nSendBytes; });
     assert_sort("received", [](const CNodeStats& left, const CNodeStats& right) { return left.nRecvBytes < right.nRecvBytes; });
     assert_sort("subversion", [](const CNodeStats& left, const CNodeStats& right) { return left.cleanSubVer.compare(right.cleanSubVer) < 0; });
+    QCOMPARE(node.calls.getNodesStats.load(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

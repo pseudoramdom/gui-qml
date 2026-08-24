@@ -6,6 +6,8 @@ project(BitcoinCoreApp
   LANGUAGES CXX
 )
 
+include(CMakeDependentOption)
+
 # Language setup
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_HOST_APPLE)
   # We do not use the install_name_tool when cross-compiling for macOS.
@@ -53,6 +55,7 @@ set(USE_QRCODE TRUE)
 # We need this libraries, can ignore the executable bitcoin-qt
 set(BUILD_GUI ON)
 set(ENABLE_WALLET ON)
+cmake_dependent_option(BUILD_APP_TESTS "Build tests for the app" ON "BUILD_GUI" OFF)
 
 # Bitcoin Core codebase
 # Builds libraries: univalue, core_interface, bitcoin_node, bitcoin_wallet
@@ -193,7 +196,6 @@ target_link_libraries(bitcoin-core-app
 )
 qt6_import_qml_plugins(bitcoin-core-app)
 
-option(BUILD_APP_TESTS "Build unit tests for the app" OFF)
 if(BUILD_APP_TESTS)
   include(CTest)
   enable_testing()

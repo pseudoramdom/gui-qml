@@ -56,14 +56,6 @@ jobs:
             libgl-dev \
             libqrencode-dev
 
-      - name: Install test dependencies
-        if: env.BUILD_APP_TESTS == 'ON'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtest-dev \
-            libgmock-dev
-
       - name: Configure (CMake)
         run: |
           cmake -S . -B build -G Ninja \

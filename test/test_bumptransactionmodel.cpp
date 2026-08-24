@@ -12,16 +12,12 @@
 #include <memory>
 
 namespace {
-using ::testing::Invoke;
-using ::testing::NiceMock;
-using ::testing::Return;
-
 const auto TEST_TXID = QStringLiteral("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-std::unique_ptr<NiceMock<MockWallet>> MakeMockWallet()
+std::unique_ptr<MockWallet> MakeBumpableWallet()
 {
-    auto wallet = std::make_unique<NiceMock<MockWallet>>();
-    ON_CALL(*wallet, transactionCanBeBumped(testing::_)).WillByDefault(Return(true));
+    auto wallet = std::make_unique<MockWallet>();
+    wallet->transaction_can_be_bumped_fn = [](const Txid&) { return true; };
     return wallet;
 }
 } // namespace
@@ -33,21 +29,20 @@ class BumpTransactionModelTests : public QObject
 private Q_SLOTS:
     void stateIsIdleByDefault()
     {
-        auto wallet = MakeMockWallet();
+        auto wallet = MakeBumpableWallet();
         BumpTransactionModel model(wallet.get());
         QCOMPARE(model.state(), BumpTransactionModel::Idle);
     }
 
     void prepareFeeBump_transitionsToNeedsConfirmation()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
 
         BumpTransactionModel model(wallet.get());
         QSignalSpy stateSpy(&model, &BumpTransactionModel::stateChanged);
@@ -60,14 +55,13 @@ private Q_SLOTS:
 
     void prepareFeeBump_populatesFees()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);
@@ -79,13 +73,12 @@ private Q_SLOTS:
 
     void prepareFeeBump_failureSetsErrorState()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>& errors,
-                                     CAmount&, CAmount&, CMutableTransaction&) {
-                errors.emplace_back(Untranslated("insufficient fee"));
-                return false;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>& errors,
+                                                CAmount&, CAmount&, CMutableTransaction&) {
+            errors.emplace_back(Untranslated("insufficient fee"));
+            return false;
+        };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);
@@ -96,7 +89,7 @@ private Q_SLOTS:
 
     void prepareFeeBump_invalidTxidFails()
     {
-        auto wallet = MakeMockWallet();
+        auto wallet = MakeBumpableWallet();
         BumpTransactionModel model(wallet.get());
 
         model.prepareFeeBump(QStringLiteral("not-a-txid"), 1);
@@ -115,20 +108,18 @@ private Q_SLOTS:
 
     void confirmFeeBump_signsAndCommits()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
-        ON_CALL(*wallet, signBumpTransaction(testing::_)).WillByDefault(Return(true));
-        ON_CALL(*wallet, commitBumpTransaction(testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, CMutableTransaction&&, std::vector<bilingual_str>&, Txid& bumped_txid) {
-                bumped_txid = Txid::FromUint256(*uint256::FromHex("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
-                return true;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
+        wallet->sign_bump_transaction_fn = [](CMutableTransaction&) { return true; };
+        wallet->commit_bump_transaction_fn = [](const Txid&, CMutableTransaction&&, std::vector<bilingual_str>&, Txid& bumped_txid) {
+            bumped_txid = Txid::FromUint256(*uint256::FromHex("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+            return true;
+        };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);
@@ -142,16 +133,14 @@ private Q_SLOTS:
 
     void confirmFeeBump_signFailureDoesNotCommit()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
-        ON_CALL(*wallet, signBumpTransaction(testing::_)).WillByDefault(Return(false));
-        EXPECT_CALL(*wallet, commitBumpTransaction(testing::_, testing::_, testing::_, testing::_)).Times(0);
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
+        wallet->sign_bump_transaction_fn = [](CMutableTransaction&) { return false; };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);
@@ -159,11 +148,12 @@ private Q_SLOTS:
         model.confirmFeeBump();
 
         QCOMPARE(model.state(), BumpTransactionModel::Failed);
+        QCOMPARE(wallet->calls.commitBumpTransaction.load(), 0);
     }
 
     void confirmFeeBump_rejectsWhenNotReady()
     {
-        auto wallet = MakeMockWallet();
+        auto wallet = MakeBumpableWallet();
         BumpTransactionModel model(wallet.get());
 
         model.confirmFeeBump();
@@ -173,19 +163,18 @@ private Q_SLOTS:
 
     void confirmFeeBump_rechecksEligibility()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);
 
-        ON_CALL(*wallet, transactionCanBeBumped(testing::_)).WillByDefault(Return(false));
+        wallet->transaction_can_be_bumped_fn = [](const Txid&) { return false; };
         model.confirmFeeBump();
 
         QCOMPARE(model.state(), BumpTransactionModel::Failed);
@@ -193,14 +182,13 @@ private Q_SLOTS:
 
     void reset_clearsState()
     {
-        auto wallet = MakeMockWallet();
-        ON_CALL(*wallet, createBumpTransaction(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(Invoke([](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
-                                     CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
-                old_fee = 500;
-                new_fee = 1000;
-                return true;
-            }));
+        auto wallet = MakeBumpableWallet();
+        wallet->create_bump_transaction_fn = [](const Txid&, const wallet::CCoinControl&, std::vector<bilingual_str>&,
+                                                CAmount& old_fee, CAmount& new_fee, CMutableTransaction&) {
+            old_fee = 500;
+            new_fee = 1000;
+            return true;
+        };
 
         BumpTransactionModel model(wallet.get());
         model.prepareFeeBump(TEST_TXID, 1);

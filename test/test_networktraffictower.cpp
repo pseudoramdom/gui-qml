@@ -15,9 +15,6 @@
 #include <QThread>
 
 namespace {
-using ::testing::Invoke;
-using ::testing::NiceMock;
-
 constexpr int TEST_SAMPLE_INTERVAL_MS{10};
 constexpr int ASYNC_TIMEOUT_MS{1'000};
 } // namespace
@@ -35,22 +32,22 @@ private Q_SLOTS:
 
 void NetworkTrafficTowerTests::samplesOffGuiThreadWithoutPublishingWhileInactive()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     std::atomic<int> received_calls{0};
     std::atomic<int> sent_calls{0};
     std::atomic<bool> sampled_on_gui_thread{false};
     QThread* const gui_thread{QThread::currentThread()};
 
-    ON_CALL(node, getTotalBytesRecv()).WillByDefault(Invoke([&] {
+    node.get_total_bytes_recv_fn = [&] {
         ++received_calls;
         if (QThread::currentThread() == gui_thread) sampled_on_gui_thread = true;
         return int64_t{1'000};
-    }));
-    ON_CALL(node, getTotalBytesSent()).WillByDefault(Invoke([&] {
+    };
+    node.get_total_bytes_sent_fn = [&] {
         ++sent_calls;
         if (QThread::currentThread() == gui_thread) sampled_on_gui_thread = true;
         return int64_t{2'000};
-    }));
+    };
 
     {
         NetworkTrafficTower tower{node, TEST_SAMPLE_INTERVAL_MS};
@@ -74,18 +71,18 @@ void NetworkTrafficTowerTests::samplesOffGuiThreadWithoutPublishingWhileInactive
 
 void NetworkTrafficTowerTests::activeControlsPublishingWithoutDiscardingBackgroundHistory()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     std::atomic<int64_t> total_received{1'000};
     std::atomic<int64_t> total_sent{2'000};
     std::atomic<int> received_calls{0};
 
-    ON_CALL(node, getTotalBytesRecv()).WillByDefault(Invoke([&] {
+    node.get_total_bytes_recv_fn = [&] {
         ++received_calls;
         return total_received.load();
-    }));
-    ON_CALL(node, getTotalBytesSent()).WillByDefault(Invoke([&] {
+    };
+    node.get_total_bytes_sent_fn = [&] {
         return total_sent.load();
-    }));
+    };
 
     NetworkTrafficTower tower{node, TEST_SAMPLE_INTERVAL_MS};
     QSignalSpy received_list_spy{&tower, &NetworkTrafficTower::receivedRateListChanged};
@@ -124,16 +121,16 @@ void NetworkTrafficTowerTests::activeControlsPublishingWithoutDiscardingBackgrou
 
 void NetworkTrafficTowerTests::filterWindowChangesPreserveTotalsAndHistory()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     std::atomic<int> received_calls{0};
 
-    ON_CALL(node, getTotalBytesRecv()).WillByDefault(Invoke([&] {
+    node.get_total_bytes_recv_fn = [&] {
         ++received_calls;
         return int64_t{1'000};
-    }));
-    ON_CALL(node, getTotalBytesSent()).WillByDefault(Invoke([] {
+    };
+    node.get_total_bytes_sent_fn = [] {
         return int64_t{2'000};
-    }));
+    };
 
     NetworkTrafficTower tower{node, TEST_SAMPLE_INTERVAL_MS};
     tower.setActive(true);
@@ -156,16 +153,16 @@ void NetworkTrafficTowerTests::filterWindowChangesPreserveTotalsAndHistory()
 
 void NetworkTrafficTowerTests::stopsSamplingWhenDestroyedWhileActive()
 {
-    NiceMock<MockNode> node;
+    MockNode node;
     std::atomic<int> received_calls{0};
 
-    ON_CALL(node, getTotalBytesRecv()).WillByDefault(Invoke([&] {
+    node.get_total_bytes_recv_fn = [&] {
         ++received_calls;
         return int64_t{1'000};
-    }));
-    ON_CALL(node, getTotalBytesSent()).WillByDefault(Invoke([] {
+    };
+    node.get_total_bytes_sent_fn = [] {
         return int64_t{2'000};
-    }));
+    };
 
     {
         NetworkTrafficTower tower{node, TEST_SAMPLE_INTERVAL_MS};

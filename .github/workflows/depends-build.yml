@@ -143,14 +143,18 @@ jobs:
           cmake -S . -B "${BUILD_DIR}" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="${PWD}/bitcoin/depends/${HOST}/toolchain.cmake" \
-            -DBUILD_APP_TESTS=OFF \
+            -DBUILD_APP_TESTS=ON \
             -DBUILD_GUI=ON \
             -DENABLE_WALLET=ON \
             -DENABLE_IPC=OFF
 
-      - name: Build bitcoin-core-app
+      - name: Build
         run: |
-          cmake --build "${BUILD_DIR}" --target bitcoin-core-app --parallel "${JOBS}"
+          cmake --build "${BUILD_DIR}" --parallel "${JOBS}"
+
+      - name: Run app tests
+        run: |
+          ctest --test-dir "${BUILD_DIR}" --output-on-failure --parallel "${JOBS}"
 
       - name: Upload depends logs
         uses: actions/upload-artifact@v4
