@@ -1645,13 +1645,14 @@ void WalletQmlModelTests::removeReceiveRequestRemovesPendingActivityRow()
 
 void WalletQmlModelTests::activityDetailsSelectLowestOutputIndex()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     const interfaces::WalletTx wallet_tx = MakeOutgoingActivityWalletTx(
         {10'000, 20'000, 30'000},
         {true, false, false},
         {true, false, false});
-    ON_CALL(*wallet, getWalletTxs()).WillByDefault(Return(std::set<interfaces::WalletTx>{wallet_tx}));
+    wallet->get_wallet_txs_fn = [wallet_tx] {
+        return std::set<interfaces::WalletTx>{wallet_tx};
+    };
     model->activityListModel()->reload();
 
     const QString txid = QString::fromStdString(wallet_tx.tx->GetHash().ToString());
@@ -1664,13 +1665,14 @@ void WalletQmlModelTests::activityDetailsSelectLowestOutputIndex()
 
 void WalletQmlModelTests::activityDetailsPreferOutgoingForSelfPayment()
 {
-    NiceMock<MockWallet>* wallet{nullptr};
-    auto model = MakeWalletModel(wallet);
+    auto [wallet, model] = MakeWalletModel();
     const interfaces::WalletTx wallet_tx = MakeOutgoingActivityWalletTx(
         {20'000},
         {true},
         {false});
-    ON_CALL(*wallet, getWalletTxs()).WillByDefault(Return(std::set<interfaces::WalletTx>{wallet_tx}));
+    wallet->get_wallet_txs_fn = [wallet_tx] {
+        return std::set<interfaces::WalletTx>{wallet_tx};
+    };
     model->activityListModel()->reload();
 
     const QString txid = QString::fromStdString(wallet_tx.tx->GetHash().ToString());

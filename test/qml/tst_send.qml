@@ -575,10 +575,10 @@ TestCase {
         testSendRecipient.amount.satoshi = 100000000
         testSendRecipient.label = "existing label"
 
-        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
         verify(page !== null)
-        page.width = testWindow.width
-        page.height = testWindow.height
+        page.width = testCase.width
+        page.height = testCase.height
         page.visible = true
 
         const sendPage = findChild(page, "walletSendPage")
@@ -643,7 +643,7 @@ TestCase {
         testSendRecipient.amount.satoshi = 100000000
         testSendRecipient.label = "existing label"
 
-        const page = createTemporaryObject(sendComponent, testWindow.contentItem)
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
         verify(page !== null)
         const sendPage = findChild(page, "walletSendPage")
         const overwritePopup = findChild(page, "sendPaymentUriOverwritePopup")
