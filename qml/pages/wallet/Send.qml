@@ -36,6 +36,22 @@ PageStack {
     signal transactionPrepared(bool multipleRecipientsEnabled)
     signal viewTransactionInActivity(string txid)
 
+    function returnToSendForm() {
+        if (root.depth > 1) {
+            root.pop(null, StackView.Immediate)
+        }
+    }
+
+    function openPaymentRequestImport() {
+        root.returnToSendForm()
+        Qt.callLater(sendPage.openPaymentRequestImport)
+    }
+
+    function openPsbtFileImport() {
+        root.returnToSendForm()
+        Qt.callLater(sendPage.openPsbtFileImport)
+    }
+
     function clearPrepareTransactionError() {
         if (prepareTransactionErrorText.length > 0) {
             prepareTransactionErrorText = ""
@@ -150,6 +166,16 @@ PageStack {
                     : qsTr("This PSBT is not supported yet.")
                 unsupportedPsbtPopup.open()
             }
+        }
+
+        function openPaymentRequestImport() {
+            uriImportInput.text = ""
+            sendUriImportPopup.open()
+        }
+
+        function openPsbtFileImport() {
+            sendOptionsPopup.close()
+            psbtOpenDialog.open()
         }
 
         Popup {
@@ -418,8 +444,7 @@ PageStack {
         Connections {
             target: sendOptionsPopup
             function onOpenPaymentRequest() {
-                uriImportInput.text = ""
-                sendUriImportPopup.open()
+                sendPage.openPaymentRequestImport()
             }
         }
 
@@ -601,8 +626,7 @@ PageStack {
                                 sendPage.handlePsbtImportResult(root.wallet.importPsbtFromFile(automatedPath))
                                 return
                             }
-                            sendOptionsPopup.close()
-                            psbtOpenDialog.open()
+                            sendPage.openPsbtFileImport()
                         }
                     }
                 }

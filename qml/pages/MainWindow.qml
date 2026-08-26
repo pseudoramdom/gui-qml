@@ -16,7 +16,7 @@ ApplicationWindow {
     objectName: "appWindow"
     title: qsTr("Bitcoin Core App")
     minimumWidth: 800
-    minimumHeight: 665
+    minimumHeight: 665 + (desktopInWindowMenuBar.active ? desktopInWindowMenuBar.implicitHeight : 0)
     color: Theme.color.background
 
     // The window starts hidden and is shown at the end of Component.onCompleted,
@@ -30,10 +30,62 @@ ApplicationWindow {
     height: minimumHeight
     property bool walletAvailableForUi: AppMode.walletEnabled
     property bool appModeDesktopForUi: AppMode.isDesktop
+    property bool nativeMenuAvailableForUi: true
     property bool preInitOnboardingRanForUi: false
     readonly property bool desktopWalletMode: walletAvailableForUi && appModeDesktopForUi
     readonly property bool waitForPostOnboardingWalletRoute: preInitOnboardingRanForUi && desktopWalletMode
     property bool postOnboardingWalletRouteResolved: false
+    property bool shutdownInProgress: false
+    property var menuEditTarget: null
+    readonly property var menuWalletController: appWindow.desktopWalletMode ? walletController : null
+    readonly property bool menuNavigationEnabled: main.depth === 1
+        && (!appWindow.waitForPostOnboardingWalletRoute || appWindow.postOnboardingWalletRouteResolved)
+
+    function routeToShell(method, argument) {
+        const shell = main.depth === 1 ? main.currentItem : null
+        if (shell && typeof shell[method] === "function") {
+            if (argument === undefined) {
+                shell[method]()
+            } else {
+                shell[method](argument)
+            }
+        }
+    }
+
+    function rememberEditTarget(target) {
+        if (target && (typeof target.undo === "function"
+                || typeof target.redo === "function"
+                || typeof target.copy === "function"
+                || typeof target.paste === "function")) {
+            appWindow.menuEditTarget = target
+        }
+    }
+
+    function invokeEditCommand(method) {
+        const target = appWindow.menuEditTarget
+        if (!target || typeof target[method] !== "function") {
+            return
+        }
+        if (typeof target.forceActiveFocus === "function") {
+            target.forceActiveFocus()
+        }
+        target[method]()
+    }
+
+    function openSettings(section) {
+        appWindow.routeToShell("openSettings", section)
+    }
+
+    function openCreateWalletWizard() {
+        if (!appWindow.menuNavigationEnabled) {
+            return
+        }
+        main.push(createWalletWizard, {
+            "launchContext": CreateWalletWizard.Context.Main
+        })
+    }
+
+    onActiveFocusItemChanged: appWindow.rememberEditTarget(appWindow.activeFocusItem)
 
     function resolvePostOnboardingWalletRoute() {
         if (appWindow.postOnboardingWalletRouteResolved) {
@@ -70,6 +122,93 @@ ApplicationWindow {
 
     Behavior on color {
         ColorAnimation { duration: 150 }
+    }
+
+    menuBar: DesktopInWindowMenuBar {
+        id: desktopInWindowMenuBar
+        actions: desktopMenuActions
+        active: appWindow.appModeDesktopForUi && Qt.platform.os === "linux"
+    }
+
+    Loader {
+        active: appWindow.nativeMenuAvailableForUi
+            && appWindow.appModeDesktopForUi
+            && Qt.platform.os !== "linux"
+        sourceComponent: Component {
+            Item {
+                DesktopNativeMenuBar {
+                    window: appWindow
+                    actions: desktopMenuActions
+                    active: true
+                }
+            }
+        }
+    }
+
+    DesktopMenuActions {
+        id: desktopMenuActions
+        objectName: "desktopMenuActions"
+        walletMode: appWindow.desktopWalletMode
+        walletInitialized: appWindow.menuWalletController
+            ? appWindow.menuWalletController.initialized
+            : false
+        walletLoaded: appWindow.menuWalletController
+            ? appWindow.menuWalletController.isWalletLoaded
+                && appWindow.menuWalletController.selectedWallet !== null
+            : false
+        walletBusy: appWindow.menuWalletController
+            ? appWindow.menuWalletController.walletLoadInProgress
+            : false
+        canUndo: appWindow.menuEditTarget
+            && typeof appWindow.menuEditTarget.undo === "function"
+            && appWindow.menuEditTarget.canUndo === true
+        canRedo: appWindow.menuEditTarget
+            && typeof appWindow.menuEditTarget.redo === "function"
+            && appWindow.menuEditTarget.canRedo === true
+        canCopy: appWindow.menuEditTarget
+            && typeof appWindow.menuEditTarget.copy === "function"
+            && appWindow.menuEditTarget.selectedText
+            && appWindow.menuEditTarget.selectedText.length > 0
+        canPaste: appWindow.menuEditTarget
+            && typeof appWindow.menuEditTarget.paste === "function"
+            && appWindow.menuEditTarget.readOnly !== true
+            && appWindow.menuEditTarget.enabled !== false
+        navigationEnabled: appWindow.menuNavigationEnabled
+        shuttingDown: appWindow.shutdownInProgress
+        isMacOs: Qt.platform.os === "osx"
+
+        onCreateWalletRequested: appWindow.openCreateWalletWizard()
+        onCloseWalletRequested: appWindow.routeToShell("requestCloseWallet")
+        onBackupWalletRequested: appWindow.routeToShell("startWalletBackup")
+        onOpenUriRequested: appWindow.routeToShell("openUriImporter")
+        onSignMessageRequested: appWindow.routeToShell("openSignVerifyMessage", SignVerifyMessage.SignTab)
+        onVerifyMessageRequested: appWindow.routeToShell("openSignVerifyMessage", SignVerifyMessage.VerifyTab)
+        onLoadPsbtRequested: appWindow.routeToShell("openPsbtImporter")
+        onExitRequested: nodeModel.requestShutdown()
+        onSettingsRequested: appWindow.openSettings("display")
+        onUndoRequested: appWindow.invokeEditCommand("undo")
+        onRedoRequested: appWindow.invokeEditCommand("redo")
+        onCopyRequested: appWindow.invokeEditCommand("copy")
+        onPasteRequested: appWindow.invokeEditCommand("paste")
+        onMinimizeRequested: appWindow.showMinimized()
+        onZoomRequested: {
+            if (appWindow.visibility === Window.Maximized) {
+                appWindow.showNormal()
+            } else {
+                appWindow.showMaximized()
+            }
+        }
+        onMainWindowRequested: desktopTrayIconController.showMainWindow()
+        onNodeRequested: appWindow.routeToShell("openNode")
+        onActivityRequested: appWindow.routeToShell("openActivity")
+        onSendRequested: appWindow.routeToShell("openSend")
+        onReceiveRequested: appWindow.routeToShell("openReceive")
+        onInformationRequested: menuInformationPopup.open()
+        onConsoleRequested: appWindow.routeToShell("openConsole")
+        onNetworkTrafficRequested: appWindow.routeToShell("openNetworkTraffic")
+        onPeersRequested: appWindow.routeToShell("openPeers")
+        onRpcDocumentationRequested: Qt.openUrlExternally("https://bitcoincore.org/en/doc/")
+        onAboutRequested: appWindow.openSettings("about")
     }
 
     // Tracks the previous visibility state to distinguish a user-initiated minimize
@@ -158,6 +297,7 @@ ApplicationWindow {
     Connections {
         target: nodeModel
         function onRequestedShutdown() {
+            appWindow.shutdownInProgress = true
             main.clear()
             main.push(shutdown)
         }
@@ -168,6 +308,11 @@ ApplicationWindow {
     }
 
     NodeFatalErrorPopup {
+        parent: Overlay.overlay
+    }
+
+    NodeInformationPopup {
+        id: menuInformationPopup
         parent: Overlay.overlay
     }
 
@@ -296,6 +441,40 @@ ApplicationWindow {
             id: nodeStack
             vertical: true
             initialItem: node
+
+            function resetToRoot() {
+                peerTableModel.stopAutoRefresh()
+                if (nodeStack.depth > 1) {
+                    nodeStack.pop(null, StackView.Immediate)
+                }
+            }
+
+            function openSettings(section) {
+                nodeStack.resetToRoot()
+                const settingsPage = nodeStack.push(nodeSettings, {}, StackView.Immediate)
+                if (section && settingsPage) {
+                    settingsPage.openSection(section)
+                }
+            }
+
+            function openNode() {
+                nodeStack.resetToRoot()
+            }
+
+            function openPeers() {
+                nodeStack.resetToRoot()
+                peerTableModel.startAutoRefresh()
+                nodeStack.push(peersPage, {}, StackView.Immediate)
+            }
+
+            function openConsole() {
+                nodeStack.resetToRoot()
+                nodeStack.push(consolePage, {}, StackView.Immediate)
+            }
+
+            function openNetworkTraffic() {
+                nodeStack.openSettings("networktraffic")
+            }
             Component {
                 id: node
                 NodeRunner {

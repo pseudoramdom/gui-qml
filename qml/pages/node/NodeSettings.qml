@@ -34,22 +34,65 @@ Page {
     readonly property color settingsSidebarSelectedBackgroundColor: Qt.rgba(Theme.color.orange.r, Theme.color.orange.g, Theme.color.orange.b, 0.15)
     property int currentSection: 0
 
-    function openWalletSettings() {
+    function openSection(section) {
         for (var i = 0; i < sidebarModel.count; i++) {
-            if (sidebarModel.get(i).section === "wallet") {
+            if (sidebarModel.get(i).section === section && root.isSectionVisible(i)) {
                 root.currentSection = i
-                return
+                return true
             }
+        }
+        return false
+    }
+
+    function openWalletSettings() {
+        root.openSection("wallet")
+    }
+
+    function resetWalletStack() {
+        if (walletStack.depth > 1) {
+            walletStack.pop(null, StackView.Immediate)
         }
     }
 
-    function openAddressHistory() {
+    function openWalletPassword(updating) {
+        if (!walletController.isWalletLoaded || !walletController.selectedWallet) {
+            return
+        }
+        root.openWalletSettings()
+        root.resetWalletStack()
+        walletStack.push(walletPasswordComp, { "updating": updating }, StackView.Immediate)
+    }
+
+    function openSignVerifyMessage(initialTab) {
+        if (!walletController.isWalletLoaded || !walletController.selectedWallet) {
+            return
+        }
+        root.openWalletSettings()
+        root.resetWalletStack()
+        walletStack.push(signVerifyComp, { "initialTab": initialTab }, StackView.Immediate)
+    }
+
+    function openReceivingAddresses() {
         if (!walletController.isWalletLoaded || !walletController.selectedWallet) {
             return
         }
         walletController.selectedWallet.addressListModel.refresh()
-        openWalletSettings()
-        walletStack.push(addressListComp)
+        root.openWalletSettings()
+        root.resetWalletStack()
+        walletStack.push(addressListComp, {}, StackView.Immediate)
+    }
+
+    function startWalletBackup() {
+        if (!walletController.isWalletLoaded || !walletController.selectedWallet) {
+            return
+        }
+        root.openWalletSettings()
+        root.resetWalletStack()
+        Qt.callLater(walletSettingsPage.startBackup)
+    }
+
+    function openAddressHistory() {
+        root.openReceivingAddresses()
     }
 
     function openWalletAddressHistory() {
@@ -225,6 +268,7 @@ Page {
                         id: walletStack
                         objectName: "walletSettingsStack"
                         initialItem: WalletSettings {
+                            id: walletSettingsPage
                             objectName: "walletSettingsPage"
                             // Reached from the settings sidebar, like the other
                             // sections, so it has no back button of its own; the

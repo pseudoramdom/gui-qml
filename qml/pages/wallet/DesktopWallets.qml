@@ -24,6 +24,72 @@ Page {
     signal addWallet()
     signal sendTransaction(bool multipleRecipientsEnabled)
 
+    function requestCloseWallet() {
+        if (!walletController.isWalletLoaded || !walletController.selectedWallet) {
+            return
+        }
+        closeConfirmationPopup.walletName = walletController.selectedWallet.name
+        closeConfirmationPopup.open()
+    }
+
+    function startWalletBackup() {
+        settingsTabButton.checked = true
+        nodeSettings.startWalletBackup()
+    }
+
+    function openWalletPassword(updating) {
+        settingsTabButton.checked = true
+        nodeSettings.openWalletPassword(updating)
+    }
+
+    function openSignVerifyMessage(initialTab) {
+        settingsTabButton.checked = true
+        nodeSettings.openSignVerifyMessage(initialTab)
+    }
+
+    function openSettings(section) {
+        settingsTabButton.checked = true
+        nodeSettings.openSection(section)
+    }
+
+    function openUriImporter() {
+        sendTabButton.checked = true
+        sendPage.openPaymentRequestImport()
+    }
+
+    function openPsbtImporter() {
+        sendTabButton.checked = true
+        sendPage.openPsbtFileImport()
+    }
+
+    function openConsole() {
+        consoleTabButton.checked = true
+    }
+
+    function openPeers() {
+        peersTabButton.checked = true
+    }
+
+    function openNetworkTraffic() {
+        root.openSettings("networktraffic")
+    }
+
+    function openNode() {
+        blockClockTabButton.checked = true
+    }
+
+    function openActivity() {
+        activityTabButton.checked = true
+    }
+
+    function openSend() {
+        sendTabButton.checked = true
+    }
+
+    function openReceive() {
+        receiveTabButton.checked = true
+    }
+
     function toggleWalletSelection() {
         if (!walletController.initialized) {
             return
@@ -148,6 +214,7 @@ Page {
                 ButtonGroup.group: navigationTabs
             }
             NavigationTab {
+                id: sendTabButton
                 objectName: "sendTabButton"
                 text: qsTr("Send")
                 property int index: 1
@@ -290,6 +357,7 @@ Page {
             id: activityPage
         }
         Send {
+            id: sendPage
             onTransactionPrepared: (multipleRecipientsEnabled) => {
                 root.sendTransaction(multipleRecipientsEnabled)
             }
