@@ -218,18 +218,19 @@ def prepare_single_send(gui, address, amount, amount_unit="btc"):
     gui.wait_for_property("sendReviewSendButton", "visible", True, timeout_ms=10000)
 
 
-def prepare_multi_send(gui, first_address, first_amount_btc, second_address, second_amount_sat):
+def prepare_multi_send(gui, first_address, first_amount_btc, second_address, second_amount_btc):
     open_send_page(gui)
     set_multiple_recipients(gui, True)
 
-    set_amount_unit(gui, "sat")
-    gui.set_text("sendAddressInput", second_address)
-    gui.set_text("sendAmountInput", second_amount_sat)
-    gui.click("sendRecipientPrevButton")
     set_amount_unit(gui, "₿")
+    gui.set_text("sendAddressInput", second_address)
+    gui.set_text("sendAmountInput", second_amount_btc)
+    gui.click("sendRecipientPrevButton")
     gui.set_text("sendAddressInput", first_address)
     gui.set_text("sendAmountInput", first_amount_btc)
     gui.set_text("sendNoteInput", "Alice's salary")
+    gui.click("sendRecipientNextButton")
+    set_amount_unit(gui, "sat")
     gui.wait_for_property("sendReviewButton", "enabled", True, timeout_ms=10000)
     gui.click("sendReviewButton")
     gui.wait_for_page("sendReviewPage", timeout_ms=10000)
@@ -279,24 +280,22 @@ def assert_save_psbt_error(gui, destination):
     assert status.startswith("Could not save PSBT:"), f"Unexpected PSBT save error: {status!r}"
 
 
-def assert_address_expand(gui, short_object_name, full_object_name, address, checkpoints=None, label=None):
+def assert_address_toggle(gui, object_name, address, checkpoints=None, label=None):
     wait_until(
-        lambda: gui.get_text(short_object_name) == format_short_address(address),
-        description=f"{short_object_name} text",
+        lambda: gui.get_property(object_name, "displayText") == format_short_address(address),
+        description=f"{object_name} truncated text",
     )
-    wait_until(
-        lambda: gui.get_property(full_object_name, "visible") is False,
-        description=f"{full_object_name} hidden",
-    )
+    assert gui.get_property(object_name, "expanded") is False
 
-    gui.click(short_object_name)
-    gui.wait_for_property(full_object_name, "visible", True, timeout_ms=5000)
+    gui.click(object_name)
+    gui.wait_for_property(object_name, "expanded", True, timeout_ms=5000)
     if checkpoints and label:
         checkpoints.checkpoint(f"{label} address expanded", gui)
-    assert gui.get_text(full_object_name) == format_full_address(address)
+    assert gui.get_property(object_name, "displayText") == format_full_address(address)
 
-    gui.click(short_object_name)
-    gui.wait_for_property(full_object_name, "visible", True, timeout_ms=5000)
+    gui.click(object_name)
+    gui.wait_for_property(object_name, "expanded", False, timeout_ms=5000)
+    assert gui.get_property(object_name, "displayText") == format_short_address(address)
 
 
 def return_to_send_page(gui, back_button):
@@ -310,10 +309,9 @@ def case_single_btc(harness, gui, wallet_name, checkpoints):
     prepare_single_send(gui, recipient_address, "1.25000000", amount_unit="btc")
     checkpoints.checkpoint("single-btc review page displayed", gui)
 
-    assert_address_expand(
+    assert_address_toggle(
         gui,
         "sendReviewAddressField",
-        "sendReviewFullAddressField",
         recipient_address,
         checkpoints=checkpoints,
         label="single-btc review",
@@ -333,10 +331,9 @@ def case_single_sat(harness, gui, wallet_name, checkpoints):
     prepare_single_send(gui, recipient_address, "1250", amount_unit="sat")
     checkpoints.checkpoint("single-sat review page displayed", gui)
 
-    assert_address_expand(
+    assert_address_toggle(
         gui,
         "sendReviewAddressField",
-        "sendReviewFullAddressField",
         recipient_address,
         checkpoints=checkpoints,
         label="single-sat review",
@@ -388,7 +385,7 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         first_address=first_address,
         first_amount_btc="0.50000000",
         second_address=second_address,
-        second_amount_sat="2000",
+        second_amount_btc="0.00002000",
     )
     checkpoints.checkpoint("multi review page displayed", gui)
 
@@ -406,18 +403,13 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=0,
-        prop="secondaryText",
+        prop="addressText",
     ) == format_short_address(first_address)
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=0,
-        prop="secondaryVisible",
-    ) is True
-    assert gui.get_list_item_property(
-        view_object_name="multipleSendReviewRecipientsList",
-        row_index=0,
         prop="amountText",
-    ) == "0.50000000 ₿"
+    ) == "50000000 sats"
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
@@ -428,19 +420,16 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         row_index=1,
         prop="formattedAddress",
     ) == format_full_address(second_address)
-    second_amount_text = gui.get_list_item_property(
-        view_object_name="multipleSendReviewRecipientsList",
-        row_index=1,
-        prop="amountText",
-    )
-    assert second_amount_text in {"2000 sat", "2000 sats"}, (
-        f"Expected second recipient amount to use a satoshi unit, got {second_amount_text!r}"
-    )
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
-        prop="secondaryVisible",
-    ) is False
+        prop="amountText",
+    ) == "2000 sats"
+    assert gui.get_list_item_property(
+        view_object_name="multipleSendReviewRecipientsList",
+        row_index=1,
+        prop="addressText",
+    ) == format_short_address(second_address)
     gui.click_list_item(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
@@ -449,18 +438,35 @@ def case_multi_review(harness, gui, wallet_name, checkpoints):
         lambda: gui.get_list_item_property(
             view_object_name="multipleSendReviewRecipientsList",
             row_index=1,
-            prop="secondaryVisible",
+            prop="expanded",
         ) is True,
         description="multiple recipient row expanded",
     )
     assert gui.get_list_item_property(
         view_object_name="multipleSendReviewRecipientsList",
         row_index=1,
-        prop="secondaryText",
+        prop="addressText",
     ) == format_full_address(second_address)
     checkpoints.checkpoint("multi review recipient expanded", gui)
-    assert_unit_suffix(gui, "multipleSendReviewFeeField", "₿")
-    assert_unit_suffix(gui, "multipleSendReviewTotalField", "₿")
+    gui.click_list_item(
+        view_object_name="multipleSendReviewRecipientsList",
+        row_index=1,
+    )
+    wait_until(
+        lambda: gui.get_list_item_property(
+            view_object_name="multipleSendReviewRecipientsList",
+            row_index=1,
+            prop="expanded",
+        ) is False,
+        description="multiple recipient row collapsed",
+    )
+    assert gui.get_list_item_property(
+        view_object_name="multipleSendReviewRecipientsList",
+        row_index=1,
+        prop="addressText",
+    ) == format_short_address(second_address)
+    assert_unit_suffix(gui, "multipleSendReviewFeeField", "sats")
+    assert_unit_suffix(gui, "multipleSendReviewTotalField", "sats")
     return_to_send_page(gui, "sendReviewBackButton")
 
 

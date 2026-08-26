@@ -11,9 +11,35 @@ class BitcoinAddressTests : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void setAddress_acceptsSupportedAddressCharacters();
+    void setAddress_rejectsUnsupportedCharactersImmediately();
     void formattedAddress_groupsCharactersInFours();
     void ellipsesAddress_keepsVisiblePrefixAndSuffix();
 };
+
+void BitcoinAddressTests::setAddress_acceptsSupportedAddressCharacters()
+{
+    const QString input{QStringLiteral("0123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")};
+    BitcoinAddress address;
+
+    address.setAddress(input, static_cast<int>(input.size()));
+
+    QCOMPARE(address.address(), input);
+}
+
+void BitcoinAddressTests::setAddress_rejectsUnsupportedCharactersImmediately()
+{
+    BitcoinAddress address{QStringLiteral("bc1qexampleaddress")};
+    QSignalSpy formatted_address_changed{&address, &BitcoinAddress::formattedAddressChanged};
+    const QString input{address.formattedAddress() + QStringLiteral(".[]IO")};
+
+    const int cursor_position{address.setAddress(input, static_cast<int>(input.size()))};
+
+    QCOMPARE(address.address(), QStringLiteral("bc1qexampleaddress"));
+    QCOMPARE(address.formattedAddress(), QStringLiteral("bc1q exam plea ddre ss"));
+    QCOMPARE(cursor_position, static_cast<int>(address.formattedAddress().size()));
+    QCOMPARE(formatted_address_changed.count(), 1);
+}
 
 void BitcoinAddressTests::formattedAddress_groupsCharactersInFours()
 {

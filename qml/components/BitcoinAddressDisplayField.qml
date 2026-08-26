@@ -14,12 +14,12 @@ Item {
     property string labelText: qsTr("Send to")
     property string text: ""
     property string fullText: ""
-    property string expandedObjectName: ""
     property bool expanded: false
     property int labelPixelSize: 18
     property color labelColor: Theme.color.neutral9
     readonly property bool showLabel: labelText.length > 0
     readonly property bool expandable: fullText.length > 0
+    readonly property string displayText: expanded ? fullText : text
 
     Layout.fillWidth: true
     implicitHeight: Math.max(showLabel ? label.implicitHeight + 6 : 0, addressContainer.implicitHeight)
@@ -31,8 +31,8 @@ Item {
     }
 
     function click() {
-        if (expandable && !expanded) {
-            expanded = true
+        if (expandable) {
+            expanded = !expanded
         }
     }
 
@@ -54,55 +54,31 @@ Item {
         anchors.left: root.showLabel ? label.right : parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        implicitHeight: addressColumn.implicitHeight
+        implicitHeight: Math.max(addressText.implicitHeight, 32)
         height: implicitHeight
 
-        Column {
-            id: addressColumn
+        CoreText {
+            id: addressText
+            objectName: root.objectName + "Text"
             width: parent.width
-            spacing: root.expandable && root.expanded ? 6 : 0
+            text: root.displayText
+            wrap: root.expanded
+            elide: root.expanded ? Text.ElideNone : Text.ElideRight
+            horizontalAlignment: root.expandable ? Text.AlignRight : Text.AlignLeft
+            verticalAlignment: Text.AlignTop
+            font: Theme.text.monoBody.font
+            lineHeight: Theme.text.monoBody.lineHeight
+            lineHeightMode: Text.FixedHeight
+            color: Theme.color.neutral9
 
-            CoreText {
-                id: addressText
-                width: parent.width
-                text: root.text
-                wrap: true
-                wrapMode: Text.WordWrap
-                horizontalAlignment: root.expandable ? Text.AlignRight : Text.AlignLeft
-                verticalAlignment: Text.AlignTop
-                height: Math.max(implicitHeight, 32)
-                font.pixelSize: 18
-                color: Theme.color.neutral9
-
-                HoverHandler {
-                    enabled: root.expandable
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                TapHandler {
-                    enabled: root.expandable
-                    onTapped: root.click()
-                }
+            HoverHandler {
+                enabled: root.expandable
+                cursorShape: Qt.PointingHandCursor
             }
 
-            TextArea {
-                id: fullAddressText
-                objectName: root.expandedObjectName
-                width: parent.width
-                visible: root.expandable && root.expanded
-                readOnly: true
-                text: root.fullText
-                wrapMode: Text.WordWrap
-                leftPadding: 0
-                topPadding: 0
-                rightPadding: 0
-                bottomPadding: 0
-                height: visible ? Math.max(contentHeight, 32) : 0
-                font.family: Theme.text.family
-                font.styleName: "Regular"
-                font.pixelSize: 18
-                color: Theme.color.neutral7
-                background: Item {}
+            TapHandler {
+                enabled: root.expandable
+                onTapped: root.click()
             }
         }
     }

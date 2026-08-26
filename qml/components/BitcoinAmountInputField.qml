@@ -22,13 +22,45 @@ ColumnLayout {
     property alias errorTextObjectName: errorTextLabel.objectName
     property bool enabled: true
     property string placeholderText: root.amount ? root.amountInputPlaceholder(root.amount.unit) : "0.00000000"
+    property bool interceptPaste: false
 
     signal inputTextChanged
     signal textEdited
     signal editingFinished(string value)
+    signal pasteRequested()
 
     function syncFromAmount(force) {
         amountInput.syncFromAmount(force)
+    }
+
+    function paymentUri(text) {
+        const trimmedText = String(text).trim()
+        return root.interceptPaste && trimmedText.toLowerCase().startsWith("bitcoin:")
+            ? trimmedText
+            : ""
+    }
+
+    function pastedPaymentUri(previousText, currentText) {
+        const clipboardText = Clipboard.text()
+        const uri = paymentUri(clipboardText)
+        if (uri.length === 0 || previousText === currentText) return ""
+
+        let offset = String(currentText).indexOf(clipboardText)
+        while (offset !== -1) {
+            const prefix = String(currentText).slice(0, offset)
+            const suffix = String(currentText).slice(offset + clipboardText.length)
+            if (String(previousText).startsWith(prefix)
+                    && String(previousText).endsWith(suffix)
+                    && prefix.length + suffix.length <= String(previousText).length) {
+                return uri
+            }
+            offset = String(currentText).indexOf(clipboardText, offset + 1)
+        }
+        return ""
+    }
+
+    function paste() {
+        amountInput.paste()
     }
 
     function amountInputPlaceholder(unit) {
@@ -79,6 +111,7 @@ ColumnLayout {
         TextField {
             id: amountInput
             property bool syncingFromAmount: false
+            property string lastAcceptedText: ""
 
             function amountDisplay() {
                 return root.amount ? root.amount.display : ""
@@ -89,9 +122,20 @@ ColumnLayout {
             function syncFromAmount(force) {
                 if (!force && activeFocus) return
                 const display = amountDisplay()
-                if (text === display) return
+                if (text === display) {
+                    lastAcceptedText = display
+                    return
+                }
                 syncingFromAmount = true
                 text = display
+                lastAcceptedText = display
+                syncingFromAmount = false
+            }
+
+            function restoreLastAcceptedText() {
+                if (text === lastAcceptedText) return
+                syncingFromAmount = true
+                text = lastAcceptedText
                 syncingFromAmount = false
             }
 
@@ -110,6 +154,23 @@ ColumnLayout {
                 root.editingFinished(text)
             }
 
+            function handlePaymentUriInput() {
+                const uri = root.pastedPaymentUri(lastAcceptedText, text)
+                if (uri.length === 0) {
+                    // Paste interception disables the validator so native
+                    // context-menu paste can be observed. Reject URI-like text
+                    // unless it is the exact text currently on the clipboard.
+                    if (!root.interceptPaste || String(text).toLowerCase().indexOf("bitcoin:") === -1) return false
+                    restoreLastAcceptedText()
+                    return true
+                }
+                const previousDisplay = amountDisplay()
+                restoreLastAcceptedText()
+                root.pasteRequested()
+                if (amountDisplay() !== previousDisplay) root.syncFromAmount(true)
+                return true
+            }
+
             Accessible.name: root.accessibleName
             anchors.left: lbl.right
             anchors.right: unitToggle.left
@@ -123,16 +184,39 @@ ColumnLayout {
             placeholderText: root.placeholderText
             selectByMouse: true
 
+            Keys.onPressed: (event) => {
+                if (root.interceptPaste && event.matches(StandardKey.Paste)) {
+                    root.pasteRequested()
+                    event.accepted = true
+                }
+            }
+
             text: ""
             Component.onCompleted: root.syncFromAmount(true)
 
             onTextChanged: {
+                if (handlePaymentUriInput()) return
                 if (!syncingFromAmount) {
+                    if (root.amount && root.amountInputPattern(root.amount.unit).test(String(text))) {
+                        lastAcceptedText = text
+                    }
                     root.inputTextChanged()
                 }
             }
 
             onTextEdited: {
+                if (handlePaymentUriInput()) return
+                // The validator is disabled while paste interception is active
+                // so an URI inserted beside the current amount reaches this
+                // handler. Preserve the same numeric validation by restoring
+                // the last model value before an invalid edit is committed.
+                if (root.interceptPaste
+                        && root.amount
+                        && !root.amountInputPattern(root.amount.unit).test(String(text))) {
+                    restoreLastAcceptedText()
+                    return
+                }
+                lastAcceptedText = text
                 commitAmountText()
                 root.textEdited()
             }
@@ -145,10 +229,17 @@ ColumnLayout {
                 }
             }
 
-            validator: RegularExpressionValidator {
-                regularExpression: root.amount ? root.amountInputPattern(root.amount.unit) : /^(0|[1-9]\d{0,7})(\.\d{0,8})?$/
+            validator: root.interceptPaste ? null : amountValidator
+
+            RegularExpressionValidator {
+                id: amountValidator
+                regularExpression: root.amount
+                    ? root.amountInputPattern(root.amount.unit)
+                    : /^(0|[1-9]\d{0,7})(\.\d{0,8})?$/
             }
-            maximumLength: root.amount ? root.amountInputMaximumLength(root.amount.unit) : 17
+            maximumLength: root.interceptPaste
+                ? 2048 + (root.amount ? root.amountInputMaximumLength(root.amount.unit) : 17)
+                : (root.amount ? root.amountInputMaximumLength(root.amount.unit) : 17)
 
             Connections {
                 target: root

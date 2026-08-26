@@ -202,6 +202,7 @@ def assert_receiver_output(port, txid, receiver_address, expected_sats):
         f"Expected receiver output {expected_sats} sats, got {output_sats} sats "
         f"in transaction {txid}"
     )
+    return matched_outputs[0]["n"]
 
 
 def enable_coin_control_and_select_first_coin(gui, checkpoints):
@@ -367,7 +368,7 @@ def run_test(*, save_screenshots=False, screenshot_root=None):
             f"Broadcast fee {rpc_fee_sats} sats did not match preview estimate "
             f"{estimated_fee_with_subtract_sats} sats"
         )
-        assert_receiver_output(
+        receiver_output_index = assert_receiver_output(
             harness.gui_rpc_port,
             txid,
             receiver_address,
@@ -376,8 +377,13 @@ def run_test(*, save_screenshots=False, screenshot_root=None):
         checkpoints.checkpoint("broadcast fee verified", gui)
 
         gui.wait_for_page("sendResultPopup", timeout_ms=10000)
-        gui.click("sendResultDoneButton")
-        gui.wait_for_property("activityTabButton", "visible", True, timeout_ms=10000)
+        gui.click("sendResultViewTransactionButton")
+        gui.wait_for_page("activityDetailsPage", timeout_ms=10000)
+        assert gui.get_property("activityDetailsPage", "txid") == txid
+        assert gui.get_property("activityDetailsPage", "outputIndex") == receiver_output_index
+        checkpoints.checkpoint("view transaction opens the sent activity", gui)
+        gui.click("activityDetailsBackButton")
+        gui.wait_for_property("activityStack", "depth", 1, timeout_ms=10000)
         gui.click("sendTabButton")
         gui.wait_for_page("sendPage", timeout_ms=10000)
         gui.wait_for_property("sendCoinControlButtonText", "text", "Select", timeout_ms=10000)

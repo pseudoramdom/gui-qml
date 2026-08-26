@@ -45,6 +45,11 @@ TestCase {
         testRecipientsModel.totalAmountSatoshi = 0
         optionsModel.displayUnit = BitcoinAmount.BTC
         testCoinsListModel.reset()
+        Clipboard.currentText = ""
+    }
+
+    function pasteShortcut() {
+        keyClick(Qt.Key_V, Qt.ControlModifier)
     }
 
     function test_review_only_psbt_closes_and_discards_on_wallet_change() {
@@ -529,5 +534,127 @@ TestCase {
         compare(testSendRecipient.label, "uri-label")
         compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard")
         compare(sendPage.paymentRequestIsError, false)
+    }
+
+    function test_send_payment_uri_paste_applies_from_each_recipient_field_data() {
+        return [
+            { tag: "address", inputObjectName: "sendAddressInput" },
+            { tag: "label", inputObjectName: "sendNoteInput" },
+            { tag: "amount", inputObjectName: "sendAmountInput" },
+        ]
+    }
+
+    function test_send_payment_uri_paste_applies_from_each_recipient_field(data) {
+        const page = createTemporaryObject(sendComponent, this)
+        verify(page !== null)
+
+        const sendPage = findChild(page, "walletSendPage")
+        const input = findChild(page, data.inputObjectName)
+        const overwritePopup = findChild(page, "sendPaymentUriOverwritePopup")
+        verify(sendPage !== null)
+        verify(input !== null)
+        verify(overwritePopup !== null)
+
+        const address = "bcrt1q8rcpp66mqmtsw27mx7awa7yfdrpzytumsapkw4"
+        testSendRecipient.address.setAddress(address, 0)
+        Clipboard.currentText = "bitcoin:" + address + "?amount=100.00000000&label=Alice&message=Pay%20me"
+        input.forceActiveFocus()
+        verify(input.activeFocus)
+        pasteShortcut()
+
+        compare(overwritePopup.opened, false)
+        compare(testSendRecipient.address.address, address)
+        compare(testSendRecipient.amount.satoshi, 10000000000)
+        compare(testSendRecipient.label, "Alice")
+        compare(sendPage.paymentRequestMessage, "Pay me")
+        compare(sendPage.paymentRequestStatus, "Payment request imported from clipboard")
+        compare(sendPage.paymentRequestIsError, false)
+    }
+
+    function test_send_payment_uri_paste_confirms_overwriting_other_fields() {
+        testSendRecipient.amount.satoshi = 100000000
+        testSendRecipient.label = "existing label"
+
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
+        verify(page !== null)
+        page.width = testCase.width
+        page.height = testCase.height
+        page.visible = true
+
+        const sendPage = findChild(page, "walletSendPage")
+        const addressInput = findChild(page, "sendAddressInput")
+        const overwritePopup = findChild(page, "sendPaymentUriOverwritePopup")
+        verify(sendPage !== null)
+        verify(addressInput !== null)
+        verify(overwritePopup !== null)
+
+        const uri = "bitcoin:bcrt1qreplacement?amount=0.02000000&label=replacement-label"
+        Clipboard.currentText = uri
+        sendPage.handleClipboardPaste("address")
+        tryCompare(overwritePopup, "opened", true)
+
+        verify(addressInput.text !== uri)
+        compare(testSendRecipient.address.address, "bcrt1qsendtoaddress")
+        compare(testSendRecipient.amount.satoshi, 100000000)
+        compare(testSendRecipient.label, "existing label")
+
+        const cancelButton = findChild(overwritePopup.contentItem, "sendPaymentUriOverwriteCancelButton")
+        verify(cancelButton !== null)
+        cancelButton.clicked()
+        tryCompare(overwritePopup, "opened", false)
+        compare(testSendRecipient.address.address, "bcrt1qsendtoaddress")
+        compare(testSendRecipient.amount.satoshi, 100000000)
+        compare(testSendRecipient.label, "existing label")
+
+        sendPage.handleClipboardPaste("address")
+        tryCompare(overwritePopup, "opened", true)
+        const confirmButton = findChild(overwritePopup.contentItem, "sendPaymentUriOverwriteConfirmButton")
+        verify(confirmButton !== null)
+        confirmButton.clicked()
+        tryCompare(overwritePopup, "opened", false)
+
+        compare(testSendRecipient.address.address, "bcrt1qreplacement")
+        compare(testSendRecipient.amount.satoshi, 2000000)
+        compare(testSendRecipient.label, "replacement-label")
+    }
+
+    function test_send_payment_uri_model_label_is_not_reparsed() {
+        const page = createTemporaryObject(sendComponent, this)
+        verify(page !== null)
+
+        const sendPage = findChild(page, "walletSendPage")
+        const addressInput = findChild(page, "sendAddressInput")
+        verify(sendPage !== null)
+        verify(addressInput !== null)
+
+        const address = "bcrt1q8rcpp66mqmtsw27mx7awa7yfdrpzytumsapkw4"
+        const nestedUri = "bitcoin:" + address + "?amount=1.00000000"
+        Clipboard.currentText = "bitcoin:" + address + "?label=" + encodeURIComponent(nestedUri)
+        addressInput.forceActiveFocus()
+        verify(addressInput.activeFocus)
+        pasteShortcut()
+
+        compare(testSendRecipient.address.address, address)
+        compare(testSendRecipient.label, nestedUri)
+        compare(testSendRecipient.amount.satoshi, 0)
+    }
+
+    function test_send_payment_uri_paste_preserves_omitted_fields() {
+        testSendRecipient.amount.satoshi = 100000000
+        testSendRecipient.label = "existing label"
+
+        const page = createTemporaryObject(sendComponent, testCase.Window.window.contentItem)
+        verify(page !== null)
+        const sendPage = findChild(page, "walletSendPage")
+        const overwritePopup = findChild(page, "sendPaymentUriOverwritePopup")
+        verify(sendPage !== null)
+        verify(overwritePopup !== null)
+
+        sendPage.handlePaymentUriPaste("bitcoin:bcrt1qreplacement", "address")
+
+        compare(overwritePopup.opened, false)
+        compare(testSendRecipient.address.address, "bcrt1qreplacement")
+        compare(testSendRecipient.amount.satoshi, 100000000)
+        compare(testSendRecipient.label, "existing label")
     }
 }

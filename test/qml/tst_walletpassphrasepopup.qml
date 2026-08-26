@@ -87,6 +87,49 @@ TestCase {
         compare(field.text, "")
     }
 
+    function test_enter_or_return_submits_data() {
+        return [
+            { tag: "return", key: Qt.Key_Return },
+            { tag: "enter", key: Qt.Key_Enter }
+        ]
+    }
+
+    function test_enter_or_return_submits(data) {
+        const popup = createPopup()
+        const field = findObjectByName(popup, "testPassphraseField")
+        verify(field !== null)
+        tryCompare(field, "activeFocus", true)
+
+        const passphrase = "correct horse battery staple"
+        field.text = passphrase
+        keyClick(data.key)
+
+        compare(submittedCount, 1)
+        compare(submittedPassphrase, passphrase)
+        compare(field.text, "")
+    }
+
+    function test_return_does_not_submit_when_confirm_is_disabled_data() {
+        return [
+            { tag: "empty", passphrase: "", busy: false },
+            { tag: "busy", passphrase: "secret", busy: true }
+        ]
+    }
+
+    function test_return_does_not_submit_when_confirm_is_disabled(data) {
+        const popup = createPopup()
+        const field = findObjectByName(popup, "testPassphraseField")
+        verify(field !== null)
+        tryCompare(field, "activeFocus", true)
+
+        field.text = data.passphrase
+        popup.busy = data.busy
+        keyClick(Qt.Key_Return)
+
+        compare(submittedCount, 0)
+        compare(field.text, data.passphrase)
+    }
+
     function test_close_clears_field_without_submitting() {
         const popup = createPopup()
         const field = findObjectByName(popup, "testPassphraseField")

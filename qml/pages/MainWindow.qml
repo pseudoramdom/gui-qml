@@ -18,6 +18,15 @@ ApplicationWindow {
     minimumWidth: 800
     minimumHeight: 665
     color: Theme.color.background
+    palette.window: Theme.color.neutral1 // Context menu background
+    palette.windowText: Theme.color.neutral8 // Menu item text and icons
+    palette.dark: Theme.dark ? Theme.color.neutral2 : Theme.color.neutral3 // Menu border
+    palette.mid: Theme.dark ? Theme.color.neutral2 : Theme.color.neutral3 // Menu separators
+    palette.light: Theme.color.neutral3 // Highlighted menu item background
+    palette.midlight: Theme.color.neutral3 // Pressed menu item background
+    palette.disabled.windowText: Theme.color.neutral4 // Disabled item text and icons
+    palette.disabled.light: Theme.color.neutral1 // Disabled item highlight background
+    palette.disabled.midlight: Theme.color.neutral1 // Disabled item pressed background
 
     // The window starts hidden and is shown at the end of Component.onCompleted,
     // after the saved size has been applied (below). Applying the size while
@@ -232,7 +241,7 @@ ApplicationWindow {
             onBack: {
                 main.pop()
             }
-            onTransactionSent: {
+            onTransactionSent: (txid) => {
                 const externalSignerWallet = walletController.selectedWallet.hasExternalSigner
                 const descriptionText = externalSignerWallet
                     ? qsTr("Approved on external signer. It should be confirmed within the next 10 minutes.")
@@ -241,7 +250,8 @@ ApplicationWindow {
                 walletController.selectedWallet.recipients.clear()
                 main.push(sendResultPage, {
                     "descriptionText": descriptionText,
-                    "actionText": actionText
+                    "actionText": actionText,
+                    "txid": txid
                 })
             }
         }
@@ -253,7 +263,12 @@ ApplicationWindow {
             onDone: {
                 main.pop(null)
             }
-            onViewNewTransaction: {
+            onViewNewTransaction: (txid) => {
+                if (walletController.selectedWallet) {
+                    walletController.selectedWallet.activityListModel.reload()
+                }
+                const walletPage = main.get(0)
+                walletPage.navigateToTransaction(txid)
                 main.pop(null)
             }
         }

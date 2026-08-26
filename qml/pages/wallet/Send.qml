@@ -69,6 +69,8 @@ PageStack {
             sendPage.m_filledUri = ""
             sendPage.m_dismissedUri = ""
             sendPage.m_applyingUri = false
+            sendPage.clearPendingPaymentUriPaste()
+            paymentUriOverwritePopup.close()
         }
     }
 
@@ -91,6 +93,8 @@ PageStack {
             sendPage.paymentRequestStatus = ""
             sendPage.paymentRequestIsError = false
             sendPage.paymentRequestMessage = ""
+            sendPage.clearPendingPaymentUriPaste()
+            paymentUriOverwritePopup.close()
         }
     }
 
@@ -285,6 +289,76 @@ PageStack {
         // Guard that prevents field-change Connections from triggering a
         // re-check while a programmatic URI fill is writing to the form.
         property bool m_applyingUri: false
+        property var m_pendingPastedPaymentRequest: null
+        property string m_pendingPastedPaymentRequestText: ""
+
+        function looksLikePaymentUri(text) {
+            return String(text).trim().toLowerCase().startsWith("bitcoin:")
+        }
+
+        function pasteIntoFocusedRecipientField(field) {
+            if (field === "address") {
+                addressField.paste()
+            } else if (field === "label") {
+                label.paste()
+            } else if (field === "amount") {
+                amountInput.paste()
+            }
+        }
+
+        function paymentUriConflicts(result, sourceField) {
+            if (!root.recipient) return false
+
+            const addressConflict = sourceField !== "address"
+                && root.recipient.address.address.length > 0
+                && root.recipient.address.address !== result.address
+            const amountConflict = sourceField !== "amount"
+                && result.hasAmount
+                && root.recipient.amount.satoshi !== 0
+                && root.recipient.amount.satoshi !== result.amountSats
+            const labelConflict = sourceField !== "label"
+                && result.hasLabel
+                && root.recipient.label.length > 0
+                && root.recipient.label !== result.label
+            return addressConflict || amountConflict || labelConflict
+        }
+
+        function clearPendingPaymentUriPaste() {
+            m_pendingPastedPaymentRequest = null
+            m_pendingPastedPaymentRequestText = ""
+        }
+
+        function applyPastedPaymentRequest(result, text) {
+            applyParsedPaymentRequest(result, qsTr("clipboard"))
+            if (result.success && Clipboard.text() === text) {
+                m_filledUri = text
+                showClipboardUriBanner = false
+            }
+        }
+
+        function handlePaymentUriPaste(text, sourceField) {
+            const result = BitcoinUri.parseBitcoinUri(text)
+            if (!result.success) {
+                applyParsedPaymentRequest(result, qsTr("clipboard"))
+                return
+            }
+            if (paymentUriConflicts(result, sourceField)) {
+                m_pendingPastedPaymentRequest = result
+                m_pendingPastedPaymentRequestText = text
+                paymentUriOverwritePopup.open()
+                return
+            }
+            applyPastedPaymentRequest(result, text)
+        }
+
+        function handleClipboardPaste(field) {
+            const text = Clipboard.text()
+            if (looksLikePaymentUri(text)) {
+                handlePaymentUriPaste(text, field)
+            } else {
+                pasteIntoFocusedRecipientField(field)
+            }
+        }
 
         function checkClipboard() {
             // Skip parsing when the Send tab is not visible or no wallet is
@@ -377,6 +451,39 @@ PageStack {
             applyParsedPaymentRequest(result, qsTr("file"))
         }
 
+        AlertPopup {
+            id: paymentUriOverwritePopup
+            objectName: "sendPaymentUriOverwritePopup"
+            parent: Overlay.overlay
+            title: qsTr("Confirm paste?")
+            message: qsTr("The payment request from the clipboard contains information that differs from the currently populated values. Pasting will replace the values.")
+            messageObjectName: "sendPaymentUriOverwriteMessage"
+
+            AlertAction {
+                text: qsTr("Cancel")
+                role: AlertAction.Cancel
+                buttonObjectName: "sendPaymentUriOverwriteCancelButton"
+                closesPopup: false
+                onTriggered: {
+                    sendPage.clearPendingPaymentUriPaste()
+                    paymentUriOverwritePopup.close()
+                }
+            }
+
+            AlertAction {
+                text: qsTr("Paste")
+                buttonObjectName: "sendPaymentUriOverwriteConfirmButton"
+                closesPopup: false
+                onTriggered: {
+                    const result = sendPage.m_pendingPastedPaymentRequest
+                    const text = sendPage.m_pendingPastedPaymentRequestText
+                    sendPage.clearPendingPaymentUriPaste()
+                    paymentUriOverwritePopup.close()
+                    if (result) sendPage.applyPastedPaymentRequest(result, text)
+                }
+            }
+        }
+
         Connections {
             target: Clipboard
             function onDataChanged() { sendPage.checkClipboard() }
@@ -430,17 +537,18 @@ PageStack {
             anchors.centerIn: Overlay.overlay
             width: Math.min(sendPage.width - 40, 420)
             modal: true
+            dim: true
             padding: 20
 
-            background: Item {
-                anchors.fill: parent
-                Rectangle {
-                    color: Theme.color.neutral0
-                    border.color: Theme.color.neutral4
-                    radius: 5
-                    border.width: 1
-                    anchors.fill: parent
-                }
+            Overlay.modal: Rectangle {
+                color: Qt.rgba(0, 0, 0, 0.5)
+            }
+
+            background: Rectangle {
+                color: Theme.color.neutral1
+                border.color: Theme.color.neutral2
+                radius: 5
+                border.width: 1
             }
 
             contentItem: ColumnLayout {
@@ -458,6 +566,11 @@ PageStack {
                     objectName: "sendUriImportInput"
                     Layout.fillWidth: true
                     placeholderText: qsTr("bitcoin:address?amount=…")
+                    background: Rectangle {
+                        color: Theme.color.neutral2
+                        radius: 5
+                        border.width: 0
+                    }
                 }
 
                 RowLayout {
@@ -466,6 +579,7 @@ PageStack {
 
                     OutlineButton {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         text: qsTr("Cancel")
                         onClicked: sendUriImportPopup.close()
                     }
@@ -473,6 +587,7 @@ PageStack {
                     ContinueButton {
                         objectName: "sendUriImportApplyButton"
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         text: qsTr("Apply")
                         enabled: uriImportInput.text.trim().length > 0
                         onClicked: {
@@ -624,6 +739,7 @@ PageStack {
                 Rectangle {
                     objectName: "clipboardUriBanner"
                     Layout.fillWidth: true
+                    Layout.bottomMargin: visible ? 16 : 0
                     visible: sendPage.showClipboardUriBanner
                     color: Theme.color.neutral1
                     radius: 5
@@ -796,12 +912,15 @@ PageStack {
                 }
 
                 BitcoinAddressInputField {
+                    id: addressField
                     objectName: "sendAddressField"
                     Layout.fillWidth: true
                     inputObjectName: "sendAddressInput"
+                    interceptPaste: true
                     enabled: walletController.initialized
                     address: root.recipient.address
                     errorText: root.recipient.addressError
+                    onPasteRequested: sendPage.handleClipboardPaste("address")
                     onTextChanged: {
                         root.clearPrepareTransactionError()
                         root.scheduleFeeEstimates()
@@ -818,9 +937,11 @@ PageStack {
                     objectName: "sendNoteField"
                     inputObjectName: "sendNoteInput"
                     Layout.fillWidth: true
+                    interceptPaste: true
                     labelText: qsTr("Note to self")
                     placeholderText: qsTr("Recommended")
-                    text: root.recipient.label
+                    paymentUriRestoreText: root.recipient.label
+                    onPasteRequested: sendPage.handleClipboardPaste("label")
                     onTextEdited: root.recipient.label = label.text
                 }
 
@@ -832,11 +953,13 @@ PageStack {
                     id: amountInput
                     Layout.fillWidth: true
                     inputObjectName: "sendAmountInput"
+                    interceptPaste: true
                     unitToggleObjectName: "sendAmountUnitToggle"
                     unitLabelObjectName: "sendAmountUnitLabel"
                     errorTextObjectName: "sendAmountErrorText"
                     amount: root.recipient ? root.recipient.amount : null
                     errorText: root.recipient ? root.recipient.amountError : ""
+                    onPasteRequested: sendPage.handleClipboardPaste("amount")
                     onInputTextChanged: {
                         root.clearPrepareTransactionError()
                         root.scheduleFeeEstimates()
@@ -1011,7 +1134,9 @@ PageStack {
                 ContinueButton {
                     id: continueButton
                     objectName: "sendReviewButton"
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: 300
+                    Layout.maximumWidth: 300
+                    Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 36
                     Layout.bottomMargin: 24
                     text: root.externalSignerWallet ? qsTr("Review transaction") : qsTr("Review")
@@ -1107,7 +1232,7 @@ PageStack {
     WalletPassphrasePopup {
         id: reviewPassphrasePopup
         parent: Overlay.overlay
-        width: Math.min(420, root.width - 40)
+        width: Math.min(480, root.width - 40)
         popupObjectName: "reviewPassphrasePopup"
         passphraseFieldObjectName: "reviewPassphraseField"
         errorTextObjectName: "reviewPassphraseErrorText"

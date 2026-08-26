@@ -17,9 +17,10 @@ class WalletQmlModelTransactionTests : public QObject
 
 private Q_SLOTS:
     void singleRecipientReviewAmountsInheritRecipientUnit();
-    void multipleRecipientReviewAmountsStayInBtc();
+    void multipleRecipientReviewAmountsInheritSharedUnit();
     void recipientRolesExposeFormattedAddressAndUnitLabel();
     void removingRecipientUpdatesTotalOnce();
+    void txidTracksAssignedTransaction();
 };
 
 void WalletQmlModelTransactionTests::singleRecipientReviewAmountsInheritRecipientUnit()
@@ -38,7 +39,7 @@ void WalletQmlModelTransactionTests::singleRecipientReviewAmountsInheritRecipien
     QCOMPARE(transaction.totalAmount()->toDisplay(), QString("1300"));
 }
 
-void WalletQmlModelTransactionTests::multipleRecipientReviewAmountsStayInBtc()
+void WalletQmlModelTransactionTests::multipleRecipientReviewAmountsInheritSharedUnit()
 {
     SendRecipientsListModel recipients;
     auto* first = recipients.currentRecipient();
@@ -53,10 +54,11 @@ void WalletQmlModelTransactionTests::multipleRecipientReviewAmountsStayInBtc()
     WalletQmlModelTransaction transaction(&recipients);
     transaction.setTransactionFee(1000);
 
-    QCOMPARE(transaction.feeAmount()->unit(), BitcoinAmount::Unit::BTC);
-    QCOMPARE(transaction.totalAmount()->unit(), BitcoinAmount::Unit::BTC);
-    QCOMPARE(transaction.feeAmount()->toDisplay(), QString("0.00001000"));
-    QCOMPARE(transaction.totalAmount()->toDisplay(), QString("0.50003000"));
+    QCOMPARE(first->amount()->unit(), BitcoinAmount::Unit::SAT);
+    QCOMPARE(transaction.feeAmount()->unit(), BitcoinAmount::Unit::SAT);
+    QCOMPARE(transaction.totalAmount()->unit(), BitcoinAmount::Unit::SAT);
+    QCOMPARE(transaction.feeAmount()->toDisplay(), QString("1000"));
+    QCOMPARE(transaction.totalAmount()->toDisplay(), QString("50003000"));
 }
 
 void WalletQmlModelTransactionTests::recipientRolesExposeFormattedAddressAndUnitLabel()
@@ -88,6 +90,25 @@ void WalletQmlModelTransactionTests::removingRecipientUpdatesTotalOnce()
 
     QCOMPARE(recipients.totalAmountSatoshi(), 1000);
     QCOMPARE(total_changed_spy.count(), 1);
+}
+
+void WalletQmlModelTransactionTests::txidTracksAssignedTransaction()
+{
+    SendRecipientsListModel recipients;
+    WalletQmlModelTransaction transaction(&recipients);
+    QVERIFY(transaction.txid().isEmpty());
+
+    CMutableTransaction mutable_transaction;
+    mutable_transaction.vout.emplace_back(1'000, CScript{});
+    const CTransactionRef wallet_transaction = MakeTransactionRef(std::move(mutable_transaction));
+    QSignalSpy txid_changed_spy{&transaction, &WalletQmlModelTransaction::txidChanged};
+
+    transaction.setWtx(wallet_transaction);
+    QCOMPARE(transaction.txid(), QString::fromStdString(wallet_transaction->GetHash().ToString()));
+    QCOMPARE(txid_changed_spy.count(), 1);
+
+    transaction.setWtx(wallet_transaction);
+    QCOMPARE(txid_changed_spy.count(), 1);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

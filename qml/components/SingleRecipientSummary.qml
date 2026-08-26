@@ -21,7 +21,6 @@ ColumnLayout {
 
     BitcoinAddressDisplayField {
         objectName: "sendReviewAddressField"
-        expandedObjectName: "sendReviewFullAddressField"
         labelPixelSize: Theme.text.description.pixelSize
         labelColor: Theme.color.neutral7
         text: root.recipient ? root.recipient.address.ellipsesAddress : ""

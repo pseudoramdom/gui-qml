@@ -22,6 +22,7 @@ class SendRecipientsListModelTests : public QObject
 
 private Q_SLOTS:
     void clearKeepsCurrentRecipientValidForQmlBindings();
+    void unitChangesApplyToEveryRecipient();
 };
 
 void SendRecipientsListModelTests::clearKeepsCurrentRecipientValidForQmlBindings()
@@ -66,6 +67,31 @@ void SendRecipientsListModelTests::clearKeepsCurrentRecipientValidForQmlBindings
     QVERIFY(observer->property("address").toString().isEmpty());
     QVERIFY(observer->property("label").toString().isEmpty());
     QCOMPARE(observer->property("amount").value<QObject*>(), recipients.currentRecipient()->amount());
+}
+
+void SendRecipientsListModelTests::unitChangesApplyToEveryRecipient()
+{
+    SendRecipientsListModel recipients;
+    auto* first = recipients.currentRecipient();
+    first->amount()->setSatoshi(COIN / 2);
+
+    recipients.add();
+    auto* second = recipients.currentRecipient();
+    second->amount()->setSatoshi(2'000);
+    second->amount()->setUnit(BitcoinAmount::Unit::SAT);
+
+    QCOMPARE(first->amount()->unit(), BitcoinAmount::Unit::SAT);
+    QCOMPARE(second->amount()->unit(), BitcoinAmount::Unit::SAT);
+    QCOMPARE(
+        recipients.data(recipients.index(0, 0), SendRecipientsListModel::AmountRole).toString(),
+        QStringLiteral("50000000"));
+    QCOMPARE(
+        recipients.data(recipients.index(0, 0), SendRecipientsListModel::AmountUnitLabelRole).toString(),
+        QStringLiteral("sats"));
+
+    first->amount()->setUnit(BitcoinAmount::Unit::BTC);
+    QCOMPARE(first->amount()->unit(), BitcoinAmount::Unit::BTC);
+    QCOMPARE(second->amount()->unit(), BitcoinAmount::Unit::BTC);
 }
 
 #ifdef BITCOINQML_NO_TEST_MAIN

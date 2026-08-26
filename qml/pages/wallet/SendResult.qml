@@ -16,6 +16,7 @@ Page {
     property bool opened: visible
     property string descriptionText: qsTr("Based on your selected fee, it should be confirmed within the next 10 minutes.")
     property string actionText: qsTr("Done")
+    property string txid: ""
 
     background: Rectangle {
         color: Theme.color.background
@@ -30,7 +31,7 @@ Page {
     property int resultType: SendResult.ResultType.Regular
 
     signal done()
-    signal viewNewTransaction()
+    signal viewNewTransaction(string txid)
 
     ColumnLayout {
         id: columnLayout
@@ -82,13 +83,14 @@ Page {
             spacing: 15
 
             OutlineButton {
+                objectName: "sendResultViewTransactionButton"
                 text: root.resultType === SendResult.ResultType.SpeedUp
                     ? qsTr("View new transaction")
                     : qsTr("View transaction")
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 Layout.minimumWidth: 150
-                onClicked: root.viewNewTransaction()
+                onClicked: root.viewNewTransaction(root.txid)
             }
 
             ContinueButton {

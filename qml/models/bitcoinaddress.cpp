@@ -10,7 +10,12 @@ constexpr int MAX_BITCOIN_ADDRESS_LENGTH = 90;
 bool IsBitcoinAddressChar(const QChar c)
 {
     const ushort ch = c.unicode();
-    return (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+    // The union of the Base58Check and Bech32/Bech32m alphabets contains
+    // every ASCII digit and lowercase letter, and every uppercase letter
+    // except the ambiguous I and O characters.
+    return (ch >= '0' && ch <= '9') ||
+           (ch >= 'a' && ch <= 'z') ||
+           (ch >= 'A' && ch <= 'Z' && ch != 'I' && ch != 'O');
 }
 } // namespace
 
@@ -83,6 +88,12 @@ int BitcoinAddress::setAddress(const QString& input, int cursorPosition)
     }
 
     if (raw == m_address && fmt == m_formattedAddress) {
+        // A rejected character does not change either stored value, but the
+        // input field still needs a notification to replace its edited text
+        // with the normalized formatted address.
+        if (input != fmt) {
+            Q_EMIT formattedAddressChanged();
+        }
         return newCursor;
     }
 
