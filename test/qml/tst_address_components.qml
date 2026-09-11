@@ -263,6 +263,8 @@ TestCase {
         compare(noteField.text, "")
         compare(noteField.placeholderText, "Add a note to self")
         compare(noteField.readOnly, false)
+        compare(noteField.activeFocusOnPress, true)
+        compare(noteField.activeFocusOnTab, true)
         compare(noteFocusBorder.border.color, Theme.color.orange)
         compare(noteField.font.pixelSize, Theme.text.description.font.pixelSize)
         compare(addressLabel.address, "bcrt1qexampleaddress")
@@ -320,6 +322,11 @@ TestCase {
         mouseClick(detailsButton, detailsButton.width / 2, detailsButton.height / 2)
         verify(detailsRequested)
         verify(findObject(row, "addressRowMenuButton") === null)
+
+        row.canEditLabel = false
+        compare(noteField.readOnly, true)
+        compare(noteField.activeFocusOnPress, false)
+        compare(noteField.activeFocusOnTab, false)
     }
 
     function test_details_has_no_status_row_and_emits_actions() {
