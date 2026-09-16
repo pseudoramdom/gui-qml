@@ -16,6 +16,7 @@
 #include <QAbstractItemModelTester>
 #include <QFile>
 #include <QPersistentModelIndex>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
@@ -216,6 +217,7 @@ class TransactionActivityModelTests : public QObject
     Q_OBJECT
 private Q_SLOTS:
     void copiesRawTransactionAndPublicPaymentRequest();
+    void formatsDisplayAmountsForLocale();
     void exposesParentsAndActionsWithoutAllocatingFees();
     void savesBatchRecipientNotesWhenSending_data();
     void savesBatchRecipientNotesWhenSending();
@@ -237,6 +239,35 @@ private Q_SLOTS:
     void loadsFlowLazilyAndRefreshesOutputAssociations();
 };
 
+void TransactionActivityModelTests::formatsDisplayAmountsForLocale()
+{
+    const QLocale previous_locale;
+    const auto restore_locale = qScopeGuard([previous_locale] { QLocale::setDefault(previous_locale); });
+    QLocale::setDefault(QLocale{"de_DE"});
+
+    Fixture f;
+    const auto batch = MakeTx({{120'000, true}}, {{60'000, false}, {40'000, false, false, 2}, {19'000, true, true, 3}});
+    CMutableTransaction parent;
+    parent.vout.emplace_back(120'000, batch.tx->vout[2].scriptPubKey);
+    f.state->flow_parents[batch.tx->vin[0].prevout.hash] = MakeTransactionRef(parent);
+    f.state->put(batch);
+    auto* model = f.model();
+
+    auto row = Find(*model, Id(batch));
+    QCOMPARE(row.data(Model::AmountRole).toString(), QString("0,00101000 BTC"));
+    QCOMPARE(model->transactionDetails(Id(batch)).value("amount").toString(), QString("0,00101000 BTC"));
+
+    f.wallet->setDisplayUnit(3);
+    row = Find(*model, Id(batch));
+    QCOMPARE(row.data(Model::AmountRole).toString(), QString("101.000 sat"));
+    QCOMPARE(row.data(Model::ActionsRole).toList()[0].toMap().value("amount").toString(), QString("60.000 sat"));
+    QCOMPARE(model->transactionDetails(Id(batch)).value("amount").toString(), QString("101.000 sat"));
+
+    const auto flow = model->transactionDetails(Id(batch), true).value("flow").toMap();
+    QCOMPARE(flow.value("inputs").toList()[0].toMap().value("amount").toString(), QString("120.000 sat"));
+    QCOMPARE(flow.value("outputs").toList()[0].toMap().value("amount").toString(), QString("60.000 sat"));
+    QCOMPARE(flow.value("feeAmount").toString(), QString("1.000 sat"));
+}
 void TransactionActivityModelTests::copiesRawTransactionAndPublicPaymentRequest()
 {
     Fixture f;

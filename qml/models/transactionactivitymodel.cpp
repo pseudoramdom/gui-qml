@@ -195,7 +195,7 @@ void TransactionActivityModel::poll()
 QString TransactionActivityModel::formatAmount(CAmount amount, bool receive) const
 {
     const auto unit = QmlBitcoinUnits::fromDisplayUnit(m_display_unit);
-    return QmlBitcoinUnits::format(unit, qAbs(amount), receive) + QLatin1Char(' ')
+    return QmlBitcoinUnits::formatForDisplay(unit, qAbs(amount), receive) + QLatin1Char(' ')
         + QmlBitcoinUnits::label(unit);
 }
 
