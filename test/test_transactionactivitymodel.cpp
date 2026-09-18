@@ -216,6 +216,7 @@ class TransactionActivityModelTests : public QObject
 {
     Q_OBJECT
 private Q_SLOTS:
+    void confirmationUpdatesAreBatchedAndPreserveAmountCaches();
     void copiesRawTransactionAndPublicPaymentRequest();
     void formatsDisplayAmountsForLocale();
     void exposesParentsAndActionsWithoutAllocatingFees();
@@ -269,6 +270,27 @@ void TransactionActivityModelTests::formatsDisplayAmountsForLocale()
     QCOMPARE(flow.value("outputs").toList()[0].toMap().value("amount").toString(), QString("60.000 sat"));
     QCOMPARE(flow.value("feeAmount").toString(), QString("1.000 sat"));
 }
+void TransactionActivityModelTests::confirmationUpdatesAreBatchedAndPreserveAmountCaches()
+{
+    Fixture f;
+    for (int i = 0; i < 2000; ++i) f.state->put(MakeTx({{100'000, true}}, {{99'000 - i, false}}), 6);
+    auto* source = f.model();
+    Proxy proxy;
+    proxy.setSourceModel(source);
+    QSignalSpy changes(source, &Model::dataChanged);
+    QSignalSpy pending(&proxy, &Proxy::pendingBalanceChanged);
+    QSignalSpy maximum(&proxy, &Proxy::availableMaxAmountChanged);
+    const auto before = proxy.availableMaxAmount();
+    for (auto& [id, status] : f.state->statuses) ++status.depth_in_main_chain;
+    source->refreshStatuses();
+    QCOMPARE(changes.size(), 1);
+    QCOMPARE(changes.first().at(2).value<QList<int>>(), QList<int>{Model::DepthRole});
+    QCOMPARE(pending.size(), 0);
+    QCOMPARE(maximum.size(), 0);
+    QCOMPARE(proxy.availableMaxAmount(), before);
+    QCOMPARE(proxy.pendingBalanceSat(), 0);
+}
+
 void TransactionActivityModelTests::copiesRawTransactionAndPublicPaymentRequest()
 {
     Fixture f;
