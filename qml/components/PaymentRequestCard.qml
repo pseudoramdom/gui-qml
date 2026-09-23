@@ -41,6 +41,11 @@ Pane {
         color: Theme.color.neutral1
         border.width: 1
         border.color: root.modalView ? Theme.color.neutral3 : Theme.color.neutral2
+        SurfaceGradientBorder {
+            anchors.fill: parent
+            surfaceColor: parent.color
+            cornerRadius: parent.radius
+        }
     }
 
     function resetFields() {
@@ -199,10 +204,9 @@ Pane {
                 circular: true
                 size: 30
                 iconSize: 24
-                iconColor: Theme.color.neutral6
+                iconColor: Theme.color.neutral7
                 activeIconColor: Theme.color.neutral8
-                backgroundColor: Theme.color.neutral2
-                hoverBackgroundColor: Theme.color.neutral3
+                isOnSurface: true
                 checked: moreMenu.opened
                 onClicked: moreMenu.opened ? moreMenu.close() : moreMenu.open()
                 ContextMenu {
@@ -241,6 +245,7 @@ Pane {
             }
             CloseButton {
                 objectName: "paymentRequestModalClose"
+                iconColor: Theme.color.neutral7
                 Accessible.name: qsTr("Close payment request")
                 onClicked: root.closeRequested()
             }
