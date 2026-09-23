@@ -4,6 +4,9 @@
 
 #include <QtTest/QtTest>
 
+#include <QLocale>
+#include <QScopeGuard>
+
 #include <qml/bitcoinamount.h>
 #include <qml/models/sendrecipient.h>
 #include <qml/models/sendrecipientslistmodel.h>
@@ -19,6 +22,7 @@ private Q_SLOTS:
     void singleRecipientReviewAmountsInheritRecipientUnit();
     void multipleRecipientReviewAmountsInheritSharedUnit();
     void recipientRolesExposeFormattedAddressAndUnitLabel();
+    void reviewDisplayStringsUseLocale();
     void removingRecipientUpdatesTotalOnce();
     void txidTracksAssignedTransaction();
 };
@@ -76,6 +80,22 @@ void WalletQmlModelTransactionTests::recipientRolesExposeFormattedAddressAndUnit
     QCOMPARE(
         recipients.data(index, SendRecipientsListModel::AmountUnitLabelRole).toString(),
         QString("sats"));
+}
+
+void WalletQmlModelTransactionTests::reviewDisplayStringsUseLocale()
+{
+    const QLocale previous;
+    const auto restore_locale = qScopeGuard([previous] { QLocale::setDefault(previous); });
+    QLocale::setDefault(QLocale{"de_DE"});
+
+    SendRecipientsListModel recipients;
+    recipients.currentRecipient()->amount()->setSatoshi(123'456'789);
+    WalletQmlModelTransaction transaction(&recipients);
+    transaction.setTransactionFee(1'000);
+
+    QCOMPARE(transaction.amount(), QStringLiteral("1,23456789 BTC"));
+    QCOMPARE(transaction.fee(), QStringLiteral("0,00001000 BTC"));
+    QCOMPARE(transaction.total(), QStringLiteral("1,23457789 BTC"));
 }
 
 void WalletQmlModelTransactionTests::removingRecipientUpdatesTotalOnce()

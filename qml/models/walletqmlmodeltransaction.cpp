@@ -39,8 +39,8 @@ BitcoinAmount* WalletQmlModelTransaction::amountAmount() const
 QString WalletQmlModelTransaction::formatWithUnit(CAmount value, int display_unit)
 {
     const QmlBitcoinUnits::Unit unit = QmlBitcoinUnits::fromDisplayUnit(display_unit);
-    const QString num = QmlBitcoinUnits::format(unit, value, false, QmlBitcoinUnits::SeparatorStyle::STANDARD);
-    return num + " " + QmlBitcoinUnits::displayLabel(unit, value);
+    return QmlBitcoinUnits::formatForDisplay(unit, value) + QLatin1Char(' ')
+        + QmlBitcoinUnits::label(unit);
 }
 
 QString WalletQmlModelTransaction::amount() const

@@ -17,6 +17,7 @@
 #include <qml/models/signverifymessagemodel.h>
 #include <qml/models/walletunlock.h>
 #include <qml/models/walletqmlmodeltransaction.h>
+#include <qml/models/transactionflow.h>
 #include <qml/util.h>
 
 #include <chainparams.h>
@@ -53,6 +54,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <algorithm>
 #include <array>
@@ -2496,6 +2498,74 @@ bool WalletQmlModel::tryImportPsbtToReview(const PartiallySignedTransaction& psb
     return true;
 }
 
+QVariantMap WalletQmlModel::currentTransactionFlow() const
+{
+    if (!m_wallet || !m_current_transaction || !m_current_transaction->getWtx()) return {};
+
+    const auto& tx = m_current_transaction->getWtx();
+    interfaces::WalletTx preview{};
+    preview.tx = tx;
+    preview.debit = 0;
+    std::vector<std::optional<CTxOut>> prevouts;
+    prevouts.reserve(tx->vin.size());
+    for (size_t i = 0; i < tx->vin.size(); ++i) {
+        const auto& input = tx->vin[i];
+        preview.txin_is_mine.push_back(m_wallet->txinIsMine(input));
+        preview.debit += m_wallet->getDebit(input);
+        const auto parent = m_wallet->getTx(input.prevout.hash);
+        if (parent && input.prevout.n < parent->vout.size()) {
+            prevouts.emplace_back(parent->vout[input.prevout.n]);
+        } else if (m_current_psbt && i < m_current_psbt->inputs.size()
+                   && !m_current_psbt->inputs[i].witness_utxo.IsNull()) {
+            prevouts.emplace_back(m_current_psbt->inputs[i].witness_utxo);
+        } else if (m_current_psbt && i < m_current_psbt->inputs.size()
+                   && m_current_psbt->inputs[i].non_witness_utxo
+                   && input.prevout.n < m_current_psbt->inputs[i].non_witness_utxo->vout.size()) {
+            prevouts.emplace_back(m_current_psbt->inputs[i].non_witness_utxo->vout[input.prevout.n]);
+        } else {
+            prevouts.emplace_back(std::nullopt);
+        }
+    }
+    const auto recipients = m_send_recipients->recipients();
+    for (const auto& output : tx->vout) {
+        const bool owned = m_wallet->txoutIsMine(output);
+        preview.txout_is_mine.push_back(owned);
+        CTxDestination destination;
+        const QString address = ExtractDestination(output.scriptPubKey, destination)
+            ? QString::fromStdString(EncodeDestination(destination)) : QString{};
+        const bool reviewed_recipient = std::any_of(recipients.begin(), recipients.end(), [&address](const SendRecipient* recipient) {
+            return recipient && recipient->address()->address() == address;
+        });
+        preview.txout_is_change.push_back(owned && !reviewed_recipient);
+    }
+    QVariantMap flow = BuildTransactionFlow(preview, prevouts);
+    if (flow.isEmpty()) return flow;
+    const auto unit = QmlBitcoinUnits::fromDisplayUnit(m_display_unit);
+    const auto format_amount = [unit](CAmount amount) -> QString {
+        return QmlBitcoinUnits::formatForDisplay(unit, amount) + QLatin1Char(' ')
+            + QmlBitcoinUnits::label(unit);
+    };
+    for (const QString& side : {QStringLiteral("inputs"), QStringLiteral("outputs")}) {
+        QVariantList entries = flow.value(side).toList();
+        for (QVariant& value : entries) {
+            QVariantMap entry = value.toMap();
+            if (entry.value(QStringLiteral("amountKnown")).toBool()) {
+                entry.insert(QStringLiteral("amount"), format_amount(entry.value(QStringLiteral("amountSat")).toLongLong()));
+            }
+            if (side == QStringLiteral("inputs") && entry.value(QStringLiteral("ownership")).toString() == QStringLiteral("wallet")) {
+                const QString label = getAddressLabel(entry.value(QStringLiteral("address")).toString());
+                if (!label.isEmpty()) entry.insert(QStringLiteral("label"), label);
+            }
+            value = entry;
+        }
+        flow.insert(side, entries);
+    }
+    if (flow.value(QStringLiteral("feeKnown")).toBool()) {
+        flow.insert(QStringLiteral("feeAmount"), format_amount(flow.value(QStringLiteral("feeSat")).toLongLong()));
+    }
+    return flow;
+}
+
 void WalletQmlModel::discardCurrentTransaction()
 {
     const bool had_transaction_state{
@@ -2694,6 +2764,7 @@ void WalletQmlModel::setDisplayUnit(int unit)
         }
         if (m_current_transaction) {
             m_current_transaction->setDisplayUnit(unit);
+            Q_EMIT currentTransactionChanged();
         }
         Q_EMIT balanceChanged();
         Q_EMIT displayUnitChanged(unit);
