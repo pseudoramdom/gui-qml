@@ -47,7 +47,7 @@ public:
 
     void setDisplayUnit(int unit);
 
-    void reassignAmounts(int nChangePosRet); // needed for the subtract-fee-from-amount feature
+    void reassignAmounts(int nChangePosRet); // synchronize review totals with the transaction outputs
 
 Q_SIGNALS:
     void amountChanged();
