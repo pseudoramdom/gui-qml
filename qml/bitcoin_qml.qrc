@@ -203,6 +203,7 @@
         <file>pages/wallet/CoinSelection.qml</file>
         <file>pages/wallet/SendCreate.qml</file>
         <file>pages/wallet/SendComplete.qml</file>
+        <file>pages/wallet/SpeedUpComplete.qml</file>
         <file>pages/wallet/WalletCoins.qml</file>
         <file>pages/wallet/CreateBackup.qml</file>
         <file>pages/wallet/CreateConfirm.qml</file>
@@ -218,9 +219,6 @@
         <file>pages/wallet/WatchOnlyXpub.qml</file>
         <file>pages/wallet/DesktopWallets.qml</file>
         <file>pages/wallet/ReceivePage.qml</file>
-        <file>pages/wallet/Send.qml</file>
-        <file>pages/wallet/SendResult.qml</file>
-        <file>pages/wallet/SendReview.qml</file>
         <file>pages/wallet/SendTransactionReview.qml</file>
         <file>pages/wallet/SpeedUpOverlay.qml</file>
         <file>pages/wallet/SignVerifyMessage.qml</file>
