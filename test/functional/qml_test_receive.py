@@ -448,11 +448,17 @@ def run_test():
         traceback.print_exc()
         gui = harness.driver
         if gui is not None:
-            gui.save_screenshot(os.path.join(harness.tmpdir, "receive-failure.png"))
-            dump_qml_tree(gui)
+            try:
+                gui.save_screenshot(os.path.join(harness.tmpdir, "receive-failure.png"))
+                dump_qml_tree(gui)
+            except (OSError, QmlDriverError):
+                # The GUI may have crashed; still report its process output.
+                pass
         proc = harness.gui_process
         _stop_gui(harness)
         gui_output = harness.process_output(proc)
+        if proc is not None:
+            print(f"GUI process exit code: {proc.returncode}", file=sys.stderr)
         if gui_output:
             print("\n--- GUI process output ---", file=sys.stderr)
             print(gui_output, file=sys.stderr)
