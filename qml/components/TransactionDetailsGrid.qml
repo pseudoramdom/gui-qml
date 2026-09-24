@@ -6,7 +6,8 @@ import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import "../controls"
 
-GridLayout {
+// A positioner keeps changing Repeater delegates out of the Qt 6.4 layout engine.
+Grid {
     id: fieldsGrid
     required property var fields
     required property int wideColumns
@@ -23,8 +24,7 @@ GridLayout {
             required property int index
             readonly property string value: modelData.value
             objectName: "transaction" + modelData.key + "Row"
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
+            width: Math.max(0, (fieldsGrid.width - (fieldsGrid.columns - 1) * fieldsGrid.columnSpacing) / fieldsGrid.columns)
             implicitWidth: 0
             minimumRowHeight: 54
             title: modelData.title
