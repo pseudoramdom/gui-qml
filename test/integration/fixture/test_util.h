@@ -15,6 +15,8 @@
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QMetaEnum>
+#include <QInputMethodEvent>
 #include <QSet>
 #include <QTest>
 
@@ -74,6 +76,7 @@ inline bool TransitionsFinished(QObject* root)
     while (!pending.isEmpty()) {
         auto* object = pending.takeLast();
         if (object->property("busy").toBool()) return false;
+        if (object->inherits("QQuickPopup") && object->property("visible").toBool() && !object->property("opened").toBool()) return false;
         pending.append(object->children());
     }
     return true;
@@ -93,6 +96,60 @@ inline bool OpenSettings(BitcoinQmlApplication& app)
 {
     return Click(Find(app, app.window()->property("desktopWalletMode").toBool()
                               ? "desktopWalletSettingsTabButton" : "nodeSettingsButton"));
+}
+
+inline QObject* WaitForVisible(BitcoinQmlApplication& app, const char* name)
+{
+    QObject* object{nullptr};
+    return QTest::qWaitFor([&] {
+        object = Find(app, name);
+        return object && object->property("visible").toBool() && TransitionsFinished(app.window());
+    }, 10'000) ? object : nullptr;
+}
+
+inline bool Click(BitcoinQmlApplication& app, const char* name)
+{
+    auto* object = WaitForVisible(app, name);
+    auto* item = qobject_cast<QQuickItem*>(object);
+    if (!item) return false;
+    for (auto* parent = item->parentItem(); parent; parent = parent->parentItem()) {
+        if (!parent->inherits("QQuickFlickable")) continue;
+        const auto rect = item->mapRectToItem(parent, item->boundingRect());
+        const auto offset = rect.top() < 0 ? rect.top() : std::max(0.0, rect.bottom() - parent->height());
+        if (offset != 0) parent->setProperty("contentY", parent->property("contentY").toDouble() + offset);
+    }
+    QCoreApplication::processEvents();
+    const bool ready = QTest::qWaitFor([&] {
+        return item->isEnabled() && app.window()->contentItem()->contains(item->mapToItem(app.window()->contentItem(), item->boundingRect().center()));
+    });
+    if (!ready) qWarning() << "Cannot click" << name << "at" << item->mapToScene(item->boundingRect().center());
+    return ready && Click(item);
+}
+
+inline bool SetText(BitcoinQmlApplication& app, const char* name, const QString& text)
+{
+    auto* item = qobject_cast<QQuickItem*>(WaitForVisible(app, name));
+    if (!item) return false;
+    item->forceActiveFocus();
+    if (!QMetaObject::invokeMethod(item, "selectAll")) return false;
+    QTest::keyClick(item->window(), Qt::Key_Backspace, Qt::NoModifier, 1);
+    QInputMethodEvent edit;
+    edit.setCommitString(text);
+    QCoreApplication::sendEvent(item, &edit);
+    return edit.isAccepted();
+}
+
+inline bool SelectSettings(BitcoinQmlApplication& app, const char* section)
+{
+    if (!OpenSettings(app) || !WaitForVisible(app, "settingsView")) return false;
+    auto* sidebar = qobject_cast<QQuickItem*>(Find(app, "settingsSidebarList"));
+    auto* button = qobject_cast<QQuickItem*>(Find(app, qPrintable(QStringLiteral("settingsSidebar_%1").arg(section))));
+    if (!sidebar || !button) return false;
+    const auto position_mode = sidebar->metaObject()->enumerator(sidebar->metaObject()->indexOfEnumerator("PositionMode"));
+    const int contain = position_mode.keyToValue("Contain");
+    const int index = button->parentItem()->property("index").toInt();
+    if (contain < 0 || !QMetaObject::invokeMethod(sidebar, "positionViewAtIndex", Q_ARG(int, index), Q_ARG(int, contain))) return false;
+    return QTest::qWaitFor([&] { return sidebar->contains(button->mapToItem(sidebar, button->boundingRect().center())); }) && Click(button);
 }
 
 inline bool ReturnToNode(BitcoinQmlApplication& app)
